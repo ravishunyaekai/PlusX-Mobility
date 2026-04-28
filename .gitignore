@@ -1,0 +1,10 @@
+node_modules/
+.env
+.envLive
+package-lock.json
+PlusX-Mobility-Live 23 Apr.zip
+logs/
+*.log
+dist/
+build/
+public/
