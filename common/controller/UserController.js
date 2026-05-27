@@ -392,7 +392,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     const res = checkNumber(country_code, mobile);
     if(res.status == 0) return resp.json({ status:0, code:422, message: res.msg });
 
-    const fullMobile = `${country_code}${mobile}`;
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
     // (SELECT COUNT(*) FROM rsa WHERE rsa.mobile = ? ) AS rsa_mob
     const [[isExist]] = await db.execute(`
         SELECT rider_mobile, 
@@ -425,8 +425,10 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     </html>`;
     emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
 
-    sendOtp( fullMobile,
-        `Your OTP for signup is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`
+    sendOtp(
+        fullMobile,
+        35,
+        otp
     )
     .then(result => {
         if (result.status === 0) return resp.json(result);
@@ -461,8 +463,10 @@ export const register = asyncHandler(async (req, resp) => {
     const res = checkNumber(country_code, rider_mobile);
     if(res.status == 0) return resp.json({ status:0, code:422, message: res.msg });
 
-    const fullMobile = `${country_code}${rider_mobile}`;
+    const fullMobile = `${country_code}${rider_mobile}`.replace("+", "");
     const cachedOtp  = getOTP(fullMobile);
+
+    console.log("-----------",!cachedOtp || cachedOtp !== otp, cachedOtp)
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] }); 
     
     const rider = await insertRecord('riders', [
@@ -556,7 +560,7 @@ export const createOTP = asyncHandler(async (req, resp) => {
     );
     if (!riderData) return resp.json({ status: 0, code: 422, message: ['The provided mobile number is not registered.'] });
     
-    const fullMobile = `${country_code}${mobile}`;
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
     let otp          = ( mobile == '9459459459' || mobile == '9410934120' || mobile == '9879879879') ? "9404" : generateOTP(4);
     storeOTP(fullMobile, otp);
      
@@ -575,9 +579,10 @@ export const createOTP = asyncHandler(async (req, resp) => {
     emailQueue.addEmail(riderData.rider_email, `Your OTP for Signin - PlusX Electric`, html);
 
     // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
-
-    sendOtp( fullMobile,
-        `Your OTP for login is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`
+    sendOtp(
+        fullMobile,
+        34,
+        otp
     )
     .then(result => {
         if (result.status === 0) return resp.json(result);
@@ -610,7 +615,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
     if(riderData.status == 2){
         return resp.json({status: 1, code: 422, message: ["You can not login as your status is inactive. Kindly contact to customer care"]});
     }
-    const fullMobile = `${country_code}${mobile}`;
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
     const cachedOtp  = getOTP(fullMobile);
     
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] });

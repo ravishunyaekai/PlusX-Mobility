@@ -56,7 +56,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
         }
         const result = await getPaginatedData(params);
         const typeOject =  { 
-            crd : "Wallet Recharge", debt : "Ride", refund : "Refund to Wallet", sd_refund : "SD Refunded", fn_refund : "Refund", 
+            crd : "Security Deposit", debt : "Ride", refund : "Refund to Wallet", sd_refund : "SD Refunded", fn_refund : "Refund", csd : "Security Deposit", 
         };
         const grouped = result.data.reduce((acc, item) => {
             const date = moment(item.created_at).format('YYYY-MM-DD');
@@ -65,7 +65,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             }
             // Transform item
             const formattedItem = {
-                ride_id      : item.payment_type == 'debt' ? item.order_id : "",
+                ride_id     : (item.payment_type == 'debt' || item.payment_type == 'crd' ) ? item.order_id : "",
                 amount       : item.amount,
                 payment_type : typeOject[item.payment_type] || item.payment_type,
                 time         : item.created_at.split(" ")[1]
@@ -73,6 +73,8 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             acc[date].push(formattedItem);
             return acc;
         }, {});
+                    console.log("result",result.data)
+
         // Convert to sorted array format
         const finalData = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).map(date => ({
             date         : date,
@@ -91,14 +93,15 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             WHERE rider_id = ? `, [ rider_id ] 
         );
         return resp.json({
-            status      : 1,
-            code        : 200,
-            message     : ["User Transaction List fetched successfully!"],
-            current_bal : parseFloat( riderData?.amount || 0 ).toFixed(2),
-            data        : finalData,
-            total_page  : result.totalPage,
-            total       : result.total,
-            content     : contentArray, 
+            status            : 1,
+            code              : 200,
+            message           : ["User Transaction List fetched successfully!"],
+            current_bal       : parseFloat( riderData?.amount || 0 ).toFixed(2),
+            out_standing_cost : parseFloat(riderData?.out_standing_cost || 0).toFixed(2),
+            data              : finalData,
+            total_page        : result.totalPage,
+            total             : result.total,
+            content           : contentArray, 
         });
     } catch (error) {
         console.error('Error Transaction List:', error);

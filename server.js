@@ -36,6 +36,7 @@ import { razorpayWebhook } from './common/controller/webhookController.js';
 // import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
 // import { cronjobAddMoney, mobilitynotification } from './mobility/controller/user/cronjobController.js';
 // import { failedPODBooking } from './plusx/home Charging/controller/user/PortableChargerController.js';
+ import {  deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
 
 import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
 
@@ -58,6 +59,23 @@ const corsOptions = {
 // });
 // cron.schedule('* * * * *', async () => {
 //     await mobilitynotification();
+// });
+
+//Every 5 minutes
+// cron.schedule('*/5 * * * *', async () => {
+
+//     console.log('Outstanding deduction cron started');
+
+//     try {
+
+//         await deductOutstandingAmount();
+
+//     } catch (error) {
+
+//         console.log('Cron Error:', error.message);
+
+//     }
+
 // });
 
 app.use(cors(corsOptions));

@@ -400,7 +400,7 @@ export const bookngCompleteByadmin = asyncHandler(async(req,resp)=>{
     return resp.json({message: result.message, status: result.status, code: result.code});
 })
 
-const completeride = async (booking_id, station_id, handover_type, lock_number ) => {
+const completeride = async (booking_id, station_id, handover_type, lock_number) => {
     try {
         const bookingDetail = await queryDB(`
             SELECT
@@ -425,7 +425,6 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
         
         // formatted times (for display/API)
         const end_time   = nowMoment.format("YYYY-MM-DD HH:mm:ss");
-        
         const min_before_add   = diffInMinutes;
         const remainingSeconds = diffInSeconds % 60;
 
@@ -445,50 +444,56 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
         total_cost         = parseFloat(total_cost.toFixed(2));
         // const gst       = total_cost * 0.18;
         const gst          = (bookingDetail.price != total_cost) ? total_cost * 0.18 : 0 ;
-        const final_amount = total_cost + gst;
+        const final_amount = (total_cost + gst).toFixed(2);
         
         const remaning_cost = wallet_balance - final_amount < 0 ? 0 : wallet_balance - final_amount;
       
         const total_taken_time = `${min_before_add}:${remainingSeconds}`;
-        let out_standing_cost  = 0;
      
-        if( wallet_balance < final_amount ) { 
-            out_standing_cost = final_amount - wallet_balance;
-        }
-        await insertRecord('transaction_history', 
-            ['rider_id', 'amount', 'payment_type', 'order_id'], 
-            [rider_id, final_amount, 'debt',  booking_id]
+        const remaining_due = wallet_balance - final_amount;
+        await db.execute(` UPDATE riders SET amount = ?, out_standing_cost = 0 WHERE rider_id = ?`,[parseFloat(remaining_due), rider_id]);
+
+        await insertRecord('transaction_history',
+        ['rider_id', 'amount', 'status', 'payment_type', 'reference_id', 'order_id'],
+        [rider_id, final_amount,'OUT','debt', 'Ride Charge',booking_id]
         );
-        if(out_standing_cost > 0 ) {  
-            await insertRecord('transaction_history', 
-                ['rider_id', 'amount', 'status', 'reference_id', 'order_id'], 
-                [ rider_id, parseFloat( out_standing_cost.toFixed(2) ), "OUT", "out_standing_cost", booking_id ]
-            );
-        }
-        await db.execute(`
-            UPDATE riders 
-            SET amount = ?, out_standing_cost = out_standing_cost + ? 
-            WHERE rider_id = ?`, 
-            [ parseFloat( remaning_cost.toFixed(2) ), parseFloat( out_standing_cost.toFixed(2) ), rider_id]
-        );
+        // await insertRecord('transaction_history', 
+        //     ['rider_id', 'amount', 'payment_type', 'order_id'], 
+        //     [rider_id, final_amount, 'debt',  booking_id]
+        // );
+        // if(out_standing_cost > 0 ) {  
+        //     await insertRecord('transaction_history', 
+        //         ['rider_id', 'amount', 'status', 'reference_id', 'order_id'], 
+        //         [ rider_id, parseFloat( out_standing_cost.toFixed(2) ), "OUT", "out_standing_cost", booking_id ]
+        //     );
+        // }
+
+        // await db.execute(`
+        //     UPDATE riders 
+        //     SET out_standing_cost = out_standing_cost + ? 
+        //     WHERE rider_id = ?`, 
+        //     [ parseFloat( final_amount), rider_id]
+        // );
         const drop_station = await queryDB(`
             SELECT 
                 msl.station_id, msl.latitude, msl.longitude , msl.station_name as dropoff_station, msl.address
             FROM mobility_station_list msl 
             WHERE station_id = ? `, [station_id]
         );
+        const station = await queryDB(`SELECT station_name from mobility_station_list where station_id=?  `,[station_id]);
         const bookingParams = { 
-            status          : "CMP",
-            end_lat         : drop_station.latitude, 
-            end_long        : drop_station.longitude,
-            dropoff_station : drop_station.dropoff_station,
-            drop_address    : drop_station.address,
-            price           : final_amount,
-            time_taken      : diffInMinutes,
-            drop_time       : end_time,
-            handover_type   : handover_type,
-            total_time      : total_taken_time,
-            lock_number     : lock_number
+            status           : "CMP",
+            end_lat          : drop_station.latitude, 
+            end_long         : drop_station.longitude,
+            dropoff_station  : drop_station.dropoff_station,
+            drop_address     : drop_station.address,
+            price            : final_amount,
+            time_taken       : diffInMinutes,
+            drop_time        : end_time,
+            handover_type    : handover_type,
+            hand_over_station: station.station_name,
+            total_time       : total_taken_time,
+            lock_number      : lock_number
         }
         const update_booking = await updateRecord('cycle_booking', bookingParams , ['booking_id'], [booking_id] );
      
@@ -510,7 +515,10 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
             from booking_history 
             where rider_id = ? and booking_id = ? and status = 'ON' `,[rider_id,booking_id]
         );
-        if( station_id !== db_logs_data.description.station_id ) {
+        const description =  typeof db_logs_data.description === "string"
+        ? JSON.parse(db_logs_data.description)
+        : db_logs_data.description;
+        if( station_id !== description.station_id ) {
             
             const updtObj = { station_id : drop_station.station_id, lock_number : lock_number} ;
             await updateRecord('cycle_list', updtObj, ['cycle_id'], [bookingDetail.cycle_id] );          
@@ -518,12 +526,12 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
         await updateRecord('cycle_list', 
             { status : 1, lock_number : lock_number, device_status : 0 }, ['cycle_id'], [bookingDetail.cycle_id] 
         );
-        await sendNotification("USER_COMPLETE_RIDE",{ booking_id, amount : final_amount }, rider_id, rider_id);
+        await sendNotification("USER_COMPLETE_RIDES",{ booking_id, amount : final_amount }, rider_id, rider_id);
         // await sendNotification("ADMIN_COMPLETE_RIDE",{ booking_id }, rider_id, '' )
         // io.emit('notification-list', {msCount : 1});
-        const template = NOTIFICATION_CONTENT["USER_COMPLETE_RIDE"];
+        const template = NOTIFICATION_CONTENT["USER_COMPLETE_RIDES"];
  
-        await pushNotification(bookingDetail.fcm_token, template.heading({booking_id}), template.desc({amount : final_amount}), 'RDRFCM', `Mobility_Ride_Completed/${booking_id}` );
+        await pushNotification(bookingDetail.fcm_token, template.heading({booking_id}), template.desc({amount : final_amount}), 'RDRFCM', `mobility_booking_details/${booking_id}` );
        
         const payload = `OFF,${bookingDetail.cycle_id}`;
         const check_locker = await queryDB(`
@@ -532,7 +540,7 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
             WHERE station_id = ? `, [station_id]
         );
         client.publish( `/supro/GW/${check_locker.gateway_id}/UP`, payload, { qos: 0, retain: false });
-        const mail_template = NOTIFICATION_CONTENT["USER_RIDE_COMPLETE_EMAIL"];
+        const mail_template = NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAILS"];
     
         emailQueue.addEmail(
             bookingDetail.rider_email, 
@@ -543,6 +551,162 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
                 cycle_id   : bookingDetail.cycle_id, 
                 pick_time  : moment(bookingDetail.pick_time).format('hh:mm A'),
                 drop_time  : moment(end_time).format('hh:mm A'),
+                time_taken : diffInMinutes,
+                amount     : final_amount
+            })
+        );
+        return { status:1, code: 200, message: ` ride is complete. ₹${remaining_due} deducted from Customer wallet` };
+    
+    } catch(error) {
+        console.log(error);
+        return { status:0, code: 500, message: "Something went wrong." };
+    } 
+}
+
+export const bookngIncompleteByadmin = asyncHandler(async(req,resp)=>{
+    const { station_id, booking_id, lock_number, end_time, comment} = req.body;
+    const { isValid, errors } = validateFields(req.body, {       
+        station_id  : ["required"],
+        booking_id  : ["required"],
+        lock_number : ["required"],
+        end_time    : ["required"]
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const result = await incompletecompleteride(booking_id, station_id, "manual", lock_number, end_time, comment); 
+    return resp.json({message: result.message, status: result.status, code: result.code});
+})
+
+const incompletecompleteride = async (booking_id, station_id, handover_type, lock_number, end_time, comment) => {
+    try {
+        
+        const bookingDetail = await queryDB(`
+            SELECT
+                cb.per_min_cost, cb.pick_time, cb.cycle_id, cb.post_price, cb.base_duration, 
+                r.rider_email, CONCAT(r.rider_name, ' ', r.last_name) AS rider_name, r.fcm_token, 
+                cb.rider_id, r.amount as wallet_balance, cb.status, cb.price
+            FROM cycle_booking cb
+            JOIN riders r on r.rider_id = cb.rider_id
+            WHERE cb.booking_id = ? AND cb.status = ?
+            LIMIT 1`, [booking_id, 'PNR']
+        );
+         
+        if(!bookingDetail) return { status: 0, code: 422, message: "Ride completion failed. Booking not found or rider account unavailable." };
+         
+        const rider_id    = bookingDetail.rider_id; 
+        const pick_db_ime = bookingDetail.pick_time;
+        const pickMoment  = moment(pick_db_ime, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
+         
+        const pickDate = pickMoment.format("YYYY-MM-DD");
+ 
+        const nowMoment = moment.tz(`${pickDate} ${end_time}`,"YYYY-MM-DD hh:mm A","Asia/Kolkata");
+        if (nowMoment.isBefore(pickMoment)) {
+            return { status: 0, code: 422, message: "End time cannot be earlier than pick time." };
+        }
+        // difference
+        const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
+        let diffInMinutes   = nowMoment.diff(pickMoment, "minutes");
+        
+        const min_before_add   = diffInMinutes;
+        const remainingSeconds = diffInSeconds % 60;
+ 
+        if (remainingSeconds > 14) {
+            diffInMinutes += 1;
+        }
+        const base_duration  = Number(bookingDetail.base_duration);
+        const base_price     = parseFloat(bookingDetail.per_min_cost);
+        const post_price     = parseFloat(bookingDetail.post_price);
+        const wallet_balance = parseFloat(bookingDetail.wallet_balance); //
+ 
+        let total_cost = base_price
+        if(diffInMinutes > base_duration){
+            const time_after_base_duration = diffInMinutes-base_duration;
+            total_cost                     = base_price + (time_after_base_duration * post_price);
+        }
+        total_cost         = parseFloat(total_cost.toFixed(2));
+        const gst          = (bookingDetail.price != total_cost) ? total_cost * 0.18 : 0 ;
+        const final_amount = (total_cost + gst).toFixed(2);;
+        const total_taken_time = `${min_before_add}:${remainingSeconds}`;
+         
+        const remaining_due =  wallet_balance - final_amount;
+        await db.execute(` UPDATE riders SET amount = ?, out_standing_cost = 0 WHERE rider_id = ?`,[parseFloat(remaining_due), rider_id])
+        
+        await insertRecord('transaction_history',
+            ['rider_id', 'amount', 'status', 'payment_type', 'reference_id', 'order_id'],
+            [rider_id, final_amount, 'OUT', 'debt', 'Ride Charge', booking_id ]
+        );
+ 
+        if(comment){
+            await insertRecord( "booking_comments", ["booking_id","comment"], [booking_id, comment] );
+        }
+        const drop_station = await queryDB(`
+            SELECT 
+                msl.station_id, msl.latitude, msl.longitude , msl.station_name as dropoff_station, msl.address
+            FROM mobility_station_list msl 
+            WHERE station_id = ? `, [station_id]
+        );
+        if(!drop_station){
+            return {  status:0, code:422, message:"Drop station not found" }
+        }
+        await updateRecord('cycle_list', 
+            { status : 1, station_id : drop_station.station_id, lock_number : lock_number, device_status : 0 }, ['cycle_id'], [bookingDetail.cycle_id] 
+        );
+        const station = await queryDB(`SELECT station_name from mobility_station_list where station_id=?  `,[station_id]);
+ 
+        const bookingParams = { 
+            status           : "CMP",
+            end_lat          : drop_station.latitude, 
+            end_long         : drop_station.longitude,
+            dropoff_station  : drop_station.dropoff_station,
+            drop_address     : drop_station.address,
+            price            : final_amount,
+            time_taken       : diffInMinutes,
+            drop_time        : nowMoment.format("YYYY-MM-DD HH:mm:ss"),
+            handover_type    : handover_type,
+            hand_over_station: station.station_name,
+            total_time       : total_taken_time,
+            lock_number      : lock_number
+        }
+        const update_booking = await updateRecord('cycle_booking', bookingParams , ['booking_id'], [booking_id] );
+     
+        if( !update_booking) return { status:0, code: 201, message: `Booking was not created!` }
+ 
+        await insertRecord('booking_history',
+            [ 'booking_id', 'rider_id', 'status', 'description' ],
+            [booking_id, rider_id, "CMP", 
+                { 
+                    station_id    : station_id, 
+                    lock_number   : lock_number, 
+                    handover_type : handover_type, 
+                    cycle_id      : bookingDetail.cycle_id 
+                } 
+            ]
+        );
+        await sendNotification("USER_COMPLETE_RIDES",{ booking_id, amount : final_amount }, rider_id, rider_id);
+        // await sendNotification("ADMIN_COMPLETE_RIDE",{ booking_id }, rider_id, '' )
+        // io.emit('notification-list', {msCount : 1});
+        const template = NOTIFICATION_CONTENT["USER_COMPLETE_RIDES"];
+ 
+        await pushNotification(bookingDetail.fcm_token, template.heading({booking_id}), template.desc({amount : final_amount}), 'RDRFCM', `mobility_booking_details/${booking_id}` );
+       
+        const payload = `OFF,${bookingDetail.cycle_id}`;
+        const check_locker = await queryDB(`
+            SELECT gateway_id 
+            FROM cycle_locker 
+            WHERE station_id = ? `, [station_id]
+        );
+        client.publish( `/supro/GW/${check_locker.gateway_id}/UP`, payload, { qos: 0, retain: false });
+        const mail_template = NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAILS"];
+    
+        emailQueue.addEmail(
+            bookingDetail.rider_email, 
+            mail_template.subject({booking_id}), 
+            mail_template.content({
+                rider_name : bookingDetail.rider_name, 
+                booking_id, 
+                cycle_id   : bookingDetail.cycle_id, 
+                pick_time  : moment(bookingDetail.pick_time).format('hh:mm A'),
+                drop_time  : nowMoment.format("hh:mm A"),
                 time_taken : diffInMinutes,
                 amount     : final_amount
             })

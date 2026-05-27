@@ -5,7 +5,7 @@ import { notificationList } from "../controller/admin/AuthController.js";
 
 import { handleFileUpload } from "../../fileUpload.js";
 
-import { addCycle, cycleBookinghistory, cycleBookingList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, cycleOnOff, lockerOpen } from "../controller/admin/CycleController.js";
+import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, cycleOnOff, lockerOpen } from "../controller/admin/CycleController.js";
 
 import { AddMobilityStation, deletemobilityStation, editMobilityStation, mobilityStaionListforselectBox, mobilitystationDetails, mobilitystationList, stationlistforlockAssign } from "../controller/admin/MobilitystationController.js";
 
@@ -13,7 +13,7 @@ import { mobilityDashboardData, DeletedRiderList, addUsers, RiderList, usersList
 
 import { addUnversity, universityListSelect,universityList, addstudent, studentList, universitydetail, universityStudent, editStudent, editUniversity } from "../controller/admin/UninversityController.js";
 
-import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin } from "../controller/admin/UserController.js"; 
+import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin, bookngIncompleteByadmin } from "../controller/admin/UserController.js"; 
 
 // import { stateCountry } from "../../common/controller/UserController.js";
 
@@ -37,6 +37,8 @@ const adminRoutes = [
     { method: 'post',   path: '/mobility-station-details', handler: mobilitystationDetails },
      
     { method: 'post',   path: '/cycle-booking-list',         handler: cycleBookingList },
+    { method: 'post',   path: '/city-list',                  handler: getCityList },
+    { method: 'post',   path: '/station-list',               handler: getStationList },
     { method: 'post',   path: '/cycle-booking-details',      handler: cycleBookingDetails },
     { method: 'post',   path: '/cycle-booking-history',      handler: cycleBookinghistory },
     { method: 'post',   path: '/cycle-price-detail',         handler: cyclePrice },
@@ -86,6 +88,7 @@ const adminRoutes = [
     { method: 'post',   path: '/user-transaction-list',     handler: userTransactionList }, 
     { method: 'post',   path: '/add-refund-amount',         handler: addRefundAmount },
     { method: 'post',   path: '/complete-booking-by-admin', handler: bookngCompleteByadmin }, 
+    { method: 'post',   path: '/incomplete-booking-by-admin', handler: bookngIncompleteByadmin }, 
 ]; 
 
 const uploadRules = {

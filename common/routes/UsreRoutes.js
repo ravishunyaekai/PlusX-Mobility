@@ -16,7 +16,7 @@ const router = Router();
 
 const limiter = rateLimit({
     windowMs     : 70 * 1000,  //15 * 
-    max          : 4,
+    max          : 2,
     keyGenerator : (req) => req.body.device_id || req.ip, //req.headers['device_id'] || req.ip,
     handler      : (req, res, next, options) => {
         // console.log(req.body.device_id || req.ip);

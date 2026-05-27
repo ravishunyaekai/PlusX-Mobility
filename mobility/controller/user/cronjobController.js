@@ -1,9 +1,12 @@
 
 import db from "../../../config/indiadb.js";
-import { queryDB, updateRecord } from "../../../dbUtils.js";
+import { insertRecord, queryDB, updateRecord } from "../../../dbUtils.js";
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 import { createNotification, pushNotification } from "../../../utils.js";
 import { verifyPaymentByOrderId } from "../razorpay/razorpay.js";
+import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
+import emailQueue from "../../../emailQueue.js";
+
 
 export const cronjobAddMoney =async(req,resp)=>{
 
@@ -198,4 +201,81 @@ export const mobilitynotification = async () => {
         console.error("Notification failed:", err);
         
     }
+};
+
+
+// deductOutstandingAmount
+
+export const deductOutstandingAmount = async () => {
+ 
+    try {
+ 
+        const [riders] = await db.execute(`
+            SELECT 
+                r.rider_id, r.rider_email, r.rider_name, r.amount, r.out_standing_cost, cb.created_at, cb.booking_id, cb.cycle_id,
+                cb.time_taken
+            FROM riders r
+            INNER JOIN (
+                SELECT rider_id, MAX(created_at) AS latest_booking
+                FROM cycle_booking
+                WHERE status = 'CMP'
+                GROUP BY rider_id
+            ) latest
+                ON latest.rider_id = r.rider_id
+            LEFT JOIN country c ON c.country_id = r.country_id
+            INNER JOIN cycle_booking cb
+                ON cb.rider_id = latest.rider_id AND cb.created_at = latest.latest_booking
+ 
+            WHERE r.out_standing_cost > 0 AND cb.created_at <= NOW() - INTERVAL 5 MINUTE 
+            
+            ORDER BY cb.created_at DESC
+        `);  // AND r.amount >= r.out_standing_cost
+        console.log(riders)
+        if (riders.length == 0)  return false; 
+ 
+        for (const rider of riders) {
+ 
+            const outstanding = parseFloat(rider.out_standing_cost || 0);
+            const wallet      = parseFloat(rider.amount || 0);
+ 
+            const remainingAmount = wallet - outstanding;
+ 
+            const updatesFields = {
+                amount            : remainingAmount,
+                out_standing_cost : 0
+            }
+            const update = await updateRecord('riders', updatesFields, ['rider_id'], [rider.rider_id]);
+            await insertRecord('transaction_history', 
+                [
+                    'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
+                    "prev_balance", "status"
+                ], [
+                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, 
+                    wallet, "CNF" 
+                ]
+            ); 
+            
+             const mail_template =NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
+             emailQueue.addEmail(
+                rider.rider_email,
+                mail_template.subject({
+                    booking_id: rider.booking_id
+                }),
+                mail_template.content({
+                    rider_name : rider.rider_name,
+                    amount     : outstanding,
+                    booking_id : rider.booking_id,
+                    cycle_id   : rider.cycle_id,
+                    time_taken : rider.time_taken
+                })
+            );
+        }
+        
+
+    } catch (error) {
+ 
+        console.log('deductOutstandingAmount Error:', error);
+ 
+    }
+ 
 };

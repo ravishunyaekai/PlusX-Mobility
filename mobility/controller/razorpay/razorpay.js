@@ -3,11 +3,13 @@ import axios from "axios";
 // import * as RazorpayLib from "razorpay";
 // const Razorpay = RazorpayLib.default || RazorpayLib;
 import Razorpay from "razorpay";
+import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
 import { asyncHandler, generateRandomCode, mergeParam } from "../../../utils.js";
 import { formatFloatInQuery, insertRecord, queryDB, updateRecord } from "../../../dbUtils.js";
 import moment from "moment";
 import  db  from "../../../config/indiadb.js";
 import validateFields from "../../../validation.js";
+import emailQueue from "../../../emailQueue.js";
 // import cards from "razorpay/dist/types/cards.js";
 
 export const verifyPaymentByOrderId = async (order_id) => {
@@ -316,23 +318,45 @@ export const addmoneyINWallet = asyncHandler(async(req,resp)=>{
             r.amount, r.out_standing_cost, ${formatFloatInQuery('cn.min_wallet_price ')} as min_wallet_price
         FROM riders r
         JOIN country cn on cn.country_id = r.country_id   
-        Where cn.name = ? and cn.country_code = ? `, [ 'India', '+91' ] 
+        Where r.rider_id = ?  `, [ rider_id ] 
     );         
-    if( numericAmount < rider.min_wallet_price ) { 
-        return resp.json({ 
-            status  : 0, 
-            code    : 200, 
-            message : [`Minimum required balance is ₹${rider.min_wallet_price}. Kindly add money to your wallet to continue.`]
-        });
-    }   
-    const out_standing_cost = parseFloat(rider.out_standing_cost);
-    if( numericAmount < out_standing_cost ) {
+    console.log("---------",rider.min_wallet_price)
+        console.log("---------",rider.amount)
+
+    console.log(numericAmount)
+    const minWallet = parseFloat(rider.min_wallet_price || 200);
+    const seqamount = parseFloat(rider.amount || 0);
+    //const amounts = 30
+    const effectiveBalance =   parseFloat((minWallet - seqamount).toFixed(2));
+        console.log(effectiveBalance)
+
+console.log(numericAmount < effectiveBalance)
+    if (numericAmount < effectiveBalance) {
         return resp.json({
-            status  : 0,
-            code    : 200, 
-            message : [`Your outstanding balance is ${out_standing_cost.toFixed(2)}. Kindly make the payment first.`]
-        })
+            status: 0,
+            code: 200,
+            message: [
+            `Minimum wallet balance is ₹${minWallet}. Your current balance is ₹${seqamount.toFixed(2)}.  Please add ₹${effectiveBalance.toFixed(2)} more to continue.`
+            ]
+        });
     }
+
+   //  if( numericAmount < rider.min_wallet_price ) { 
+   //      return resp.json({ 
+   //          status  : 0, 
+   //          code    : 200, 
+   //          message : [`Minimum required balance is ₹${rider.min_wallet_price}. Kindly add money to your wallet to continue.`]
+   //      });
+   //  }   
+   //  const out_standing_cost = parseFloat(rider.out_standing_cost);
+   //  if( numericAmount < out_standing_cost ) {
+   //      return resp.json({
+   //          status  : 0,
+   //          code    : 200, 
+   //          message : [`Your outstanding balance is ${out_standing_cost.toFixed(2)}. Kindly make the payment first.`]
+   //      })
+   //  }
+
     const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET});
 
     const order = await razorpay.orders.create({
@@ -361,7 +385,9 @@ export const addmoneyINWallet = asyncHandler(async(req,resp)=>{
     });
 });
 
-export const Paymentsucceed = asyncHandler(async(req,resp)=>{
+ 
+export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
+     
     const { rider_id, payment_id, razorpay_signature, razorpay_order_id } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), { 
         rider_id           : ["required"],
@@ -370,11 +396,24 @@ export const Paymentsucceed = asyncHandler(async(req,resp)=>{
         razorpay_order_id  : ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-
+ 
+    const checkTransaction = await queryDB(`
+        SELECT amount, current_balance
+        FROM transaction_history
+        WHERE payment_id = ? AND status = ? `, [payment_id, "CNF"]
+    );
+    if(checkTransaction) {
+        return resp.json({
+            status        : 1,
+            code          : 200,
+            wallet_amount : checkTransaction.current_balance,
+            message       : [`Payment of ${(parseFloat(checkTransaction.amount)).toFixed(2)} INR Completed successfully`],
+        });
+    }
     const generated_signature = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
         .update(razorpay_order_id + "|" + payment_id)
         .digest("hex");
-
+ 
     const razorpay = new Razorpay({ 
         key_id: process.env.RAZORPAY_KEY_ID, 
         key_secret: process.env.RAZORPAY_KEY_SECRET
@@ -392,52 +431,56 @@ export const Paymentsucceed = asyncHandler(async(req,resp)=>{
         return resp.json({status: 0, code:400, message:["Payment not captured"],})
     }
     const riders = await queryDB(`
-        SELECT amount, out_standing_cost 
-        FROM riders 
-        WHERE rider_id = ?`, [rider_id]
+        SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.booking_id
+        FROM riders r JOIN country c ON r.country_code = c.country_code
+        LEFT JOIN cycle_booking cb 
+        ON cb.booking_id = (
+            SELECT booking_id 
+            FROM cycle_booking 
+            WHERE rider_id = r.rider_id
+            ORDER BY created_at DESC 
+        LIMIT 1)
+       WHERE r.rider_id = ?`, [rider_id]
     );
-    const oldPayment = await queryDB(`
-        SELECT id 
-        FROM transaction_history 
-        WHERE status = ? AND payment_id = ? `, [ 'CNF', payment_id ] 
-    );
-    if( oldPayment ){
-        return resp.json({ status: 1, code:200,
-            wallet_amount : riders.amount,
-            message       : [`Payment of ${(payment.amount/100).toFixed(2)} INR Completed successfully`],
-        });
-    }
-    let queryParams = `amount = ? `;  //amount +
-    let out_standing_cost = parseFloat(riders.out_standing_cost);
-
-    let current_balance = parseFloat(riders.amount) + parseFloat(paidAmount);
-
-    if(out_standing_cost > 0 ) {
-        current_balance  = current_balance - out_standing_cost
-        queryParams += ` , out_standing_cost = 0 `;
-        out_standing_cost = 0;
-    }
+ 
+    let outstandingAmount = parseFloat(riders.out_standing_cost || 0);
+    let out_standing_cost = parseFloat(0);
+    let riderAmount       = parseFloat(riders.amount);
+    let paymentAmount     = parseFloat(riders.min_wallet_price);
+ 
+    let orderIdToSave = razorpay_order_id;
+    if ( riderAmount < paymentAmount ) {
+        riderAmount = riderAmount + paidAmount; 
+        orderIdToSave = riders.booking_id;   
+    }   
+ 
+    let queryParams = `amount = ?, out_standing_cost = 0 `; 
+               
     let query = `UPDATE riders SET  ${queryParams} WHERE rider_id = ?`;
-    const update_rider = await db.execute( query, [current_balance, rider_id]);
-         
+    const update_rider = await db.execute( query, [riderAmount, rider_id]);
+        
     if(!update_rider) return resp.json({ status : 0, code : 400, message : ["Amount was not added on wallet!"]});
-    
+        
+        
     await insertRecord('transaction_history', 
         [
             'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
             "prev_balance", "status", "payment_id",
         ], [
-            rider_id, payment.amount, 'crd',  razorpay_order_id, out_standing_cost, current_balance, 
+            rider_id, paidAmount, 'debt',  orderIdToSave, out_standing_cost, riderAmount, 
             riders.amount, "CNF", payment_id, 
         ]
     ); 
+
+    
     return resp.json({
-       status        : 1,
-       code          : 200,
-       wallet_amount : current_balance,
-       message       : [`Payment of ${(payment.amount/100).toFixed(2)} INR Completed successfully`],
+        status        : 1,
+        code          : 200,
+        wallet_amount : riderAmount,
+        message       : [`Payment of ${(paidAmount).toFixed(2)} INR Completed successfully`],
     });
-});
+    
+}); 
 
 
 // export const verifyPayment=async(payment_id)=> {
@@ -1212,3 +1255,116 @@ export const CardSave =async (payment_id,rider_id) => {
 
   
 };
+
+export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
+    const { rider_id, amount } = mergeParam(req);
+    const numericAmount = parseFloat(amount);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"],
+        amount  : ["required"]
+    });
+
+    if (!isValid) {
+        return resp.json({ status: 0, code: 422, message: errors });
+    }
+    if (numericAmount < 1) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: ["Amount cannot be less than 1 INR"]
+        });
+    }
+    const result = await queryDB(`
+        SELECT 
+            r.amount,
+            r.out_standing_cost,
+            ${formatFloatInQuery('cn.min_wallet_price')} as min_wallet_price,
+            cb.booking_id
+        FROM riders r
+        JOIN country cn ON cn.country_id = r.country_id
+        LEFT JOIN cycle_booking cb ON cb.booking_id = (SELECT booking_id FROM cycle_booking
+        WHERE rider_id = r.rider_id
+        ORDER BY created_at DESC
+        LIMIT 1
+        )
+        WHERE r.rider_id = ? 
+    `, [rider_id]);
+
+
+    if (!result) {
+        return resp.json({
+            status: 0,
+            code: 404,
+            message: ["Rider not found"]
+        });
+    }
+
+    // if (parseFloat(result.out_standing_cost) < 0) {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 200,
+    //         message: [`Your outstanding balance is ₹${result.out_standing_cost}. Clear dues first.`]
+    //     });
+    // }
+
+    const minWallet = parseFloat(result.min_wallet_price || 200);
+    const currentWallet = parseFloat(result.amount || 0);
+
+// first time security balance maintain
+    if (currentWallet < minWallet) {
+
+    const requiredAmount = minWallet - currentWallet;
+
+    if (numericAmount < requiredAmount) {
+
+        return resp.json({
+            status: 0,
+            code: 200,
+            message: [
+                `Please add minimum ₹${requiredAmount.toFixed(2)} to maintain security balance.`
+            ]
+        });
+    }
+}
+
+    // if (data.status === "PAID") {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 400,
+    //         message: ["Booking already paid"]
+    //     });
+    // }
+
+    const receipt = `${numericAmount}_BOOKING_${rider_id}_${moment().format("YY-MM-DD_HH:mm:ss")}`;
+
+    const razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+
+    const order = await razorpay.orders.create({
+        amount: Math.round(amount * 100), // paise
+        currency: "INR",
+        receipt,
+        notes: {
+            rider_id: rider_id.toString(),
+            booking_id: result.booking_id?.toString(), // add this
+            booking_type: "BOOKING",
+            amount: numericAmount
+        }
+    });
+
+    const customer_id = await createCustomer(rider_id);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        orderId: order.id,
+        customer_id,
+        message: ["Order created for booking"],
+        amount: numericAmount,
+        currency: "INR",
+        key_id: process.env.RAZORPAY_KEY_ID
+    });
+});

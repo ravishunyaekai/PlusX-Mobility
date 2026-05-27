@@ -88,26 +88,114 @@ export const delOTP = (key) => {
 };
 
 /* API Call to Send OTP */
-export const sendOtp = async (mobile, otpMsg) => {
-  const username = process.env.SMS_USERNAME;
-  const password = process.env.SMS_PASSWORD;
-  const from = "PLUSXM";
+// export const sendOtp = async (mobile, otpMsg) => {
+//   const username = process.env.SMS_USERNAME;
+//   const password = process.env.SMS_PASSWORD;
+//   const from = "PLUSXM";
 
-  const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
-    from
-  )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
+//   const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
+//     from
+//   )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
 
-  try {
-    const response = await axios.get(baseUrl);
+//   try {
+//     const response = await axios.get(baseUrl);
 
-    if (response.data) {
-      return { status: 1, msg: response.data };
-    }
-  } catch (err) {
-    return { status: 0, msg: err.message, code: err.status };
-  }
+//     if (response.data) {
+//       return { status: 1, msg: response.data };
+//     }
+//   } catch (err) {
+//     return { status: 0, msg: err.message, code: err.status };
+//   }
+// };
+
+const templateObj = {
+    34: "{#var#} is your OTP to login to PlusX Electric App. Valid for 10 minutes. Do not share this OTP with anyone.",
+
+    35: "{#var#} is your OTP to sign up on PlusX Electric App. Valid for 10 minutes. Do not share this OTP with anyone.",
+
+    38: "{#var#} is your OTP to close the ride on PlusX Electric App. Valid for 10 minutes."
 };
 
+const createOTPPayload = (mobile, templateId, otp) => {
+
+    const template = templateObj[templateId];
+
+    if (!template) {
+        throw new Error("Invalid templateId");
+    }
+
+    const message = template.replace("{#var#}", otp);
+
+    return [{
+        apiToken: "NWZ9wfo5ybKoZnBQ",
+        messageType: "3",
+        messageEncoding: "0",
+        destinationAddress: mobile,
+        sourceAddress: "PLUSX",
+        messageText: message,
+        dltEntityId: 43,
+        dltEntityTemplateId: String(templateId)
+    }];
+};
+
+
+// Send OTP function
+export const sendOtp = async (
+    mobile,
+    templateId,
+    otp
+) => {
+
+    try {
+
+        const payload = createOTPPayload(
+            mobile,
+            templateId,
+            otp
+        );
+
+        const response = await axios.post(
+            process.env.SMS_API_URL,
+            payload,
+            {
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                timeout: 10000
+            }
+        );
+
+        console.log(
+            "SMS Response:",
+            response.data
+        );
+
+        return {
+            status: 1,
+            code: 200,
+            data: response.data,
+            message: ["OTP sent successfully"]
+        };
+
+    } catch (err) {
+
+        console.error(
+            "SMS Error:",
+            err.response?.data ||
+            err.message
+        );
+
+        return {
+            status: 0,
+            code: 500,
+            data: null,
+            message: [
+                err.response?.data?.message ||
+                "Failed to send OTP"
+            ]
+        };
+    }
+};
 
 /* Format Timings */
 export const v1getOpenAndCloseTimings = (data) => {

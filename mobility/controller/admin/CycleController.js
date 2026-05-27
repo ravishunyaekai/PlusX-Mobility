@@ -399,7 +399,7 @@ export const cycledetails = asyncHandler(async (req, resp) => {
 export const cycleBookingList = async (req, resp) => {
     try {
          
-        const { page_no,  status, start_date, end_date, search_text = '', scheduleFilters, areaSelected, rowSelected ,city_id,country_id,handover_type} = mergeParam(req);
+        const { page_no,  status, start_date, end_date, search_text = '', scheduleFilters, areaSelected, rowSelected ,city_id,country_id,handover_type, station_id=""} = mergeParam(req);
         
         let query = '';
         let queryParams = [];
@@ -446,7 +446,7 @@ export const cycleBookingList = async (req, resp) => {
             tableName : 'cycle_booking',
             columns   : `lock_number, cycle_id, handover_type, booking_id, cycle_id, rider_id, user_name, status, ${sqlCase('cycle_type',{ecycle: "E-cycle", cycle: "Cycle" } )}, pickup_station AS station_name, 
             ${formatDateTimeInQuery(['created_at'])}, account_type`,
-            sortColumn : 'created_at DESC',
+            sortColumn : 'updated_at DESC',
             sortOrder  : '',
             page_no,
             limit            : rowSelected || 10,
@@ -526,6 +526,64 @@ export const cycleBookingList = async (req, resp) => {
     }
 };
 
+export const getCityList = async (req, resp) => {
+    try {
+        const query = `
+            SELECT city_id  as value, name AS label
+            FROM cities
+            ORDER BY name ASC
+        `;
+        const [result] = await db.execute(query);
+
+        return resp.json({
+            status  : 1,
+            message : ["City list fetched successfully"],
+            data    : result 
+        });
+
+    } catch (error) {
+        console.error("Error fetching city list:", error);
+        return resp.json({
+            status: 0,
+            message: ["Error fetching city list"]
+        });
+    }
+};
+
+export const getStationList = async (req, resp) => {
+    try {
+        const { city_id } = req.body; // ya req.query use kar sakte ho
+
+        if (!city_id) {
+            return resp.json({
+                status: 0,
+                message: ["City Id is required"]
+            });
+        }
+
+        const query = `
+            SELECT station_name AS value, station_name AS label
+            FROM mobility_station_list
+            WHERE city_id = ?
+            ORDER BY station_name ASC
+        `;
+
+        const [result] = await db.execute(query, [city_id]);
+
+        return resp.json({
+            status: 1,
+            message: ["Station list fetched successfully"],
+            data: result
+        });
+
+    } catch (error) {
+        console.error("Error fetching station list:", error);
+        return resp.json({
+            status: 0,
+            message: ["Error fetching station list"]
+        });
+    }
+};
 export const cycleBookinghistory = async (req, resp) => {
     try {
          

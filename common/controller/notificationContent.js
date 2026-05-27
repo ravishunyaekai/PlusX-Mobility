@@ -40,8 +40,16 @@ export const NOTIFICATION_CONTENT = {
         panel_from: "Rider"
     },
     USER_COMPLETE_RIDE: {
-        heading:({ booking_id }) => ` ${booking_id}`,
-        desc: ({ amount }) => `INR ${amount} has been deducted from your wallet.`,
+        heading:({ booking_id }) => `Ride ID: ${booking_id}`,
+        desc: ({ amount }) => `Your ride is complete. Please pay now for smooth future rides.`, //INR ${amount} has been deducted from your wallet.`,
+        href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+        module_name: "mobility",
+        panel_to: "Rider",
+        panel_from: "Admin"
+    },
+    USER_COMPLETE_RIDES: {
+        heading:({ booking_id }) => `Ride ID: ${booking_id}`,
+        desc: ({ amount }) => `INR ${amount} amount has been deducted from the security deposit.`, //INR ${amount} has been deducted from your wallet.`,
         href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
         module_name: "mobility",
         panel_to: "Rider",
@@ -64,6 +72,22 @@ export const NOTIFICATION_CONTENT = {
         panel_to: "Admin",
         panel_from: "Rider"
     },
+    ADMIN_FEEDBACK_RECEIVED: {
+        heading: "New Feedback Received",
+        desc: ({ booking_id}) => `Booking ID: ${booking_id} - The user has shared feedback for this booking.`,
+        href: ({ booking_id }) =>`ride/ride-booking-details/${booking_id}`,
+        module_name: "mobility",
+        panel_to: "Admin",
+        panel_from: "Rider"
+    },
+    SECURITY_DEPOSIT_DEDUCT_NOTIFICATION: {
+        heading:"Payment Deducted",
+        desc:({ amount }) =>`₹${amount} deducted from your security deposit.`,
+        href:({ booking_id }) => `mobility_booking_details/${booking_id}`,
+        module_name:"mobility",
+        panel_to:"Rider",
+        panel_from: "Admin"
+    },
     USER_RIDE_COMPLETE_EMAIL:{
         subject:({ booking_id }) => `Ride ID ${booking_id}: Your PlusX Mobility Ride Is Complete`,
         content:({ rider_name,booking_id, cycle_id, pick_time,drop_time,time_taken,amount }) =>`
@@ -77,9 +101,7 @@ export const NOTIFICATION_CONTENT = {
                     <p><b>End Time</b>: ${drop_time} </p>
                     <p><b>Ride Duration</b>: ${time_taken} MIN</p>
                     <p><b>Amount Charged</b>: ${amount} INR </p>
-                    <p>The amount has been deducted from your PlusX Mobility wallet.</p>
                     <p>Thank you for choosing PlusX Mobility. We hope you enjoyed the ride and look forward to serving you again soon.</p>
-
                     <p>If you have any questions or need assistance, please contact us through the app.</p> <br>
                     <p>Happy Riding!</p>
                     <p>Team PlusX Mobility </p>
@@ -138,4 +160,129 @@ export const NOTIFICATION_CONTENT = {
         panel_to    : "Rider",
         panel_from  : "Admin"
     },
+
+    PAYMENT_SUCCESS_EMAIL: {
+        subject: ({ booking_id }) =>`PlusX Mobility Ride Payment Confirmation`,
+        content: ({rider_name,amount,booking_id,cycle_id,time_taken}) => `
+        <html>
+                <body>
+                    <h4>Hi ${rider_name},</h4>
+                    <p>
+                        Thank you for riding with PlusX Mobility.
+                    </p>
+                    <p>
+                        We have received your payment of INR ${amount} for your recent e-cycle ride.
+                    </p>
+                    <h3>Ride Summary</h3>
+                    <p><b>Ride ID:</b> ${booking_id}</p>
+                    <p><b>Cycle ID:</b> ${cycle_id}</p>
+                    <p><b>Ride Duration:</b> ${time_taken} MIN</p>
+                    <br/>
+                    <p>
+                        Thank you for making the payment. We hope you enjoyed your ride and 
+                        look forward to serving you again soon.
+                    </p>
+                    <p>
+                        If you have any questions or need assistance, please contact us through the app.
+                    </p>
+                    <br/>
+                    <p>Happy Riding!</p>
+                    <p>
+                        Team PlusX Mobility
+                    </p>
+                </body>
+            </html>
+        `
+    },
+
+
+    SECURITY_DEPOSIT_DEDUCT_EMAIL: {
+    subject: ({ booking_id }) =>`PlusX Mobility- Ride Payment Deducted from Security Deposit`,
+    content: ({rider_name,amount,booking_id,cycle_id,time_taken}) => `
+    <html>
+        <body>
+            <p>Hi ${rider_name},</p>
+            <p>
+                Thank you for riding with PlusX Mobility.
+            </p>
+            <p>
+                We noticed that the payment of INR ${amount} for your recent e-cycle ride was not completed within 24 hours.
+                As per the ride payment policy, the pending amount has now been deducted from your security deposit.
+            </p>
+            <h3>Ride Summary</h3>
+            <p><b>Ride ID:</b> ${booking_id}</p>
+            <p><b>Cycle ID:</b> ${cycle_id}</p>
+            <p><b>Ride Duration:</b> ${time_taken} MIN</p>
+            <p><b>Amount Deducted:</b> INR ${amount}</p>
+            <br/>
+            <p>
+                To ride again, please recharge your security deposit and maintain the required minimum balance of INR 100.
+            </p>
+            <p>
+                If you have any questions or need assistance, please contact us through the app.
+            </p>
+            <br/>
+            <p>Happy Riding!</p>
+            <p>Team PlusX Mobility</p>
+
+        </body>
+    </html>
+    `
+},
+
+SECURITY_DEPOSIT_DEDUCT_EMAILS: {
+    subject: () =>
+        `PlusX Mobility - Ride Payment Deducted from Security Deposit`,
+
+    content: ({
+        rider_name,
+        amount,
+        booking_id,
+        cycle_id,
+        time_taken,
+        pick_time,
+        drop_time
+    }) => `
+    <html>
+        <body>
+            <p>Hi ${rider_name},</p>
+
+            <p>
+                Thank you for riding with PlusX Mobility.
+            </p>
+
+            <p>
+                We would like to inform you that INR ${amount} has been deducted from your security deposit for the below ride.
+            </p>
+
+            <h3>Ride Details</h3>
+
+            <p><b>Ride ID:</b> ${booking_id}</p>
+            <p><b>Cycle ID:</b> ${cycle_id}</p>
+            <p><b>Ride Start Time:</b> ${pick_time}</p>
+            <p><b>Ride End Time:</b> ${drop_time}</p>
+            <p><b>Ride Duration:</b> ${time_taken} MIN</p>
+            <p><b>Amount Deducted:</b> INR ${amount}</p>
+
+            <br/>
+
+            <p>
+              Please maintain a minimum balance of INR 100 in your security deposit to start a new ride.
+            </p>
+
+            <p>
+                If you have any questions or need assistance, please contact us through the app.
+            </p>
+
+            <br/>
+
+            <p>Happy Riding!</p>
+            <p>Team PlusX Mobility</p>
+
+        </body>
+    </html>
+    `
+},
 };
+
+

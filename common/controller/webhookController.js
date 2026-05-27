@@ -6,6 +6,7 @@ import  db  from "../../config/indiadb.js";
 
 import emailQueue from "../../emailQueue.js";
 import { insertRecord, queryDB, updateRecord } from "../../dbUtils.js";
+import { NOTIFICATION_CONTENT } from "../../common/controller/notificationContent.js";
 import { verifyPayment } from "../../mobility/controller/razorpay/razorpay.js";
 import dotenv from 'dotenv';
  dotenv.config();
@@ -25,44 +26,58 @@ export const razorpayWebhook = async (req, res) => {
     if (signature !== expectedSignature) { return res.status(200).send("ok");}
 
     const event = JSON.parse(req.body.toString());
+
     const payment = event.payload.payment.entity;
    
-   
 //  setImmediate(async()=>{
-switch(payment.notes.booking_type) {
-  case "RSA":
-    if(event.event === "payment.captured") {
-      await rsaInvoice(payment.notes.rider_id, payment.notes.booking_id, payment.id,payment.notes.coupon_code);
-     
-    } 
-    else{
+    switch(payment.notes.booking_type) {
+    case "RSA":
+        if(event.event === "payment.captured") {
+        await rsaInvoice(payment.notes.rider_id, payment.notes.booking_id, payment.id,payment.notes.coupon_code);
+        
+        } 
+        else{
 
-    await updateRecord("road_assistance", { order_status: "PNR" }, ["request_id"], [payment.notes.booking_id]);
-     
-    }
-    break;
+        await updateRecord("road_assistance", { order_status: "PNR" }, ["request_id"], [payment.notes.booking_id]);
+        
+        }
+        break;
 
-  case "MOBILITY":
-    if(event.event === "payment.captured") {
-   await addMoneywebhook(payment.notes.rider_id,payment.id,payment.order_id,payment.notes.amount)
-   
-    }
-    break;
+    case "MOBILITY":
+        if(event.event === "payment.captured") {
+    await addMoneywebhook(payment.notes.rider_id,payment.id,payment.order_id,payment.notes.amount)
+    
+        }
+        break;
     case "PCB":
 
-    if(event.event === "payment.captured") {
-        await portableChargerBookingConfirm(payment.notes.booking_id,payment.id, payment.notes.coupon_code);
-               }else{ 
-        await updateRecord("portable_charger_booking", { status: "PNR" }, ["booking_id"], [payment.notes.booking_id]);
-          
-         }
+        if(event.event === "payment.captured") {
+            await portableChargerBookingConfirm(payment.notes.booking_id,payment.id, payment.notes.coupon_code);
+        }else{ 
+            await updateRecord("portable_charger_booking", { status: "PNR" }, ["booking_id"], [payment.notes.booking_id]);
+            
+        }
+    break;
+        
+    case "BOOKING":
+        console.log("BOOKING case hit");
+
+        if (event.event === "payment.captured") {
+
+        await confirmCycleBookingPayment(
+            payment.notes.rider_id,
+            payment.notes.booking_id,
+            payment
+        );
+
+        }
     break;
 
     default:
-        // console.log("Unhandled booking_type");
-        return res.status(200).send("ok");
+            // console.log("Unhandled booking_type");
+            return res.status(200).send("ok");
     break;
-    }
+}
 //  })
     
 
@@ -275,21 +290,36 @@ const portableChargerBookingConfirm = async (booking_id, payment_intent_id, coup
 const addMoneywebhook = async(rider_id, payment_intent_id, razorpay_order_id, amount )=>{
     try {
         const paidAmount = amount; // / 100;
+         
         const riders = await queryDB(`
-            SELECT amount, out_standing_cost 
-            FROM riders 
-            WHERE rider_id = ?`, [ rider_id ]
+            SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.cycle_id, cb.booking_id, cb.time_taken
+            FROM riders r JOIN country c ON r.country_code = c.country_code
+            LEFT JOIN cycle_booking cb 
+            ON cb.booking_id = (
+                SELECT booking_id 
+                FROM cycle_booking 
+                WHERE rider_id = r.rider_id
+                ORDER BY created_at DESC 
+                LIMIT 1
+            )
+            WHERE r.rider_id = ?`, [rider_id]
         );
-        let current_balance = parseFloat(riders.amount) + parseFloat(paidAmount);
-
-        let queryParams         = `amount = ? `;  // amount +
+        let current_balance = parseFloat(riders.amount);  //current_balance
+        let paymentAmount   = parseFloat(riders.min_wallet_price);  // min wallet 
+        
+        let orderIdToSave = razorpay_order_id;
+        if ( current_balance < paymentAmount ) {
+            current_balance = current_balance + paidAmount;    
+            orderIdToSave = riders.booking_id;
+        }
+        let queryParams       = `amount = ? `;  // amount +
         let out_standing_cost = parseFloat(riders.out_standing_cost);
-
+ 
         if( out_standing_cost > 0 ) {
-            current_balance  = current_balance - out_standing_cost
+            current_balance = current_balance - out_standing_cost
             queryParams +=` , out_standing_cost = 0 `;
             out_standing_cost = 0;
-        }         
+        }
         let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;    
         await db.execute( query, [current_balance, rider_id]);
                     
@@ -298,22 +328,20 @@ const addMoneywebhook = async(rider_id, payment_intent_id, razorpay_order_id, am
                 'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
                 "prev_balance", "status", "payment_id",
             ], [
-                rider_id, paidAmount, 'crd',  razorpay_order_id, out_standing_cost, current_balance, 
+                rider_id, paidAmount, 'crd',  orderIdToSave, out_standing_cost, current_balance, 
                 riders.amount, "CNF", payment_intent_id, 
             ]
-        ); 
-        // await updateRecord('transaction_history',{status:"CNF",payment_id:payment_intent_id,payment_type:"crd"}, ['order_id'],[razorpay_order_id] )
-
+        );
+ 
         return true;
     } catch(err) {
         webHooktryCatchErrorHandler("mobility add money webhook error",err)
-
+ 
     } finally {
         // if (conn) conn.release();
         return false;
     }
-}
-
+};
 export const webHooktryCatchErrorHandler = (action, err) => {
     try {
         const stackLine = err.stack?.split("\n")[1]?.trim() || "Webhook api";
@@ -323,4 +351,89 @@ export const webHooktryCatchErrorHandler = (action, err) => {
     }
 
     return false; // signal failure to inner function
+};
+
+const confirmCycleBookingPayment = async (rider_id,booking_id,payment) => {
+  try {
+    const payment_id = payment.id;
+    const order_id = payment.order_id;
+    const paidAmount = payment.amount / 100;
+
+    const paymentDate = moment
+      .unix(payment.created_at)
+      .format("YYYY-MM-DD HH:mm:ss");
+
+    const rider = await queryDB(
+      `SELECT r.amount, r.out_standing_cost, r,rider_name, r.rider_email, cb.cycle_id, cb.booking_id,
+       cb.time_taken FROM riders r
+       LEFT JOIN cycle_booking cb ON cb.booking_id = (
+        SELECT booking_id
+        FROM cycle_booking
+        WHERE rider_id = r.rider_id
+        ORDER BY created_at DESC
+        LIMIT 1) WHERE r.rider_id = ?`,
+      [rider_id]
+    );
+
+    const prev_balance = parseFloat(rider.amount || 0);
+    let outstanding = parseFloat(rider.out_standing_cost || 0);
+
+    let remainingPayment = paidAmount;
+    let new_balance = prev_balance;
+
+    if (outstanding > 0) {
+      if (remainingPayment >= outstanding) {
+        remainingPayment -= outstanding;
+        outstanding = 0;
+      } else {
+        outstanding -= remainingPayment;
+        remainingPayment = 0;
+      }
+    
+
+    new_balance = prev_balance + remainingPayment;
+
+    await updateRecord(
+      "riders",
+      {
+        amount: new_balance,
+        out_standing_cost: outstanding,
+      },
+      ["rider_id"],
+      [rider_id]
+    );
+
+    await insertRecord(
+      "transaction_history",
+      ["rider_id", "order_id","amount","payment_type","payment_id","reference_id","status",
+        "prev_balance","current_balance","outstanding",
+      ],
+      [
+        rider_id,booking_id,paidAmount,"debt", payment_id,order_id,"CNF",prev_balance,new_balance,
+        outstanding,
+      ]
+    );
+    const mail_template = NOTIFICATION_CONTENT["PAYMENT_SUCCESS_EMAIL"];
+    emailQueue.addEmail(
+            rider.rider_email,
+            mail_template.subject({
+            booking_id: rider.booking_id
+    }),
+    mail_template.content({
+            rider_name : rider.rider_name,
+            amount     : paidAmount,
+            booking_id : rider.booking_id,
+            cycle_id   : rider.cycle_id,
+            time_taken : rider.time_taken
+        })
+    );
+    }
+    return true;
+  } catch (err) {
+    console.log(err)
+    webHooktryCatchErrorHandler(
+      "cycle booking webhook error",
+      err
+    );
+  }
 };
