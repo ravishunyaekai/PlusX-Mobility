@@ -5,7 +5,7 @@ import { notificationList } from "../controller/admin/AuthController.js";
 
 import { handleFileUpload } from "../../fileUpload.js";
 
-import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, cycleOnOff, lockerOpen } from "../controller/admin/CycleController.js";
+import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, RefundRequestList, addRefundComment, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, RefundRequestDescription, cycleOnOff, lockerOpen, approveRefundRequest } from "../controller/admin/CycleController.js";
 
 import { AddMobilityStation, deletemobilityStation, editMobilityStation, mobilityStaionListforselectBox, mobilitystationDetails, mobilitystationList, stationlistforlockAssign } from "../controller/admin/MobilitystationController.js";
 
@@ -44,9 +44,12 @@ const adminRoutes = [
     { method: 'post',   path: '/cycle-price-detail',         handler: cyclePrice },
     { method: 'post',   path: '/failed-cycle-booking-list',  handler: FaildcycleBookingList },
     { method: 'post',   path: '/issue-cycle-booking-list',   handler: IssuecycleBookingList },
+    { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
+    { method: 'post',   path: '/add-refund-comment',              handler: addRefundComment },
     { method: 'post',   path: '/issue-cycle-booking-detail', handler: IssuecycleBookingDetails },
-    { method: 'post',   path: '/issue-status-update',        handler: IssueBookingUpdate },
-    
+    { method: 'post',   path: '/refund-request-description-list',        handler: RefundRequestDescription },
+    { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
+
     { method: 'post',   path: '/issue-comments-list',        handler: IssuecycleBookingComments },
     { method: 'post',   path: '/issue-comments-add',        handler: addBookingComment },
 

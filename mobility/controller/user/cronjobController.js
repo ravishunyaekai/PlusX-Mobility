@@ -226,36 +226,42 @@ export const deductOutstandingAmount = async () => {
             INNER JOIN cycle_booking cb
                 ON cb.rider_id = latest.rider_id AND cb.created_at = latest.latest_booking
  
-            WHERE r.out_standing_cost > 0 AND cb.created_at <= NOW() - INTERVAL 5 MINUTE 
+            WHERE r.out_standing_cost > 0 AND cb.created_at <= NOW() - INTERVAL 2 MINUTE 
             
             ORDER BY cb.created_at DESC
         `);  // AND r.amount >= r.out_standing_cost
-        console.log(riders)
+         console.log("----------------",riders.length == 0)
         if (riders.length == 0)  return false; 
  
         for (const rider of riders) {
  
             const outstanding = parseFloat(rider.out_standing_cost || 0);
             const wallet      = parseFloat(rider.amount || 0);
- 
+            
+            // let remainingAmount      = (outstanding > wallet) ? wallet - outstanding : 0;
+            // let remainingOutstanding = (outstanding > wallet) ? 0 : outstanding - wallet;
             const remainingAmount = wallet - outstanding;
  
             const updatesFields = {
                 amount            : remainingAmount,
                 out_standing_cost : 0
             }
+        
+            // const updatesFields = {
+            //     amount            : remainingAmount,
+            //     out_standing_cost : remainingOutstanding
+            // }
             const update = await updateRecord('riders', updatesFields, ['rider_id'], [rider.rider_id]);
             await insertRecord('transaction_history', 
                 [
                     'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
                     "prev_balance", "status"
                 ], [
-                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, 
-                    wallet, "CNF" 
+                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, wallet, "CNF" 
                 ]
             ); 
             
-             const mail_template =NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
+            const mail_template =NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
              emailQueue.addEmail(
                 rider.rider_email,
                 mail_template.subject({
@@ -271,7 +277,7 @@ export const deductOutstandingAmount = async () => {
             );
         }
         
-
+ 
     } catch (error) {
  
         console.log('deductOutstandingAmount Error:', error);

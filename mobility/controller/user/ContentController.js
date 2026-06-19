@@ -56,7 +56,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
         }
         const result = await getPaginatedData(params);
         const typeOject =  { 
-            crd : "Security Deposit", debt : "Ride", refund : "Refund to Wallet", sd_refund : "SD Refunded", fn_refund : "Refund", csd : "Security Deposit", 
+            crd : "Security Deposit", debt : "Ride", refund : "Refund Credited", sd_refund : "SD Refunded", fn_refund : "Refund", csd : "Security Deposit", 
         };
         const grouped = result.data.reduce((acc, item) => {
             const date = moment(item.created_at).format('YYYY-MM-DD');
@@ -86,12 +86,31 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             WHERE module_name = ? and status = 1 `, ['mobility-wallet']
         );
         let contentArray = responseContent.map(row => { return row.content; });
+        //let walletMessage = contentArray.join(" ");
+        let walletMessage = "";
 
         const riderData = await queryDB(`
-            SELECT out_standing_cost, amount 
-            FROM riders 
-            WHERE rider_id = ? `, [ rider_id ] 
+            SELECT r.out_standing_cost, r.amount, c.min_wallet_price FROM riders r 
+            LEFT JOIN country c ON c.country_id = r.country_id WHERE rider_id = ? `, [ rider_id ] 
         );
+        const walletAmount = Number(riderData?.amount || 0);
+
+        const outstandingAmount = Number(riderData?.out_standing_cost || 0);
+ 
+        const minWalletBalance = Number(riderData?.min_wallet_price || 0);
+        if(walletAmount < 0){
+        const debtAmount = Math.abs(walletAmount);
+
+        const requiredAmount = debtAmount + minWalletBalance;
+
+        walletMessage =`INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
+        `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
+
+        } else if  (walletAmount < minWalletBalance){
+
+          walletMessage = contentArray[0] || "";
+
+        }
         return resp.json({
             status            : 1,
             code              : 200,
@@ -101,7 +120,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             data              : finalData,
             total_page        : result.totalPage,
             total             : result.total,
-            content           : contentArray, 
+            content           : walletMessage, 
         });
     } catch (error) {
         console.error('Error Transaction List:', error);

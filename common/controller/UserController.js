@@ -10,6 +10,7 @@ dotenv.config();
 import bcrypt from "bcryptjs";
 import { io } from "../../server.js";
 import { newcreateCustomer } from "../../mobility/controller/razorpay/razorpay.js";
+import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 
@@ -655,7 +656,15 @@ export const getRiderData = asyncHandler(async(req, resp) => {
     
     const rider = await queryDB(`
         SELECT
-            cn.min_wallet_price, r.* , st.name as state, ct.name city, cn.name as country, 
+            cn.min_wallet_price, r.* ,
+             (
+                SELECT booking_id
+                FROM cycle_booking
+                WHERE rider_id = r.rider_id
+                ORDER BY id DESC
+                LIMIT 1
+            ) AS booking_id,
+            st.name as state, ct.name city, cn.name as country, 
             ${formatDateTimeInQuery(['r.created_at', 'r.updated_at'])}, 
             ${formatDateInQuery(['date_of_birth'])} 
         FROM
@@ -665,16 +674,44 @@ export const getRiderData = asyncHandler(async(req, resp) => {
         LEFT join country cn on cn.country_id=r.country_id
         WHERE rider_id = ? `, [ rider_id ]
     );
+    const refundRequest = await queryDB(`SELECT id, status FROM refund_requests WHERE rider_id = ?
+    ORDER BY id DESC LIMIT 1`, [rider_id]);
+
     rider.image_url         = `${process.env.DIR_UPLOADS}profile-image/`;
     rider.min_wallet_price  = parseFloat(rider.min_wallet_price);
     rider.out_standing_cost = parseFloat(rider.out_standing_cost);
     rider.amount            = parseFloat(rider.amount);
+    const deductionAmount = Number(((rider.amount * 2) / 100).toFixed(2));
+    const refundAmount    = Number((rider.amount - deductionAmount).toFixed(2));
 
+    let isRefundRaised = false;
+
+    if (refundRequest && ['pending'].includes(refundRequest.status)) {
+        isRefundRaised = true;
+    }
+    // Refund details only when outstanding is clear
+    rider.refund_amount =  rider.amount > 0 && rider.out_standing_cost <= 0 ? refundAmount : 0;
+    rider.deduction_amount =   rider.amount > 0 && rider.out_standing_cost <= 0 ? deductionAmount : 0;
+    rider.is_refund_requested  = isRefundRaised ? 1 : 0;
+
+
+    const [responseContent] = await db.execute(`
+        SELECT content FROM response_content WHERE module_name = ? AND status = 1 LIMIT 1
+         `, ['refund-request']);
+
+    const purchaseHistoryCount = await queryDB(`SELECT COUNT(*) as total FROM purchase_history `);
+
+    const chargeShareCount = await queryDB(`
+        SELECT COUNT(*) as total FROM charge_share WHERE rider_id = ? AND charger_status = 1`, [rider_id]);
+
+    rider.purchase_history_count = purchaseHistoryCount?.total || 0;
+    rider.charge_share_count = chargeShareCount?.total || 0;    
     return resp.json({
         status  : 1, 
         code    : 200, 
         message : ['Rider Data fetch successfully!'], 
         data    : rider, 
+        content : responseContent?.[0]?.content || ''
     });
 });
 
@@ -694,13 +731,38 @@ export const home = asyncHandler(async (req, resp) => {
         return resp.status(404).json({ message: "Rider not found", status: 0 });
     }
 
+    const deductionAmount = Number(((riderData.wallet_amount * 2) / 100).toFixed(2));
+    const refundAmount    = Number((riderData.wallet_amount - deductionAmount).toFixed(2));
+
+    const [response] = await db.execute(`
+        SELECT content FROM response_content WHERE module_name = ? AND status = 1 LIMIT 1
+         `, ['refund-request']);
+
+    const purchaseHistoryCount = await queryDB(`SELECT COUNT(*) as total FROM purchase_history `);
+
+    const chargeShareCount = await queryDB(`
+        SELECT COUNT(*) as total FROM charge_share WHERE rider_id = ? AND charger_status = 1`, [rider_id]);
+
+    const refundRequest = await queryDB(`SELECT id, status FROM refund_requests WHERE rider_id = ?
+    ORDER BY id DESC LIMIT 1`, [rider_id]);
+    let isRefundRaised = false;
+
+    if (refundRequest && ['pending'].includes(refundRequest.status)) {
+        isRefundRaised = true;
+    }
     const result = {
         rider_id           : riderData.rider_id,
         rider_name         : riderData.rider_name,
         notification_count : parseFloat(riderData.notification_count),
         wallet_amount:parseFloat(riderData.wallet_amount),
         out_standing_cost:parseFloat(riderData.out_standing_cost),
-        min_wallet_price:parseFloat(riderData.min_wallet_price)
+        min_wallet_price:parseFloat(riderData.min_wallet_price),
+        purchase_history_count : purchaseHistoryCount?.total || 0,
+        charge_share_count : chargeShareCount?.total || 0,
+        refund_amount : riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0 ? refundAmount : 0,
+        deduction_amount : riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0 ? deductionAmount : 0,
+        is_refund_requested : isRefundRaised ? 1 : 0,
+        content: response?.[0]?.content || ""
     };
     const orderData = await queryDB(
         `SELECT request_id, (SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) FROM rsa WHERE rsa_id = road_assistance.rsa_id) AS rsaDetails, created_at 
@@ -714,16 +776,39 @@ export const home = asyncHandler(async (req, resp) => {
     
     const priceQry  = `SELECT roadside_assistance_price,portable_price FROM booking_price LIMIT 1`;
     const priceData = await queryDB(priceQry, []);
+    const [responseContent] = await db.execute(`
+        SELECT content FROM response_content WHERE module_name = ? AND status = 1`, ['mobility-wallet']);
 
+    let contentArray = responseContent.map(row => row.content);
+    let walletMessage = "";
+
+    const walletAmount = Number(riderData.wallet_amount || 0);
+    const minWalletBalance = Number(riderData.min_wallet_price || 0);
+
+    if (walletAmount < 0) {
+
+    const debtAmount = Math.abs(walletAmount);
+    const requiredAmount = debtAmount + minWalletBalance;
+
+    walletMessage =
+        `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
+        `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
+
+    } else if (walletAmount < minWalletBalance) {
+
+    walletMessage = contentArray[0] || "";
+    }
+    
     return resp.json({
         message                   : ["Rider Home Data fetched successfully!"],
         rider_data                : result,
         order_data                : orderData || null,
         pick_drop_order           :  null,
-        pod_booking                : podBookingData || null,
+        pod_booking               : podBookingData || null,
         roadside_assistance_price : priceData.roadside_assistance_price,
         portable_price            : priceData.portable_price,
         pick_drop_price           : 0,
+        content                   : walletMessage,
         status                    : 1,
         code                      : 200
     });

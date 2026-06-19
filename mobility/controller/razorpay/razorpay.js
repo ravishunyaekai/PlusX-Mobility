@@ -449,9 +449,11 @@ export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
     let paymentAmount     = parseFloat(riders.min_wallet_price);
  
     let orderIdToSave = razorpay_order_id;
-    if ( riderAmount < paymentAmount ) {
+    let paymentType = "crd";
+    if ( riderAmount < paymentAmount && riders.booking_id ) {
         riderAmount = riderAmount + paidAmount; 
         orderIdToSave = riders.booking_id;   
+        paymentType = "debt";
     }   
  
     let queryParams = `amount = ?, out_standing_cost = 0 `; 
@@ -467,7 +469,7 @@ export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
             'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
             "prev_balance", "status", "payment_id",
         ], [
-            rider_id, paidAmount, 'debt',  orderIdToSave, out_standing_cost, riderAmount, 
+            rider_id, paidAmount, paymentType,  orderIdToSave, out_standing_cost, riderAmount, 
             riders.amount, "CNF", payment_id, 
         ]
     ); 

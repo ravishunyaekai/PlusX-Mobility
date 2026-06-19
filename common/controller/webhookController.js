@@ -27,6 +27,69 @@ export const razorpayWebhook = async (req, res) => {
 
     const event = JSON.parse(req.body.toString());
 
+    console.log("Webhook Event:", event.event);
+
+// REFUND EVENTS
+    if (event.event === "refund.processed") {
+
+    const refund = event.payload.refund.entity;
+
+    const refundRequestId = refund.notes?.refund_request_id;
+
+    await updateRecord(
+        "refund_requests",
+        {refund_status: "processed",  status: "approved"},
+        ["id"],[refundRequestId]
+    );
+    await updateRecord(
+        "riders", { amount: 0},
+        ["rider_id"],[refund.notes?.rider_id]
+    );
+    await insertRecord(
+        "transaction_history",
+        ["order_id", "rider_id", "amount", "status", "payment_type", "payment_id", "reference_id"],
+
+        [ refund.notes?.booking_id || refund.payment_id, refund.notes?.rider_id, refund.amount / 100, "CNF", "refund", refund.payment_id,  refund.id]
+    );
+    const riderData = await queryDB(
+        `SELECT fcm_token FROM riders WHERE rider_id = ? LIMIT 1`,
+        [refund.notes?.rider_id]
+    );
+
+    const template =
+        NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+
+    if (riderData?.fcm_token) {
+        await pushNotification(
+            riderData.fcm_token,
+            template.heading,
+            template.desc({
+                amount: refund.amount / 100
+            }),
+            "RDRFCM",
+            template.href({
+                rider_id: refund.notes?.rider_id
+            })
+        );
+    }
+    return res.status(200).send("ok");
+    }
+
+    if (event.event === "refund.failed") {
+
+    const refund = event.payload.refund.entity;
+
+    await updateRecord(
+        "refund_requests",
+        {refund_status: "failed", status: "failed"},
+        ["id"], [refund.notes?.refund_request_id]
+    );
+
+    return res.status(200).send("ok");
+    }
+
+// PAYMENT EVENTS
+
     const payment = event.payload.payment.entity;
    
 //  setImmediate(async()=>{

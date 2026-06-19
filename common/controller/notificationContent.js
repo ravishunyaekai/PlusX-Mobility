@@ -160,6 +160,14 @@ export const NOTIFICATION_CONTENT = {
         panel_to    : "Rider",
         panel_from  : "Admin"
     },
+    USER_REFUND_APPROVED: {
+    heading     : "Refund Successful!",
+    desc        : ({ amount }) => `₹${amount} has been refunded to your linked account.`,
+    href        : ({ rider_id }) => `refund_details/${rider_id}`,
+    module_name : "refund_request",
+    panel_to    : "Rider",
+    panel_from  : "Admin"
+    },
 
     PAYMENT_SUCCESS_EMAIL: {
         subject: ({ booking_id }) =>`PlusX Mobility Ride Payment Confirmation`,

@@ -1,10 +1,13 @@
 // import generateUniqueId from "generate-unique-id";
 import { getPaginatedData, queryDB, updateRecord, formatFloatInQuery, insertRecord } from "../../../dbUtils.js";
-import { asyncHandler, EncryptToBase64, formatDateTimeInQuery, formatDateInQuery, generateQRCode, mergeParam, sqlCase } from "../../../utils.js";
+import { asyncHandler, EncryptToBase64, formatDateTimeInQuery, formatDateInQuery, generateQRCode, mergeParam, sqlCase, pushNotification, sendNotification } from "../../../utils.js";
 import validateFields from "../../../validationForAdmin.js";
 import moment from "moment";
 import db from "../../../config/indiadb.js"
 import client from '../../../server.js';
+import Razorpay from "razorpay";
+import { NOTIFICATION_CONTENT } from '../../../common/controller/notificationContent.js';
+
 
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 
@@ -444,7 +447,12 @@ export const cycleBookingList = async (req, resp) => {
         const params = {
           
             tableName : 'cycle_booking',
-            columns   : `lock_number, cycle_id, handover_type, booking_id, cycle_id, rider_id, user_name, status, ${sqlCase('cycle_type',{ecycle: "E-cycle", cycle: "Cycle" } )}, pickup_station AS station_name, 
+            columns   : `lock_number, start_lat, start_long, cycle_id, handover_type, booking_id, cycle_id, rider_id, user_name, status,     (
+            SELECT rating
+            FROM cycle_booking_feedback cbf
+            WHERE cbf.booking_id = cycle_booking.booking_id
+            LIMIT 1
+            ) AS rating, ${sqlCase('cycle_type',{ecycle: "E-cycle", cycle: "Cycle" } )}, pickup_station AS station_name, 
             ${formatDateTimeInQuery(['created_at'])}, account_type`,
             sortColumn : 'updated_at DESC',
             sortOrder  : '',
@@ -1047,4 +1055,302 @@ export const lockerOpen = asyncHandler(async (req, resp) => {
     client.publish(`/supro/plusxm/slock/${locker_data.solenoid_id}/${lock_number}`, "ON", { qos: 0, retain: false });
          
     return resp.json({ status: 1, code: 200, message: `Locker opened successfully!` });
+});
+
+
+export const RefundRequestList = async (req, resp) => {
+    try {
+        const { page_no = 1, search_text = ''} = mergeParam(req);
+
+        const params = {
+            tableName : 'refund_requests',
+            columns   : `id, rider_id, booking_id, user_name, contact_no, requested_amount, status, 
+                ${formatDateTimeInQuery(['created_at'])} `,
+            sortColumn       : 'created_at DESC',
+            sortOrder        : '',
+            page_no,
+            limit            : 10,
+            liveSearchFields : ['rider_id', 'user_name' ],
+            liveSearchTexts  : [search_text, search_text ],
+            whereField       : [],
+            whereValue       : [],
+            whereOperator    : []
+        };
+        const result = await getPaginatedData(params);
+        return resp.json({
+            status     : 1,
+            code       : 200,
+            message    : ["Refund Requests List fetched successfully!"],
+            data       : result.data,
+            total_page : result.totalPage,
+            total      : result.total,
+        });
+    } catch (error) {
+        console.log('Error fetching failed booking  list:', error);
+        return resp.json({ status: 0, message: 'Error fetching failed booking list' });
+    }
+};
+
+export const addRefundComment = async(req, resp) => {
+try {
+    const { refund_request_id, comment } = mergeParam(req);
+       console.log("refund_request_id =>", refund_request_id);
+        console.log("comment =>", comment);
+
+    await insertRecord(
+        'refund_request_comments',
+        ['refund_request_id', 'comment'],
+        [refund_request_id, comment]
+    );
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ['Comment added successfully']
+    });
+     } catch (error) {
+        console.log('Error fetching failed add commen:', error);
+        return resp.json({ status: 0, message: 'Error failed comment' });
+    }
+}
+
+
+
+export const RefundRequestDescription = async (req, resp) => {
+    const { refund_request_id } = req.body;
+    if (!refund_request_id) return resp.json({ status : 0, code : 400, message :'Refund ID is required'});
+
+    try {
+        const { page_no = 1 } = mergeParam(req);
+
+        const params = {
+            tableName : 'refund_request_comments',
+            columns   : `id, refund_request_id, comment, ${formatDateTimeInQuery(['created_at'])} `,
+            sortColumn : 'created_at DESC',
+            sortOrder  : '',
+            page_no,
+            limit            : 10,
+            liveSearchFields : [],
+            liveSearchTexts  : [],
+            whereField       : ["refund_request_id"],
+            whereValue       : [refund_request_id],
+            whereOperator    : ["="]
+        };
+        const result = await getPaginatedData(params);
+        return resp.json({
+            status     : 1,
+            code       : 200,
+            message    : ["Issue description List fetched successfully!"],
+            data       : result.data,
+            total_page : result.totalPage,
+            total      : result.total,
+        });
+    } catch (error) {
+        console.log('Error fetching failed booking  list:', error);
+        return resp.json({ status: 0, message: 'Error fetching failed booking list' });
+    }
+};
+
+
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+export const approveRefundRequest = asyncHandler(async (req, resp) => {
+    try {
+
+    const { refund_request_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req),{
+            refund_request_id: ['required']
+        }
+    );
+    if (!isValid) {return resp.json({status: 0, code: 422, message: errors });}
+
+        // Refund Request
+        const refundRequests = await queryDB(
+            `SELECT * FROM refund_requests WHERE id = ? LIMIT 1`,
+            [refund_request_id]
+        );
+
+        if (!refundRequests) {
+            return resp.json({
+                status: 0,
+                message: "Refund request not found"
+            });
+        }
+
+        const refundRequest = refundRequests;
+
+        // Already Processed
+        if (refundRequest.status !== "pending") {
+            return resp.json({
+                status: 0,
+                message: `Refund already ${refundRequest.status}`
+            });
+        }
+
+        // Rider Wallet Check
+        const riderData = await queryDB(
+            `SELECT amount, fcm_token FROM riders WHERE rider_id = ? LIMIT 1`,
+            [refundRequest.rider_id]
+        );
+
+        if (!riderData) {
+            return resp.json({
+                status: 0,
+                message: "Rider not found"
+            });
+        }
+        const ongoingRide = await queryDB(`SELECT booking_id FROM cycle_booking WHERE rider_id = ? AND status = 'ON' LIMIT 1`, [refundRequest.rider_id]);
+
+        if (ongoingRide) {
+            return resp.json({
+                status: 0,
+                code: 201,
+                message: ['Refund cannot be approved while rider has an ongoing trip.']
+            });
+        }
+
+        const currentWalletAmount = Number(riderData.amount || 0);
+
+        const refundAmountInRupees = Number(refundRequest.refund_amount);
+
+        if (currentWalletAmount < refundAmountInRupees) {
+            return resp.json({
+                status: 0,
+                message:
+                    "Refund amount already utilized by rider"
+            });
+        }
+
+        // Transaction
+        const transactions = await queryDB(
+            `SELECT payment_id FROM transaction_history WHERE rider_id = ? ORDER BY id DESC LIMIT 1`,
+            [refundRequest.rider_id]
+        );
+
+        if (!transactions) {
+            return resp.json({
+                status: 0,
+                message: "Transaction not found"
+            });
+        }
+
+        const paymentId = transactions.payment_id;
+
+        if (!paymentId) {
+            return resp.json({
+                status: 0,
+                message: "Payment ID not found"
+            });
+        }
+
+        // Razorpay Payment Verify
+        const payment =
+            await razorpay.payments.fetch(paymentId);
+
+        if (payment.status !== "captured") {
+            return resp.json({
+                status: 0,
+                message: "Payment is not captured"
+            });
+        }
+
+        const refundAmount = Math.round(
+            refundAmountInRupees * 100
+        );
+
+        if (refundAmount <= 0) {
+            return resp.json({
+                status: 0,
+                message: "Invalid refund amount"
+            });
+        }
+
+        if (refundAmount > payment.amount) {
+            return resp.json({
+                status: 0,
+                message:
+                    "Refund amount exceeds payment amount"
+            });
+        }
+
+        // Refund from Razorpay
+        const refund =
+            await razorpay.payments.refund(
+                paymentId,
+                {
+                    amount: refundAmount,
+                    notes: {
+                        refund_request_id:
+                            String(refundRequest.id),
+                        booking_id:
+                            String(refundRequest.booking_id)
+                    }
+                }
+            );
+
+        // Update Refund Request
+        await updateRecord(
+            "refund_requests",
+            {
+                status: "approved", refund_id: refund.id, refund_status: refund.status
+            },
+            ["id"], [refund_request_id]
+        );
+       const remainingWalletBalance = currentWalletAmount - refundAmountInRupees;
+        // Deduct Wallet Balance
+        await updateRecord(
+            "riders",
+            {
+                amount: 0
+            },
+            ["rider_id"], [refundRequest.rider_id]
+        );
+        await insertRecord(
+            "transaction_history",
+            ["rider_id", "amount", "payment_type", "outstanding", "current_balance", "prev_balance", "status", "payment_id"],
+        
+            [refundRequest.rider_id, refundAmountInRupees, "refund", 0, remainingWalletBalance, currentWalletAmount, "CNF", refund.id]
+        );
+        await sendNotification("USER_REFUND_APPROVED",{amount: refundAmountInRupees,rider_id: refundRequest.rider_id},refundRequest.rider_id,refundRequest.rider_id);
+        const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+
+
+        await pushNotification(
+            riderData.fcm_token,
+            template.heading,
+            template.desc({ amount: refundAmountInRupees }),
+            "RDRFCM",
+            template.href({ rider_id: refundRequest.rider_id })
+        );
+
+        return resp.json({
+            status: 1,
+            message: "Refund processed successfully",
+            data: {
+                refund_id: refund.id,
+                refund_status: refund.status,
+                refund_amount: refund.amount / 100,
+                remaining_wallet_balance: currentWalletAmount - refundAmountInRupees
+            }
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Refund Error => ",
+            error
+        );
+
+        return resp.json({
+            status: 0,
+            message:
+                error?.error?.description ||
+                error?.description ||
+                error?.message ||
+                "Something went wrong"
+        });
+    }
 });

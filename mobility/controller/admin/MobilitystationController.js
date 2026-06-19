@@ -2,6 +2,7 @@
 import { asyncHandler, formatAllTimeTimings, formatOpenAndCloseTimings, getOpenAndCloseTimings, deleteFile, convertTo24HourFormat } from "../../../utils.js";
 import validateFields from "../../../validation.js";
 import { getPaginatedData, insertRecord, queryDB, updateRecord } from "../../../dbUtils.js";
+import { mergeParam }from '../../../utils.js';
 import dotenv from 'dotenv';
 import db from "../../../config/indiadb.js"
 // import { schedule } from "node-cron";
@@ -317,19 +318,52 @@ export const mobilityStaionListforselectBox= asyncHandler(async(req,resp)=>{
     });
 })
 
-export const stationlistforlockAssign= asyncHandler(async(req,resp)=>{
-      
-    const [stationList] = await db.execute(`
-        SELECT station_id, station_name
-        FROM mobility_station_list
-        ORDER BY station_name ASC `
-    );
-    return resp.json({
-        status  : 1,
-        code    : 200,
-        message :  ["Filtered stations where cycles are not fully added"],
-        data    : stationList,
-    });      
+export const stationlistforlockAssign = asyncHandler(async(req, resp) => {
+
+    try {
+        const params = mergeParam(req);
+        const { latitude, longitude } = params;
+        const [stationList] = await db.execute(`
+            SELECT * FROM (
+                SELECT
+                    station_id,
+                    station_name,
+                    latitude,
+                    longitude,
+                    (
+                        6371 * ACOS(
+                            COS(RADIANS(?)) *
+                            COS(RADIANS(latitude)) *
+                            COS(RADIANS(longitude) - RADIANS(?)) +
+                            SIN(RADIANS(?)) *
+                            SIN(RADIANS(latitude))
+                        )
+                    ) AS distance
+                FROM mobility_station_list
+                WHERE latitude IS NOT NULL
+                AND longitude IS NOT NULL
+            ) AS sub
+            WHERE distance <= 50
+            ORDER BY distance ASC
+        `, [latitude, longitude, latitude]);
+
+        return resp.json({
+            status  : 1,
+            code    : 200,
+            message : ["Filtered stations where cycles are not fully added"],
+            data    : stationList,
+        });
+
+    } catch(error) {
+
+        console.log("ERROR", error);
+
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: [error.message]
+        });
+    }
 });
 
 export const deletemobilityStation = asyncHandler(async (req, resp) => {

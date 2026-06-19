@@ -6,7 +6,7 @@ import { apiAuthentication } from '../../middleware/apiAuthenticationMiddleware.
 import {bookingList, cycleBookingDetail, routeLogs, fetchRouteLogs} from "../controller/user/RiderController.js";
 
 import {
-    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, feedbackBooking, stationLockerUpdate
+    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, requestRefund, feedbackBooking, stationLockerUpdate
 } from "../controller/user/BookingController.js";
 
 import { cycleStationDetails, cycleStationList, nearByStaion, nearByStaionDetails } from "../controller/user/MobilityStationController.js";
@@ -53,7 +53,9 @@ const authzAndAuthRoutes = [
 
     { method: 'post', path: '/transaction-list',        handler: userTransactionList },
     { method: 'post', path: '/cycle-booking-issue',     handler: havingIssueBooking },
+    { method: 'post', path: '/request-refund',          handler: requestRefund },
     { method: 'post', path: '/cycle-booking-feedback',  handler: feedbackBooking },
+
 ];
 authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     const middlewares = []; 

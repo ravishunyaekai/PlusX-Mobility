@@ -362,7 +362,9 @@ export const mobilityDashboardData = async (req, resp) => {
             (SELECT COUNT(*) FROM mobility_station_list ) AS total_station,
             (SELECT COUNT(*) FROM cycle_booking WHERE status = 'ON' and DATE(created_at) >= ?) AS on_going_bookings, 
             (SELECT COUNT(*) FROM cycle_booking WHERE status = 'PNR' and DATE(created_at) >= ?) AS incomplete_bookings, 
-            (SELECT COUNT(*) FROM cycle_booking_issue WHERE DATE(created_at) >= ?) AS support_bookings`, [ currentDate, currentDate, currentDate, currentDate ]
+            (SELECT COUNT(*) FROM cycle_booking_issue WHERE DATE(created_at) >= ?) AS support_bookings, 
+            (SELECT COUNT(*) FROM refund_requests) AS customer_requests`,
+            [ currentDate, currentDate, currentDate, currentDate ]
         );
         const [onGoingRide] = await db.execute(`
             SELECT 
@@ -387,6 +389,7 @@ export const mobilityDashboardData = async (req, resp) => {
             { module : 'No Of Support',  count : counts[0].support_bookings },
             { module : 'On Going Rides', count : counts[0].on_going_bookings },
             { module : 'Incomplete Booking', count : counts[0].incomplete_bookings },
+            { module : 'No Of Customer', count : counts[0].customer_requests },
         ];
         io.emit('notification-list', {msCount : 1});
        

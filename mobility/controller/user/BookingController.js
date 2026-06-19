@@ -1,5 +1,6 @@
 import moment from "moment-timezone";
 import db from "../../../config/indiadb.js";
+import Razorpay from "razorpay";
 
 import validateFields from "../../../validation.js";
 import { insertRecord, queryDB, updateRecord } from '../../../dbUtils.js';
@@ -739,7 +740,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
             SELECT
                 cb.per_min_cost, cb.pick_time, cb.cycle_id, cb.post_price, cb.base_duration, 
                 r.rider_email, CONCAT(r.rider_name, ' ', r.last_name) AS rider_name, r.fcm_token, 
-                cb.rider_id, r.amount as wallet_balance, cb.status, price
+                cb.rider_id, r.amount as wallet_balance, cb.status, cb.price
             FROM cycle_booking cb
             JOIN riders r on r.rider_id = cb.rider_id
             WHERE cb.booking_id = ?
@@ -1044,3 +1045,87 @@ export const stationLockerUpdate = asyncHandler(async(req,resp)=>{
         message       : [`${message} successfully`],
     });
 });
+
+
+export const requestRefund = asyncHandler(async (req, resp) => {
+try{
+    const { rider_id, request_amount } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req),{
+            rider_id: ['required'],
+            request_amount: ['required']
+        }
+    );
+
+    if (!isValid) {return resp.json({status: 0, code: 422, message: errors });}
+
+    const riderData = await queryDB(`
+        SELECT rider_id, CONCAT(rider_name, ' ', last_name) AS user_name, rider_mobile, amount, out_standing_cost FROM riders WHERE rider_id = ? LIMIT 1`, [rider_id]);
+
+    if (!riderData) {return resp.json({status: 0, code: 201, message: ['Invalid Rider Id!']});}
+
+    const walletAmount = parseFloat(riderData.amount || 0);
+    const outstandingAmount = parseFloat(riderData.out_standing_cost || 0);
+
+    // Outstanding check
+    if (outstandingAmount > 0) {
+        return resp.json({
+            status: 0,
+            code: 201,
+            message: ['Please clear outstanding amount before requesting refund!']
+        });
+    }
+
+    // Wallet balance check
+    if (walletAmount <= 0) {
+        return resp.json({
+            status: 0,
+            code: 201,
+            message: ['No refundable balance available!']
+        });
+    }
+
+    // Pending request check
+    const pendingRequest = await queryDB(`
+        SELECT id FROM refund_requests WHERE rider_id = ? AND status IN ('pending') LIMIT 1`, [rider_id]);
+
+    if (pendingRequest) {
+        return resp.json({
+            status: 0,
+            code: 201,
+            message: ['Refund request already exists!']
+        });
+    }
+
+    const deductionAmount = Number(
+        ((walletAmount * 2) / 100).toFixed(2)
+    );
+
+    const refundAmount = Number(
+        (walletAmount - deductionAmount).toFixed(2)
+    );
+
+    await insertRecord(
+        'refund_requests',
+        ['rider_id', 'user_name', 'contact_no', 'requested_amount', 'refund_amount', 'status'],
+
+        [rider_id, riderData.user_name, riderData.rider_mobile, refundAmount, refundAmount, 'pending']
+    );
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ['Thank you! We have received your refund request.']
+    });
+} catch (error) {
+        console.error('Refund Request Error:', error);
+
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: ['Internal server error.']
+        });
+ }
+});
+
+
