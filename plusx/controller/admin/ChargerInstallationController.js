@@ -7,6 +7,7 @@ import validateFields from "../../../validation.js";
 dotenv.config();
 import moment from 'moment';
 import { tryCatchErrorHandler } from '../../../middleware/errorHandler.js';
+import { deleteImageFromS3 } from "../../../fileUpload.js";
 
 
 

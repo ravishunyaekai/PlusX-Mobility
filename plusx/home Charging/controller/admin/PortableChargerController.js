@@ -1091,3 +1091,267 @@ export const failedchargerBookingDetails = async (req, resp) => {
         });
     }
 };
+
+export const AddChargingPackage = asyncHandler(async (req, resp) => {
+    try {
+
+        const {
+            package_name,
+            charging_capacity,
+            price_per_unit,
+            service_fee
+        } = req.body;
+
+        const { isValid, errors } = validateFields(
+            {
+                package_name,
+                charging_capacity,
+                price_per_unit,
+                service_fee
+            },
+            {
+                package_name: ["required"],
+                charging_capacity: ["required"],
+                price_per_unit: ["required"],
+                service_fee: ["required"]
+            }
+        );
+
+        if (!isValid)
+            return resp.json({ status: 0, code: 422, message: errors });
+
+        const [checkPackage] = await db.execute(
+            "SELECT id FROM home_ev_charging_packages WHERE package_name=? AND is_deleted=0",
+            [package_name]
+        );
+
+       console.log(checkPackage.length > 0);
+        if (checkPackage.length > 0)
+            return resp.json({
+                status: 0,
+                message: "Package already exists."
+        });
+        const [lastIdResult] = await db.execute( "SELECT IFNULL(MAX(id), 0) AS lastId FROM home_ev_charging_packages");
+
+        const package_id = `PKG${1401 + lastIdResult[0].lastId}`;
+        console.log("---------------",package_id)
+        const insert = await insertRecord(
+            "home_ev_charging_packages",
+            [
+                "package_id",
+                "package_name",
+                "charging_capacity",
+                "price_per_unit",
+                "service_fee"
+            ],
+            [
+                package_id,
+                package_name,
+                charging_capacity,
+                price_per_unit,
+                service_fee
+            ]
+        );
+
+        return resp.json({
+            status: insert.affectedRows ? 1 : 0,
+            code: 200,
+            message: insert.affectedRows
+                ? "Charging package added successfully."
+                : "Failed to add package."
+        });
+
+    } catch (error) {
+        console.log(error)
+        tryCatchErrorHandler(req.originalUrl, error, resp, "Something went wrong");
+    }
+});
+
+export const ChargingPackageList = asyncHandler(async (req, resp) => {
+    try {
+        const { page_no, search_text = '' } = req.body;
+
+        const { isValid, errors } = validateFields(req.body, {
+            page_no: ["required"]
+        });
+
+        if (!isValid) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: errors
+            });
+        }
+
+        const result = await getPaginatedData({
+            tableName: 'home_ev_charging_packages',
+            columns: `
+                id,
+                package_id,
+                package_name,
+                charging_capacity,
+                price_per_unit,
+                service_fee,
+                status
+            `,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
+            page_no,
+            limit: 10,
+            liveSearchFields: ['package_id', 'package_name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: ['is_deleted'],
+            whereValue: [0],
+        });
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Charging Package List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total
+        });
+
+    } catch (error) {
+        console.error("Error fetching charging package list:", error);
+        tryCatchErrorHandler(req.originalUrl, error, resp, "Something went wrong");
+    }
+});
+
+export const ChargingPackageDetails = asyncHandler(async (req, resp) => {
+
+    try {
+
+        const { id } = mergeParam(req);
+
+        const packageData = await db.execute(
+            `SELECT * FROM home_ev_charging_packages
+             WHERE id=? AND is_deleted=0`,
+            [id]
+        );
+
+        if (!packageData.length)
+            return resp.json({
+                status: 0,
+                message: "Package not found."
+            });
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            data: packageData[0]
+        });
+
+    } catch (error) {
+
+        tryCatchErrorHandler(req.originalUrl, error, resp, "Something went wrong");
+
+    }
+
+});
+
+export const UpdateChargingPackage = asyncHandler(async (req, resp) => {
+
+    try {
+
+        const {
+            package_id,
+            package_name,
+            charging_capacity,
+            price_per_unit,
+            service_fee
+        } = mergeParam(req);
+
+        const { isValid, errors } = validateFields(
+            {
+                package_id,
+                package_name,
+                charging_capacity,
+                price_per_unit,
+                service_fee
+            },
+            {
+                package_id: ["required"],
+                package_name: ["required"],
+                charging_capacity: ["required"],
+                price_per_unit: ["required"],
+                service_fee: ["required"]
+            }
+        );
+
+        if (!isValid)
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: errors
+            });
+
+        await updateRecord(
+            "home_ev_charging_packages",
+            {
+                package_name,
+                charging_capacity,
+                price_per_unit,
+                service_fee
+            },
+            ["package_id"],
+            [package_id]
+        );
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: "Package updated successfully."
+        });
+
+    } catch (error) {
+
+        tryCatchErrorHandler(req.originalUrl, error, resp, "Something went wrong");
+
+    }
+
+});
+
+export const deletePackage = async (req, resp) => {
+    try {
+        const { package_id } = req.body;
+
+        console.log('package_id', package_id);
+
+        const { isValid, errors } = validateFields(req.body, {
+            package_id: ["required"]
+        });
+
+        if (!isValid) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: errors
+            });
+        }
+
+        const [del] = await db.execute(
+            `UPDATE home_ev_charging_packages
+             SET is_deleted = 1
+             WHERE package_id = ?`,
+            [package_id]
+        );
+
+        return resp.json({
+            code: 200,
+            message: del.affectedRows > 0
+                ? ['Charging Package deleted successfully!']
+                : ['Oops! Something went wrong. Please try again.'],
+            status: del.affectedRows > 0 ? 1 : 0
+        });
+
+    } catch (err) {
+        console.error('Error deleting charging package', err);
+
+        return resp.json({
+            status: 0,
+            message: 'Error deleting charging package'
+        });
+    }
+};

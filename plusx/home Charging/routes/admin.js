@@ -3,7 +3,7 @@ import {  authenticateAdmin } from "../../../middleware/admin/authenticationMidd
 
 import { adminAuthorization } from "../../../middleware/admin/authorizeMiddleware.js";
 
-import { chargerList, addCharger, editCharger, deleteCharger, chargerBookingList, chargerBookingDetails, assignBooking, chargerDetails, invoiceList,invoiceDetails, slotList, addSlot, editSlot, deleteSlot, slotDetails, subscriptionList, subscriptionDetail, adminCancelPCBooking, customerChargerBookingList, failedChargerBookingList, failedchargerBookingDetails
+import { chargerList, addCharger, editCharger, deleteCharger, chargerBookingList, chargerBookingDetails, assignBooking, chargerDetails, invoiceList,invoiceDetails, slotList, addSlot, editSlot, deleteSlot, slotDetails, subscriptionList, subscriptionDetail, adminCancelPCBooking, customerChargerBookingList, failedChargerBookingList, failedchargerBookingDetails, AddChargingPackage,UpdateChargingPackage, ChargingPackageList, deletePackage
 } from "../controller/admin/PortableChargerController.js";
 import { handleFileUpload } from "../../../fileUpload.js";
 import { donwloadPodBookingList, donwloadUserList } from "../../controller/ExportController.js";
@@ -41,6 +41,12 @@ const adminRoutes = [
     { method: 'post',   path: '/customer-charger-booking-list',   handler: customerChargerBookingList },
     { method: 'post',   path: '/failed-charger-booking-list',     handler: failedChargerBookingList },
     { method: 'post',   path: '/failed-charger-booking-details',  handler: failedchargerBookingDetails },
+    { method: 'post',   path: '/add-charging-package',            handler: AddChargingPackage },
+    { method: 'post',   path: '/update-charging-package',           handler: UpdateChargingPackage },
+    { method: 'post',   path: '/charging-package-list',            handler: ChargingPackageList },
+    { method: 'post',   path: '/delete-charging-package',            handler: deletePackage },
+
+
    /* POD Device Routes */ 
     { method: 'post',  path: '/pod-device-list',            handler: podDeviceList },
     { method: 'post',  path: '/pod-device-add',             handler: addPodDevice },

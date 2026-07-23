@@ -25,19 +25,12 @@ dotenv.config();
 import cron from 'node-cron';
 
 const app  = express();
-
 const PORT = process.env.PORT || 3333;
 
 import { Server } from 'socket.io'; 
 import http from 'http';
-// import { testFunction } from './plusx/controller/TestController.js';
-// import mqqtClient from './mqtt/index.js';
 import { razorpayWebhook } from './common/controller/webhookController.js';
-// import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
-// import { cronjobAddMoney, mobilitynotification } from './mobility/controller/user/cronjobController.js';
-// import { failedPODBooking } from './plusx/home Charging/controller/user/PortableChargerController.js';
- import {  deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
-
+import {  deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
 import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,31 +45,6 @@ const corsOptions = {
     methods: 'GET, POST, PUT, DELETE',
     credentials: true
 };
-// cron.schedule('*/6 * * * *', async () => {
-//     await failedRSABooking(); 
-//     await failedPODBooking()
-//     console.log('This runs every 1 minutes', new Date().toISOString());
-// });
-// cron.schedule('* * * * *', async () => {
-//     await mobilitynotification();
-// });
-
-//Every 5 minutes
-// cron.schedule('*/2 * * * *', async () => {
-
-//     console.log('Outstanding deduction cron started');
-
-//     try {
-
-//         await deductOutstandingAmount();
-
-//     } catch (error) {
-
-//         console.log('Cron Error:', error.message);
-
-//     }
-
-// });
 
 app.use(cors(corsOptions));
 app.post("/razorpay/webhook",  bodyParser.raw({ type: "application/json" }), razorpayWebhook);

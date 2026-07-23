@@ -387,4 +387,148 @@ export const chargeshareForMap = asyncHandler(async (req, resp) => {
     });
 });
 
+export const packageList = asyncHandler(async (req, resp) => {
+    const { rider_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"]
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
+    const [packages] = await db.execute(`
+        SELECT
+            id,
+            package_name,
+            charging_capacity,
+            price_per_unit,
+            ROUND((charging_capacity * price_per_unit), 2) AS charging_fee,
+            service_fee,
+            description
+        FROM home_ev_charging_packages
+        WHERE status = 1
+        AND is_deleted = 0
+        ORDER BY charging_capacity ASC;
+    `);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Charging package list fetched successfully."],
+        result: packages
+    });
+
+});
+
+export const packageVehicleList = asyncHandler(async (req, resp) => {
+
+    const { rider_id } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"]
+    });
+
+    if (!isValid) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: errors
+        });
+    }
+
+    const [vehicles] = await db.execute(`
+        SELECT
+            id,
+            vehicle_id,
+            vehicle_make,
+            vehicle_model,
+            vehicle_number,
+            default_vehicle
+        FROM riders_vehicles
+        WHERE rider_id = ?
+        ORDER BY default_vehicle DESC, id DESC
+    `, [rider_id]);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Vehicle list fetched successfully."],
+        result: vehicles
+    });
+
+});
+
+export const addressList = asyncHandler(async (req, resp) => {
+
+    const { rider_id } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"]
+    });
+
+    if (!isValid) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: errors
+        });
+    }
+
+    const [addresses] = await db.execute(`
+        SELECT
+            id, address_id, nick_name, building_name, unit_no, street_name, area, city, state, pincode, latitude, longitude, default_add
+        FROM rider_address
+        WHERE rider_id = ?
+        ORDER BY default_add DESC, id DESC
+    `, [rider_id]);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Address list fetched successfully."],
+        result: addresses
+    });
+
+});
+
+import moment from "moment";
+
+export const timeSlotList = asyncHandler(async (req, resp) => {
+
+    const { rider_id, slot_date } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"],
+        slot_date: ["required"]
+    });
+
+    if (!isValid) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: errors
+        });
+    }
+
+    // Convert selected date into weekday
+    const dayName = moment(slot_date, "YYYY-MM-DD").format("dddd");
+
+    const [slots] = await db.execute(`
+        SELECT
+            slot_id,
+            slot_date,
+            TIME_FORMAT(start_time,'%h:%i %p') AS start_time,
+            TIME_FORMAT(end_time,'%h:%i %p') AS end_time,
+            slot_price
+        FROM road_assistance_slot
+        WHERE slot_date = ?
+        AND status = 1
+        ORDER BY start_time ASC
+    `, [dayName]);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Time slot list fetched successfully."],
+        result: slots
+    });
+
+});

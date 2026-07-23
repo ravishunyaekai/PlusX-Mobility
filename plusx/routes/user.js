@@ -38,7 +38,7 @@ import {vehicleList, vehicleDetail, interestedPeople, areaList, sellVehicle, all
 
 
 import rateLimit from 'express-rate-limit';
-import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector ,chargeShareDelete,editChargShare} from "../controller/api/ChargeShareController.js";
+import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, packageList, packageVehicleList, addressList, timeSlotList, outputAndConnector ,chargeShareDelete,editChargShare} from "../controller/api/ChargeShareController.js";
 const router = Router();
 
 const limiter = rateLimit({
@@ -68,6 +68,11 @@ const authzRoutes = [
     { method: 'post', path: '/vehicle-model-list',         handler: vehicleModelList },
     // { method: 'get',  path: '/dubai-area-list',            handler: dubaiAreaList },
     { method: 'get',  path: '/output-power-and-connector-list', handler: outputAndConnector },
+    { method: 'get', path: '/charging-package-list',        handler: packageList },
+    { method: 'get', path: '/charging-vehicle-list',        handler: packageVehicleList },
+    { method: 'get', path: '/address-list',                 handler: addressList },
+    { method: 'get', path: '/time-slot-list',                    handler: timeSlotList },
+
     
 ];
 authzRoutes.forEach(({ method, path, handler }) => {

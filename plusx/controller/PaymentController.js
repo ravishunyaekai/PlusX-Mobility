@@ -14,24 +14,27 @@ import { createCustomer } from "../../mobility/controller/razorpay/razorpay.js";
 export const createIntent = async (req, resp) => {
     try {
 
-    const {rider_id, rider_name, rider_email, amount, currency='', booking_id='', building_name='', street_name='', unit_no='', area='', emirate='', booking_type='', coupon_code='' } = mergeParam(req);
- const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id    : ["required"],
-        rider_name  : ["required"],
-        rider_email : ["required"],
-        amount      : ["required"],
-         booking_id    : ["required"],
-        // currency    : ["required"],
+    const {rider_id, rider_name, rider_email, package_id = "", amount = "", currency='', booking_id='', building_name='', street_name='', unit_no='', area='', emirate='', booking_type='', coupon_code='' } = mergeParam(req);
+     const bookingType = booking_type.toUpperCase();
 
-        // // 12 March ko add hua hai
-       
-        // building_name : ["required"],
-        // unit_no       : ["required"],
-        // area          : ["required"],
-        // emirate       : ["required"],
-        booking_type  : ["required"],
-    });
-    if(amount<1)     return resp.json({ status: 0, code: 422, message: ["amount can be less than 1 INR"] });
+        const validationRules = {
+            rider_id: ["required"],
+            rider_name: ["required"],
+            rider_email: ["required"],
+            booking_id: ["required"],
+            booking_type: ["required"]
+        };
+
+    if (bookingType === "HEV") {
+        validationRules.package_id = ["required"];
+    } else {
+        validationRules.amount = ["required"];
+    }
+    const { isValid, errors } = validateFields(
+     mergeParam(req),
+     validationRules
+    );
+    // if(amount<1)     return resp.json({ status: 0, code: 422, message: ["amount can be less than 1 INR"] });
     //  switch(booking_type){
     //     case "PCB"
         
@@ -40,7 +43,60 @@ export const createIntent = async (req, resp) => {
 
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
- 
+        let chargingCost = 0;
+        let serviceFee = 0;
+        let discount = 0;
+        let gst = 0;
+        let totalAmount = 0;
+        let packageDetails = {};
+    if (bookingType === "HEV") {
+
+     const packageData = await queryDB(
+            `SELECT * FROM home_ev_charging_packages WHERE package_id = ? AND status = 1 AND is_deleted = 0
+             LIMIT 1`,
+            [package_id]
+    );
+    if (!packageData) {
+            return resp.json({
+                status: 0,
+                code: 404,
+                message: ["Charging package not found."]
+            });
+    }
+    chargingCost = Number(packageData.charging_capacity) * Number(packageData.price_per_unit);
+    serviceFee = Number(packageData.service_fee);
+    if (coupon_code) {
+                // TODO Coupon Validation
+                discount = 0;
+    }    
+    const subtotal = chargingCost + serviceFee - discount;
+    gst = Number((subtotal * 0.18).toFixed(2));
+    totalAmount = Number((subtotal + gst).toFixed(2));
+
+    packageDetails = {
+                package_id: packageData.package_id,
+                package_name: packageData.package_name,
+                charging_capacity: packageData.charging_capacity,
+                price_per_unit: packageData.price_per_unit
+    };
+
+    }else {
+      totalAmount = Number(amount);
+      if (totalAmount <= 0) {
+                return resp.json({
+                    status: 0,
+                    code: 422,
+                    message: ["Invalid amount."]
+                });
+            }
+     }
+      if (totalAmount < 1) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: ["Amount should be greater than 1 INR."]
+            });
+    }
       const razorpay = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET});
@@ -49,7 +105,7 @@ export const createIntent = async (req, resp) => {
     //   console.log("type",typeof(paybleAmount))
 
         const options = {
-            amount: parseFloat((amount * 100).toFixed(2)),   // e.g., 50000 paise = ₹500
+            amount: parseFloat((totalAmount * 100).toFixed(2)),   // e.g., 50000 paise = ₹500
             currency: "INR",
            receipt: `receipt_${booking_id}_${Date.now()}`,
             payment_capture: 1, // auto-capture payment
@@ -59,6 +115,7 @@ export const createIntent = async (req, resp) => {
     rider_email: rider_email,
     booking_id: booking_id.toString(),
     booking_type: booking_type.toUpperCase(),
+    package_id: package_id.toString(),
     coupon_code:coupon_code.toString(),
     
         }
@@ -77,6 +134,11 @@ let  data={};
             await updateRecord('road_assistance', {  'order_id' : order.id}, ['request_id', 'rider_id'], [booking_id, rider_id] ); //, conn
          
             break;
+            case "HEV":
+            await updateRecord("home_ev_charging_packages",{ order_id: order.id}, ["package_id"],
+            [package_id]);
+
+            break;
             default :
             return false;
         }
@@ -88,9 +150,23 @@ let  data={};
         message : ["Payment Intent Created successfully!"],
         order_id: order.id,
         customer_id,
-        key_id:process.env.RAZORPAY_KEY_ID
+        key_id:process.env.RAZORPAY_KEY_ID,
+        payment_summary: bookingType === "HEV"
+                ? {
+                    ...packageDetails,
+                    charging_cost: chargingCost,
+                    service_fee: serviceFee,
+                    discount,
+                    gst,
+                    total_amount: totalAmount
+                }
+                : {
+                    total_amount: totalAmount
+                }
 
-         });
+        });
+
+        
     } catch (error) {
         console.error(error);
         resp.json({ status: 0, message: "Order creation failed" });

@@ -553,6 +553,34 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
         WHERE rider_id = ?`,
         [ parseFloat(final_amount), rider_id]
     );
+
+    // const finalAmountNum = parseFloat(final_amount);
+
+    // let remainingWallet = wallet_balance;
+    // let currentRideOutstanding = 0;
+
+    // // Wallet first deduct
+    // if (wallet_balance >= finalAmountNum) {
+
+    //     remainingWallet = wallet_balance - finalAmountNum;
+
+    // } else {
+
+    //     remainingWallet = 0;
+    //     currentRideOutstanding = finalAmountNum - wallet_balance;
+    // }
+
+    // await db.execute(`
+    //     UPDATE riders
+    //     SET amount = ?,
+    //         out_standing_cost = out_standing_cost + ?
+    //     WHERE rider_id = ?
+    // `,
+    // [
+    //     remainingWallet,
+    //     currentRideOutstanding,
+    //     rider_id
+    // ]);
     const bookingParams = { 
         status          : "CMP",
         end_lat         : cycle_lock.latitude, 
@@ -740,7 +768,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
             SELECT
                 cb.per_min_cost, cb.pick_time, cb.cycle_id, cb.post_price, cb.base_duration, 
                 r.rider_email, CONCAT(r.rider_name, ' ', r.last_name) AS rider_name, r.fcm_token, 
-                cb.rider_id, r.amount as wallet_balance, cb.status, cb.price
+                cb.rider_id, r.amount as wallet_balance, r.security_deposit, cb.status, cb.price
             FROM cycle_booking cb
             JOIN riders r on r.rider_id = cb.rider_id
             WHERE cb.booking_id = ?
@@ -756,7 +784,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
             
         // difference  price
         const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
-        let diffInMinutes   = nowMoment.diff(pickMoment, "minutes");
+        let   diffInMinutes   = nowMoment.diff(pickMoment, "minutes");
         
         // formatted times (for display/API)
         const end_time   = nowMoment.format("YYYY-MM-DD HH:mm:ss");
@@ -770,7 +798,9 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
         const base_duration  = Number(bookingDetail.base_duration);
         const base_price     = parseFloat(bookingDetail.per_min_cost);
         const post_price     = parseFloat(bookingDetail.post_price);
-        const wallet_balance = parseFloat(bookingDetail.wallet_balance)
+        const wallet_balance = parseFloat(bookingDetail.wallet_balance);
+        //let securityDeposit  = parseFloat(bookingDetail.security_deposit || 0);
+
 
         let total_cost = base_price
         if(diffInMinutes > base_duration){
@@ -783,24 +813,55 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
 
         const final_amount = (total_cost + gst).toFixed(2); //total_cost + gst;
         
-        const remaning_cost = wallet_balance - final_amount < 0 ? 0 : wallet_balance - final_amount;
+      //  const remaning_cost = wallet_balance - final_amount < 0 ? 0 : wallet_balance - final_amount;
       
         const total_taken_time = `${min_before_add}:${remainingSeconds}`;
-        let out_standing_cost  = 0;
+        //let out_standing_cost  = 0;
      
-        if( wallet_balance < final_amount ) { 
-            out_standing_cost = final_amount - wallet_balance;
-        }
+        // if( wallet_balance < final_amount ) { 
+        //     out_standing_cost = final_amount - wallet_balance;
+        // }
         // await insertRecord('transaction_history', 
         //     ['rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance", "prev_balance"], 
         //     [rider_id, final_amount, 'debt',  booking_id, out_standing_cost, remaning_cost, wallet_balance]
         // );
+        // await db.execute(`
+        //     UPDATE riders 
+        //     SET out_standing_cost = out_standing_cost + ? 
+        //     WHERE rider_id = ?`, 
+        //     [ parseFloat(final_amount), rider_id]
+        // );
+
+        const finalAmountNum = parseFloat(final_amount);
+
+        let remainingWallet = wallet_balance;
+        let currentRideOutstanding = 0;
+
+        // Wallet se fare deduct karo
+        if (wallet_balance >= finalAmountNum) {
+
+            // Wallet sufficient hai
+            remainingWallet = wallet_balance - finalAmountNum;
+
+        } else {
+
+            // Wallet insufficient hai
+            remainingWallet = 0;
+            currentRideOutstanding = finalAmountNum - wallet_balance;
+        }
+
+        // Rider wallet & outstanding update
         await db.execute(`
-            UPDATE riders 
-            SET out_standing_cost = out_standing_cost + ? 
-            WHERE rider_id = ?`, 
-            [ parseFloat(final_amount), rider_id]
-        );
+            UPDATE riders
+            SET amount = ?,
+                out_standing_cost = out_standing_cost + ?
+            WHERE rider_id = ?
+        `,
+        [
+            remainingWallet,
+            currentRideOutstanding,
+            rider_id
+        ]);
         const drop_station = await queryDB(`
             SELECT 
                 msl.station_id, msl.latitude, msl.longitude, msl.station_name as dropoff_station, msl.address
@@ -819,7 +880,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
             lock_number      : lock_number,
             handover_type    : handover_type,
             total_time       : total_taken_time,
-            hand_over_station : drop_station.dropoff_station,
+            hand_over_station: drop_station.dropoff_station,
         }
         const update_booking = await updateRecord('cycle_booking', bookingParams , ['booking_id'], [booking_id]);
      
@@ -841,6 +902,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
             from booking_history 
             where rider_id = ? and booking_id = ? and status = 'ON' `,[rider_id,booking_id]
         );
+        console.log("db_logs_data",db_logs_data)
         if( station_id !== db_logs_data.description.station_id ) {
 
             const updtObj = { station_id : drop_station.station_id, lock_number : lock_number} ;
@@ -879,11 +941,25 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
                 amount     : final_amount
             })
         );
-        const finalAmountNum = parseFloat(final_amount);
-        return { status : 1, code : 200, message : [`Your ride has been completed. Please pay ₹${final_amount} to clear your ride payment`],
-        final_amount : finalAmountNum,
-        booking_id: booking_id  
+        let rideMessage = "";
+
+        if (currentRideOutstanding > 0) {
+            rideMessage = `Your ride has been completed. Outstanding amount ₹${currentRideOutstanding.toFixed(2)} has been added to your account.`;
+        } else {
+            rideMessage = `Your ride has been completed. ₹${finalAmountNum.toFixed(2)} has been deducted from your wallet.`;
+        }
+        return {
+            status       : 1,
+            code         : 200,
+            message      : [rideMessage],
+            final_amount : finalAmountNum,
+            booking_id   : booking_id
         };
+        // //const finalAmountNum = parseFloat(final_amount);
+        // return { status : 1, code : 200, message : [`Your ride has been completed. Please pay ₹${final_amount} to clear your ride payment`],
+        // final_amount : finalAmountNum,
+        // booking_id: booking_id  
+        // };
     
     } catch(err) {
         console.log(err);
@@ -1060,24 +1136,24 @@ try{
     if (!isValid) {return resp.json({status: 0, code: 422, message: errors });}
 
     const riderData = await queryDB(`
-        SELECT rider_id, CONCAT(rider_name, ' ', last_name) AS user_name, rider_mobile, amount, out_standing_cost FROM riders WHERE rider_id = ? LIMIT 1`, [rider_id]);
+        SELECT rider_id, CONCAT(rider_name, ' ', last_name) AS user_name, rider_mobile, amount, security_deposit, out_standing_cost FROM riders WHERE rider_id = ? LIMIT 1`, [rider_id]);
 
     if (!riderData) {return resp.json({status: 0, code: 201, message: ['Invalid Rider Id!']});}
 
-    const walletAmount = parseFloat(riderData.amount || 0);
+    const securityAmount = parseFloat(riderData.security_deposit || 0);
     const outstandingAmount = parseFloat(riderData.out_standing_cost || 0);
 
-    // Outstanding check
-    if (outstandingAmount > 0) {
-        return resp.json({
-            status: 0,
-            code: 201,
-            message: ['Please clear outstanding amount before requesting refund!']
-        });
-    }
+    // // Outstanding check
+    // if (outstandingAmount > 0) {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 201,
+    //         message: ['Please clear outstanding amount before requesting refund!']
+    //     });
+    // }
 
     // Wallet balance check
-    if (walletAmount <= 0) {
+    if (securityAmount <= 0) {
         return resp.json({
             status: 0,
             code: 201,
@@ -1098,11 +1174,11 @@ try{
     }
 
     const deductionAmount = Number(
-        ((walletAmount * 2) / 100).toFixed(2)
+        ((securityAmount * 3) / 100).toFixed(2)
     );
 
     const refundAmount = Number(
-        (walletAmount - deductionAmount).toFixed(2)
+        (securityAmount - deductionAmount).toFixed(2)
     );
 
     await insertRecord(

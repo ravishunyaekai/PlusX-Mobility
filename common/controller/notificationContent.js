@@ -135,6 +135,42 @@ export const NOTIFICATION_CONTENT = {
             </html>
         `
     },
+
+    REFUND_REQUEST_REJECTED_EMAIL: {
+    subject: () => `Security Deposit Refund Request Update`,
+    content: ({
+        rider_name,
+        security_deposit,
+        outstanding_amount,
+        refund_amount
+    }) => `
+        <p>Dear ${rider_name},</p>
+
+        <p>
+            We regret to inform you that your security deposit refund request could not be processed.
+        </p>
+
+        <p>
+            <strong>Security Deposit:</strong> ₹${security_deposit}<br/>
+            <strong>Outstanding Amount:</strong> ₹${outstanding_amount}<br/>
+            <strong>Refundable Amount:</strong> ₹${refund_amount}
+        </p>
+
+        <p>
+            After adjusting the outstanding balance and applicable processing charges,
+            the refundable amount does not meet the minimum refund eligibility criteria.
+        </p>
+
+        <p>
+            If you have any questions, please contact our support team.
+        </p>
+
+        <p>
+            Regards,<br/>
+            PlusX Mobility Team
+        </p>
+    `
+},
     //***************Home EV Charging - Notification & Email Content*********************** */
     USER_HOME_CHARGER_CONFIRM_NOTIFICATION :{
         heading:`Home EV Charging Booking!`,

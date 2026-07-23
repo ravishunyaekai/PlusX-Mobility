@@ -355,7 +355,7 @@ const addMoneywebhook = async(rider_id, payment_intent_id, razorpay_order_id, am
         const paidAmount = amount; // / 100;
          
         const riders = await queryDB(`
-            SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.cycle_id, cb.booking_id, cb.time_taken
+            SELECT r.amount, r.security_deposit, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.cycle_id, cb.booking_id, cb.time_taken
             FROM riders r JOIN country c ON r.country_code = c.country_code
             LEFT JOIN cycle_booking cb 
             ON cb.booking_id = (
@@ -368,24 +368,50 @@ const addMoneywebhook = async(rider_id, payment_intent_id, razorpay_order_id, am
             WHERE r.rider_id = ?`, [rider_id]
         );
         let current_balance = parseFloat(riders.amount);  //current_balance
-        let paymentAmount   = parseFloat(riders.min_wallet_price);  // min wallet 
+        let security_deposit  = parseFloat(riders.security_deposit || 0);
+        //let paymentAmount   = parseFloat(riders.min_wallet_price);  // min wallet 
+        let out_standing_cost = parseFloat(riders.out_standing_cost || 0);
+
+        let rechargeAmount = parseFloat(paidAmount);
         
         let orderIdToSave = razorpay_order_id;
-        if ( current_balance < paymentAmount ) {
-            current_balance = current_balance + paidAmount;    
-            orderIdToSave = riders.booking_id;
-        }
-        let queryParams       = `amount = ? `;  // amount +
-        let out_standing_cost = parseFloat(riders.out_standing_cost);
+        // if ( current_balance < paymentAmount ) {
+        //     current_balance = current_balance + paidAmount;    
+        //     orderIdToSave = riders.booking_id;
+        // }
+        //let queryParams       = `amount = ? `;  // amount +
+        //let out_standing_cost = parseFloat(riders.out_standing_cost);
  
-        if( out_standing_cost > 0 ) {
-            current_balance = current_balance - out_standing_cost
-            queryParams +=` , out_standing_cost = 0 `;
-            out_standing_cost = 0;
+        // if( out_standing_cost > 0 ) {
+        //     current_balance = current_balance - out_standing_cost
+        //     queryParams +=` , out_standing_cost = 0 `;
+        //     out_standing_cost = 0;
+        // }
+        // let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;    
+        // await db.execute( query, [current_balance, rider_id]);
+        // First recharge => split 100 deposit + remaining wallet
+        if (security_deposit < 100) {
+
+            security_deposit = 100;
+
+            rechargeAmount = rechargeAmount - 100;
         }
-        let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;    
-        await db.execute( query, [current_balance, rider_id]);
-                    
+        if (out_standing_cost > 0 && rechargeAmount > 0) {
+
+            const settleAmount = Math.min(
+                rechargeAmount,
+                out_standing_cost
+            );
+
+            out_standing_cost -= settleAmount;
+
+            rechargeAmount -= settleAmount;
+        }  
+        current_balance += rechargeAmount;
+
+        await db.execute(`UPDATE riders SET amount = ?, security_deposit = ?, out_standing_cost = ? WHERE rider_id = ?`,
+        [current_balance, security_deposit, out_standing_cost, rider_id]);
+        
         await insertRecord('transaction_history', 
             [
                 'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",

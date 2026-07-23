@@ -7,6 +7,8 @@ import db from "../../../config/indiadb.js"
 import client from '../../../server.js';
 import Razorpay from "razorpay";
 import { NOTIFICATION_CONTENT } from '../../../common/controller/notificationContent.js';
+import emailQueue from "../../../emailQueue.js";
+
 
 
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
@@ -1192,7 +1194,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
 
         // Rider Wallet Check
         const riderData = await queryDB(
-            `SELECT amount, fcm_token FROM riders WHERE rider_id = ? LIMIT 1`,
+            `SELECT amount, security_deposit, out_standing_cost, fcm_token, rider_email, CONCAT(rider_name, ' ', last_name) AS rider_name FROM riders WHERE rider_id = ? LIMIT 1`,
             [refundRequest.rider_id]
         );
 
@@ -1212,19 +1214,47 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
             });
         }
 
-        const currentWalletAmount = Number(riderData.amount || 0);
+        const currentWalletAmount = Number(riderData.security_deposit || 0);
+        const outstandingAmount = Number(riderData.out_standing_cost || 0);
 
         const refundAmountInRupees = Number(refundRequest.refund_amount);
+        const finalRefundAmount = refundAmountInRupees - outstandingAmount;
 
-        if (currentWalletAmount < refundAmountInRupees) {
-            return resp.json({
-                status: 0,
-                message:
-                    "Refund amount already utilized by rider"
-            });
-        }
+        // if (currentWalletAmount < refundAmountInRupees) {
+        //     return resp.json({
+        //         status: 0,
+        //         message:
+        //             "Refund amount already utilized by rider"
+        //     });
+        // }
 
         // Transaction
+        if (finalRefundAmount < 60) {
+
+            await updateRecord(
+                "refund_requests",
+                { status: "rejected" },
+                ["id"],
+                [refund_request_id]
+            );
+
+            const mail_template = NOTIFICATION_CONTENT["REFUND_REQUEST_REJECTED_EMAIL"];
+            emailQueue.addEmail(
+                riderData.rider_email,
+                mail_template.subject(),
+                mail_template.content({
+                    rider_name: riderData.rider_name,
+                    security_deposit: currentWalletAmount,
+                    outstanding_amount: outstandingAmount,
+                    refund_amount: finalRefundAmount
+                })
+            );
+
+            return resp.json({
+                status: 0,
+                message: `Refund amount is less than ₹60 after outstanding adjustment. Refundable amount: ₹${finalRefundAmount}`
+            });
+        }
         const transactions = await queryDB(
             `SELECT payment_id FROM transaction_history WHERE rider_id = ? ORDER BY id DESC LIMIT 1`,
             [refundRequest.rider_id]
@@ -1247,8 +1277,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
         }
 
         // Razorpay Payment Verify
-        const payment =
-            await razorpay.payments.fetch(paymentId);
+        const payment = await razorpay.payments.fetch(paymentId);
 
         if (payment.status !== "captured") {
             return resp.json({
@@ -1258,7 +1287,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
         }
 
         const refundAmount = Math.round(
-            refundAmountInRupees * 100
+            finalRefundAmount * 100
         );
 
         if (refundAmount <= 0) {
@@ -1275,6 +1304,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                     "Refund amount exceeds payment amount"
             });
         }
+
 
         // Refund from Razorpay
         const refund =
@@ -1299,12 +1329,13 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
             },
             ["id"], [refund_request_id]
         );
-       const remainingWalletBalance = currentWalletAmount - refundAmountInRupees;
+       const remainingWalletBalance = 0;
         // Deduct Wallet Balance
         await updateRecord(
             "riders",
             {
-                amount: 0
+                out_standing_cost: 0,
+                security_deposit: 0
             },
             ["rider_id"], [refundRequest.rider_id]
         );
@@ -1312,16 +1343,16 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
             "transaction_history",
             ["rider_id", "amount", "payment_type", "outstanding", "current_balance", "prev_balance", "status", "payment_id"],
         
-            [refundRequest.rider_id, refundAmountInRupees, "refund", 0, remainingWalletBalance, currentWalletAmount, "CNF", refund.id]
+            [refundRequest.rider_id, finalRefundAmount, "refund", 0, remainingWalletBalance, currentWalletAmount, "CNF", refund.id]
         );
-        await sendNotification("USER_REFUND_APPROVED",{amount: refundAmountInRupees,rider_id: refundRequest.rider_id},refundRequest.rider_id,refundRequest.rider_id);
+        await sendNotification("USER_REFUND_APPROVED",{amount: finalRefundAmount,rider_id: refundRequest.rider_id},refundRequest.rider_id,refundRequest.rider_id);
         const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
 
 
         await pushNotification(
             riderData.fcm_token,
             template.heading,
-            template.desc({ amount: refundAmountInRupees }),
+            template.desc({ amount: finalRefundAmount }),
             "RDRFCM",
             template.href({ rider_id: refundRequest.rider_id })
         );

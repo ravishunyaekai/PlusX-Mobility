@@ -315,7 +315,7 @@ export const addmoneyINWallet = asyncHandler(async(req,resp)=>{
     const receipt = `${numericAmount}_RS_by_${rider_id}_${moment().format("YY-MM-DD_HH:mm:ss")}`;
     const rider   = await queryDB(`
         SELECT 
-            r.amount, r.out_standing_cost, ${formatFloatInQuery('cn.min_wallet_price ')} as min_wallet_price
+            r.amount, r.security_deposit, r.out_standing_cost, ${formatFloatInQuery('cn.min_wallet_price ')} as min_wallet_price
         FROM riders r
         JOIN country cn on cn.country_id = r.country_id   
         Where r.rider_id = ?  `, [ rider_id ] 
@@ -389,6 +389,7 @@ console.log(numericAmount < effectiveBalance)
 export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
      
     const { rider_id, payment_id, razorpay_signature, razorpay_order_id } = mergeParam(req);
+    console.log(rider_id, payment_id, razorpay_signature, razorpay_order_id)
     const { isValid, errors } = validateFields(mergeParam(req), { 
         rider_id           : ["required"],
         payment_id         : ["required"],
@@ -431,7 +432,7 @@ export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
         return resp.json({status: 0, code:400, message:["Payment not captured"],})
     }
     const riders = await queryDB(`
-        SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.booking_id
+        SELECT r.amount, r.security_deposit, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.booking_id
         FROM riders r JOIN country c ON r.country_code = c.country_code
         LEFT JOIN cycle_booking cb 
         ON cb.booking_id = (
@@ -443,23 +444,73 @@ export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
        WHERE r.rider_id = ?`, [rider_id]
     );
  
-    let outstandingAmount = parseFloat(riders.out_standing_cost || 0);
-    let out_standing_cost = parseFloat(0);
-    let riderAmount       = parseFloat(riders.amount);
-    let paymentAmount     = parseFloat(riders.min_wallet_price);
+    // let outstandingAmount = parseFloat(riders.out_standing_cost || 0);
+    // let out_standing_cost = parseFloat(0);
+    // let riderAmount       = parseFloat(riders.amount);
+    // let paymentAmount     = parseFloat(riders.min_wallet_price);
  
+    // let orderIdToSave = razorpay_order_id;
+    // let paymentType = "crd";
+    // if ( riderAmount < paymentAmount && riders.booking_id ) {
+    //     riderAmount = riderAmount + paidAmount; 
+    //     orderIdToSave = riders.booking_id;   
+    //     paymentType = "debt";
+    // }   
+ 
+    // let queryParams = `amount = ?, out_standing_cost = 0 `; 
+
+    let riderAmount = parseFloat(riders.amount || 0);
+
+    let securityDeposit = parseFloat(riders.security_deposit || 0);
+
+    let out_standing_cost = parseFloat(riders.out_standing_cost || 0);
+
+    let rechargeAmount = parseFloat(paidAmount);
+
     let orderIdToSave = razorpay_order_id;
+
     let paymentType = "crd";
-    if ( riderAmount < paymentAmount && riders.booking_id ) {
-        riderAmount = riderAmount + paidAmount; 
-        orderIdToSave = riders.booking_id;   
-        paymentType = "debt";
-    }   
- 
-    let queryParams = `amount = ?, out_standing_cost = 0 `; 
+    if (riders.booking_id && out_standing_cost > 0) {
+    paymentType = "debt";
+    orderIdToSave = riders.booking_id;
+}
+
+if (securityDeposit < 100) {
+
+    const depositRequired = 100 - securityDeposit;
+
+    if (rechargeAmount >= depositRequired) {
+        securityDeposit += depositRequired;
+        rechargeAmount -= depositRequired;
+    } else {
+        securityDeposit += rechargeAmount;
+        rechargeAmount = 0;
+    }
+}
+if (out_standing_cost > 0 && rechargeAmount > 0) {
+
+    const settleAmount = Math.min(
+        rechargeAmount,
+        out_standing_cost
+    );
+
+    out_standing_cost -= settleAmount;
+    rechargeAmount -= settleAmount;
+
+    paymentType = "debt";
+
+    if (riders.booking_id) {
+        orderIdToSave = riders.booking_id;
+    }
+}
+    riderAmount += rechargeAmount;
+
+    const update_rider = await db.execute(`UPDATE riders SET amount = ?, security_deposit = ?,
+       out_standing_cost = ? WHERE rider_id = ?`,
+    [riderAmount, securityDeposit, out_standing_cost, rider_id]);
                
-    let query = `UPDATE riders SET  ${queryParams} WHERE rider_id = ?`;
-    const update_rider = await db.execute( query, [riderAmount, rider_id]);
+    // let query = `UPDATE riders SET  ${queryParams} WHERE rider_id = ?`;
+    // const update_rider = await db.execute( query, [riderAmount, rider_id]);
         
     if(!update_rider) return resp.json({ status : 0, code : 400, message : ["Amount was not added on wallet!"]});
         
