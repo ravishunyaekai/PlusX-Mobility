@@ -45,6 +45,7 @@ const __dirname = path.dirname(__filename);
 const corsOptions = {
     origin : [
         'http://localhost:2425',
+        'http://localhost:3000',
         'https://plusxmobility.shunyaekai.com',
         'https://swapping.shunyaekai.com',
     ],
