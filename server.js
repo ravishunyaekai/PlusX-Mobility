@@ -12,7 +12,7 @@ import mobilityApiRoutes from './mobility/routes/user.js';
 
 import plusxAdminRoutes from './plusx/routes/admin.js';
 import plusxUserRoutes from './plusx/routes/user.js';
-
+import { failedPODBooking } from './plusx/home Charging/controller/user/PortableChargerController.js';
 import commonUserRoutes from './common/routes/UsreRoutes.js';
 import commonAdminRoutes from './common/routes/adminRoutes.js';
 import path from 'path';
@@ -33,42 +33,60 @@ import http from 'http';
 // import { testFunction } from './plusx/controller/TestController.js';
 // import mqqtClient from './mqtt/index.js';
 import { razorpayWebhook } from './common/controller/webhookController.js';
-// import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
-// import { cronjobAddMoney, mobilitynotification } from './mobility/controller/user/cronjobController.js';
-// import { failedPODBooking } from './plusx/home Charging/controller/user/PortableChargerController.js';
+import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
+import { cronjobAddMoney, mobilitynotification, deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
+
 
 import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
-const corsOptions = {
-    origin : [
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  const corsOptions = {
+      origin : [
         'http://localhost:2425',
         'http://localhost:3000',
         'https://plusxmobility.shunyaekai.com',
         'https://swapping.shunyaekai.com',
-    ],
-    methods: 'GET, POST, PUT, DELETE',
-    credentials: true
-};
+        ],
+      methods: 'GET, POST, PUT, DELETE',
+      credentials: true
+  };
+
 // cron.schedule('*/6 * * * *', async () => {
-//     await failedRSABooking(); 
+//     //await CronjobRsaInvoice();
+//     await failedRSABooking();// there is error eeror 
 //     await failedPODBooking()
+//     // await mobilitynotification();
+//     //await cronjobAddMoney();
+//     // for mobility payments
 //     console.log('This runs every 1 minutes', new Date().toISOString());
 // });
+
 // cron.schedule('* * * * *', async () => {
 //     await mobilitynotification();
+// }) ;
+// cron.schedule('*/5 * * * *', async () => {
+//     console.log('Outstanding deduction cron started');
+//     try {
+//         await deductOutstandingAmount();
+//     } catch (error) {
+//         console.log('Cron Error:', error.message);
+//     }
+
 // });
 
 app.use(cors(corsOptions));
 app.post("/razorpay/webhook",  bodyParser.raw({ type: "application/json" }), razorpayWebhook);
 app.post("/pay-with-saved-card",  bodyParser.raw({ type: "application/json" }), payWithSavedCard);
 
+
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+// app.use(bodyParser.json());
 app.use(cookieParser());
 
 
@@ -135,5 +153,6 @@ client.on('message', (topic, msg) => {
 client.on('reconnect', () => console.log('Reconnecting...'));
 client.on('close', () => console.log('Disconnected'));
 client.on('error', err => console.log('Error', err.message));
-
 export default client;
+
+// cron.schedule("*/10 * * * *", );

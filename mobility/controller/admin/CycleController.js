@@ -387,7 +387,7 @@ export const StationcycleList = asyncHandler(async (req, resp) => {
                 WHEN cl.cycle_type = 'cycle' THEN 'Cycle'
                 ELSE cl.cycle_type
             END AS cycle_type , cl.price, msl.station_name,
-           ( SELECT cp.base_price FROM cycle_pricing cp WHERE cp.type_of_cycle = cl.cycle_type AND cp.station_id = cl.station_id LIMIT 1) AS base_price, cl.cycle_state`,
+           ( SELECT cp.base_price FROM cycle_pricing cp WHERE cp.type_of_cycle = cl.cycle_type AND cp.station_id = cl.station_id LIMIT 1) AS base_price, cl.device_status`,
     joinTable: "mobility_station_list msl",
     joinCondition: "msl.station_id=cl.station_id",
     sortColumn: "cl.id",
@@ -454,7 +454,7 @@ export const cycleList = asyncHandler(async (req, resp) => {
                 WHEN cl.cycle_type = 'cycle' THEN 'Cycle'
                 ELSE cl.cycle_type
             END AS cycle_type , cl.price, msl.station_name,
-            ( SELECT cp.base_price  FROM cycle_pricing cp WHERE cp.type_of_cycle = cl.cycle_type AND cp.station_id = cl.station_id LIMIT 1) AS base_price, cl.cycle_state`,
+            ( SELECT cp.base_price  FROM cycle_pricing cp WHERE cp.type_of_cycle = cl.cycle_type AND cp.station_id = cl.station_id LIMIT 1) AS base_price, cl.device_status`,
     joinTable: "mobility_station_list msl",
     joinCondition: "msl.station_id = cl.station_id",
     sortColumn: "cl.id",
@@ -767,6 +767,11 @@ export const cycleBookingList = async (req, resp) => {
       params.whereValue.push(status);
       params.whereOperator.push("=");
     }
+    if (station_id) {
+      params.whereField.push("pickup_station");
+      params.whereValue.push(station_id);
+      params.whereOperator.push("=");
+    }
 
     if (handover_type) {
       params.whereField.push("handover_type");
@@ -849,6 +854,7 @@ export const getStationList = async (req, resp) => {
     });
   }
 };
+
 export const cycleBookinghistory = async (req, resp) => {
   try {
     const {

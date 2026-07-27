@@ -706,6 +706,122 @@ export const completeRefundProcess = async ({
   );
 };
 
+// export const Paymentsucceed = asyncHandler( async ( req, resp ) => {
+     
+//     const { rider_id, payment_id, razorpay_signature, razorpay_order_id } = mergeParam(req);
+//     const { isValid, errors } = validateFields(mergeParam(req), { 
+//         rider_id           : ["required"],
+//         payment_id         : ["required"],
+//         razorpay_signature : ["required"],
+//         razorpay_order_id  : ["required"],
+//     });
+//     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+ 
+//     const checkTransaction = await queryDB(`
+//         SELECT amount, current_balance
+//         FROM transaction_history
+//         WHERE payment_id = ? AND status = ? `, [payment_id, "CNF"]
+//     );
+//     if(checkTransaction) {
+//         return resp.json({
+//             status        : 1,
+//             code          : 200,
+//             wallet_amount : checkTransaction.current_balance,
+//             message       : [`Payment of ${(parseFloat(checkTransaction.amount)).toFixed(2)} INR Completed successfully`],
+//         });
+//     }
+//     const generated_signature = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+//         .update(razorpay_order_id + "|" + payment_id)
+//         .digest("hex");
+ 
+//     const razorpay = new Razorpay({ 
+//         key_id: process.env.RAZORPAY_KEY_ID, 
+//         key_secret: process.env.RAZORPAY_KEY_SECRET
+//     });
+//     const payment  = await razorpay.payments.fetch(payment_id);
+//     let paidAmount = payment.amount / 100; 
+  
+//     if (generated_signature !== razorpay_signature) {
+//         return resp.json({status: 1, code:400, message:["Invalid payment signature"],})
+//     } 
+//     if( !payment ) {
+//       return resp.json({status: 1, code:400, message:["invalid Payment"],})
+//     }
+//     if( payment.status !== "captured" ) {
+//         return resp.json({status: 0, code:400, message:["Payment not captured"],})
+//     }
+//     const riders = await queryDB(`
+//         SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.cycle_id, cb.booking_id, cb.time_taken
+//         FROM riders r JOIN country c ON r.country_code = c.country_code
+//         LEFT JOIN cycle_booking cb 
+//         ON cb.booking_id = (
+//             SELECT booking_id 
+//             FROM cycle_booking 
+//             WHERE rider_id = r.rider_id
+//             ORDER BY created_at DESC 
+//         LIMIT 1)
+//        WHERE r.rider_id = ?`, [rider_id]
+//     );
+ 
+//     let outstandingAmount = parseFloat(riders.out_standing_cost || 0);
+//     let out_standing_cost = parseFloat(0);
+//     let riderAmount       = parseFloat(riders.amount);
+//     let paymentAmount     = parseFloat(riders.min_wallet_price);
+ 
+//     let orderIdToSave = razorpay_order_id;
+//     let paymentType = "crd";
+//     let sendmail      = false ;
+//     if ( riderAmount < paymentAmount && riders.booking_id) {    // if ( riderAmount < paymentAmount || outstandingAmount > 0 ) {
+//         orderIdToSave = riders.booking_id;
+//         paymentType   = "debt";
+        
+//         sendmail = true ;
+//     }
+//     if ( riderAmount < paymentAmount) {
+//         riderAmount   = riderAmount + paidAmount; 
+//     } 
+//     let queryParams = `amount = ?, out_standing_cost = 0 `; 
+               
+//     let query = `UPDATE riders SET  ${queryParams} WHERE rider_id = ?`;
+//     const update_rider = await db.execute( query, [riderAmount, rider_id]);
+        
+//     if(!update_rider) return resp.json({ status : 0, code : 400, message : ["Amount was not added on wallet!"]});
+        
+        
+//     await insertRecord('transaction_history', 
+//         [
+//             'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
+//             "prev_balance", "status", "payment_id",
+//         ], [
+//             rider_id, paidAmount, paymentType,  orderIdToSave, out_standing_cost, riderAmount, 
+//             riders.amount, "CNF", payment_id, 
+//         ]
+//     ); 
+    
+//     if(sendmail) {
+//         const mail_template = NOTIFICATION_CONTENT["PAYMENT_SUCCESS_EMAIL"];
+//         emailQueue.addEmail(
+//             riders.rider_email,
+//             mail_template.subject({ booking_id: riders.booking_id }),
+//             mail_template.content({
+//                 rider_name : riders.rider_name,
+//                 amount     : paidAmount,
+//                 booking_id : riders.booking_id,
+//                 cycle_id   : riders.cycle_id,
+//                 time_taken : riders.time_taken
+//             })
+//         ); //cycle_id, cb.booking_id, cb.time_taken
+//     }
+    
+//     return resp.json({
+//         status        : 1,
+//         code          : 200,
+//         wallet_amount : riderAmount,
+//         message       : [`Payment of ${(paidAmount).toFixed(2)} INR Completed successfully`],
+//     });
+    
+// });
+
 export const Paymentsucceed = asyncHandler(async (req, resp) => {
   const { rider_id, payment_id, razorpay_signature, razorpay_order_id } =
     mergeParam(req);
@@ -1057,8 +1173,10 @@ export const v1razorpaycardList = asyncHandler(async (req, resp) => {
     return true;
   });
 
-  if ((payment_method = "upi")) {
-    const seenVpa = new Set();
+if(payment_method="upi"){
+
+
+const seenVpa = new Set();
 
     const uniqueUpiList = (paycardsRes.items || [])
       .filter((token) => token.method === "upi" && token.status === "active")
@@ -1736,7 +1854,30 @@ export const addMoneyForCycleBookingOld = asyncHandler(async (req, resp) => {
         ],
       });
     }
-  }
+}
+    // if (parseFloat(result.out_standing_cost) > 0) {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 200,
+    //         message: [`Your outstanding balance is ₹${result.out_standing_cost}. Clear dues first.`]
+    //     });
+    // }
+
+    // if (numericAmount  < result.min_wallet_price) {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 200,
+    //         message: [`Minimum required amount is ₹${result.min_wallet_price}`]
+    //     });
+    // }
+
+    // if (data.status === "PAID") {
+    //     return resp.json({
+    //         status: 0,
+    //         code: 400,
+    //         message: ["Booking already paid"]
+    //     });
+    // }
 
   const receipt = `${numericAmount}_BOOKING_${rider_id}_${moment().format("YY-MM-DD_HH:mm:ss")}`;
 

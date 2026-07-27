@@ -898,6 +898,7 @@ export const bookngIncompleteByadmin = asyncHandler(async (req, resp) => {
     message: result.message,
     status: result.status,
     code: result.code,
+    result: result,
   });
 });
 

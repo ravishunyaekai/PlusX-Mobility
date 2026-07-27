@@ -88,26 +88,100 @@ export const delOTP = (key) => {
 };
 
 /* API Call to Send OTP */
-export const sendOtp = async (mobile, otpMsg) => {
-  const username = process.env.SMS_USERNAME;
-  const password = process.env.SMS_PASSWORD;
-  const from = "PLUSXM";
+// export const sendOtp = async (mobile, otpMsg) => {
+//   const username = process.env.SMS_USERNAME;
+//   const password = process.env.SMS_PASSWORD;
+//   const from = "PLUSXM";
 
-  const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
-    from
-  )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
+//   const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
+//     from
+//   )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
 
-  try {
-    const response = await axios.get(baseUrl);
+//   try {
+//     const response = await axios.get(baseUrl);
 
-    if (response.data) {
-      return { status: 1, msg: response.data };
-    }
-  } catch (err) {
-    return { status: 0, msg: err.message, code: err.status };
-  }
+//     if (response.data) {
+//       return { status: 1, msg: response.data };
+//     }
+//   } catch (err) {
+//     return { status: 0, msg: err.message, code: err.status };
+//   }
+// };
+
+const templateObj = {
+    34: "{#var#} is your OTP to login to PlusX Electric App. Valid for 10 minutes. Do not share this OTP with anyone.",
+
+    35: "{#var#} is your OTP to sign up on PlusX Electric App. Valid for 10 minutes. Do not share this OTP with anyone.",
+
+    38: "{#var#} is your OTP to close the ride on PlusX Electric App. Valid for 10 minutes."
 };
 
+const createOTPPayload = (mobile, templateId, otp) => {
+
+    const template = templateObj[templateId];
+
+    if (!template) {
+        throw new Error("Invalid templateId");
+    }
+
+    const message = template.replace("{#var#}", otp);
+
+    return [{
+        apiToken: "NWZ9wfo5ybKoZnBQ",
+        messageType: "3",
+        messageEncoding: "0",
+        destinationAddress: mobile,
+        sourceAddress: "PLUSX",
+        messageText: message,
+        dltEntityId: 43,
+        dltEntityTemplateId: String(templateId)
+    }];
+};
+
+
+// Send OTP function
+export const sendOtp = async ( mobile, templateId, otp ) => {
+
+    try {
+        const payload = createOTPPayload( mobile, templateId, otp );
+       console.log("=payload",payload)
+        const response = await axios.post(
+            process.env.SMS_API_URL,
+            payload,
+            {
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                timeout: 10000
+            }
+        );
+
+        return {
+            status: 1,
+            code: 200,
+            data: response.data,
+            message: ["OTP sent successfully"]
+        };
+
+    } catch (err) {
+
+        console.error(
+            "SMS Error:",
+            err.response?.data ||
+            err.message
+        );
+
+        return {
+            status: 0,
+            code: 500,
+            data: null,
+            message: [
+                err.response?.data?.message ||
+                "Failed to send OTP"
+            ]
+        };
+    }
+};
 
 /* Format Timings */
 export const v1getOpenAndCloseTimings = (data) => {
@@ -953,28 +1027,76 @@ export function decryptFromBase64(encoded) {
   return Buffer.from(encoded, "base64").toString("utf8");
 }
 
-export const sendNotification = async ( type, payload = {}, created_by, receive_id, image = '' ) => {
-    try {
-        const template = NOTIFICATION_CONTENT[type];
-        if (!template) {
-            throw new Error(`Notification type "${type}" not found`);
-        }
-        const heading = typeof template.heading === "function" ? template.heading(payload) : template.heading;
-        const desc    = typeof template.desc === "function" ? template.desc(payload) : template.desc;
+// createNotification(heading, desc, 'mobility', 'Rider', 'Admin', rider_id,rider_id, href); 
 
-        const href   = typeof template.href === "function" ? template.href(payload) : template.href;
-        const result = await insertRecord('notifications', 
-            [
-                'heading', 'description', 'module_name', 'panel_to', 'panel_from', 'created_by', 'receive_id', 'status', 'href_url'
-            ], [
-                heading, desc,  template.module_name, template.panel_to, template.panel_from, created_by, receive_id, '0', href
-            ]
-        );
-        return result.affectedRows > 0 ?true:false;
-    } catch (err) {
-        console.log("sendNotification error:", err.message);
-        return false;
+
+// export const sendNotification  = async(type, payload = {},module_name,to,from,created_by,receive_id,image='') => {
+//   const template = NOTIFICATION_CONTENT[type];
+
+
+//   if (!template) {
+//     throw new Error(`Notification type "${type}" not found`);
+//   }
+
+// const  heading= template.heading;
+//     const desc= typeof template.desc === "function"? template.desc(payload): template.desc;
+//     const href= typeof template.href === "function"
+//       ? template.href(payload)
+//       : template.href
+
+//     const result = await insertRecord('notifications', [
+//     'heading', 'description', 'module_name', 'panel_to', 'panel_from', 'created_by', 'receive_id', 'status', 'href_url'
+//   ],[
+//     heading, desc, module_name, panel_to, panel_from, created_by, receive_id, '0', href_url
+//   ]);
+//    return {
+//     affectedRows: result.affectedRows
+//   };
+
+
+// };
+
+
+export const sendNotification = async (
+  type,
+  payload = {},
+  created_by,
+  receive_id,
+  image = ''
+) => {
+  try {
+    const template = NOTIFICATION_CONTENT[type];
+    if (!template) {
+      throw new Error(`Notification type "${type}" not found`);
     }
+
+    const heading = typeof template.heading === "function"
+        ? template.heading(payload)
+        : template.heading;
+
+    const desc =
+      typeof template.desc === "function"
+        ? template.desc(payload)
+        : template.desc;
+
+    const href =
+      typeof template.href === "function"
+        ? template.href(payload)
+        : template.href;
+console.log(heading, desc,  template.module_name, template.panel_to, template.panel_from, created_by, receive_id, '0', href)
+         const result = await insertRecord('notifications', [
+    'heading', 'description', 'module_name', 'panel_to', 'panel_from', 'created_by', 'receive_id', 'status', 'href_url'
+  ],[
+    heading, desc,  template.module_name, template.panel_to, template.panel_from, created_by, receive_id, '0', href
+  ]);
+
+console.log("notification sent")
+
+    return result.affectedRows > 0 ?true:false;
+  } catch (err) {
+    console.error("sendNotification error:", err.message);
+    return false;
+  }
 };
 
 

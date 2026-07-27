@@ -528,6 +528,33 @@ export const startScanLockerOld = asyncHandler(async (req, resp) => {
   });
   if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
+  const [booking] = await db.execute(
+    `
+        SELECT status, created_at
+        FROM cycle_booking
+        WHERE rider_id = ?
+        AND (
+                status IN ('ON', 'END')
+                OR (status = 'PNR' AND created_at >= NOW() - INTERVAL 2 MINUTE)
+            )
+        `,
+    [rider_id],
+  );
+  if (booking.length > 0) {
+    const errContent = await queryDB(
+      `
+            SELECT content 
+            FROM response_content 
+            WHERE sub_module = ? AND module_name = ? `,
+      ["cycle-scan-error", "mobility-scan-booking"],
+    );
+    return resp.json({
+      status: 0,
+      code: 201,
+      error_type: "hold for 2 min",
+      message: [errContent.content || ""],
+    });
+  }
   const locker_available = await queryDB(
     `
         SELECT id 
@@ -555,13 +582,9 @@ export const startScanLockerOld = asyncHandler(async (req, resp) => {
             msl.address, 
             ct.name AS city
         FROM cycle_locker cl
-        JOIN mobility_station_list msl 
-        ON msl.station_id = cl.station_id
-        LEFT JOIN cities ct 
-        ON ct.city_id = msl.city_id
-        LEFT JOIN cycle_list clist 
-        ON clist.cycle_id = ? 
-        AND clist.lock_number = ?
+        JOIN mobility_station_list msl ON msl.station_id = cl.station_id
+        LEFT JOIN cities ct ON ct.city_id = msl.city_id
+        LEFT JOIN cycle_list cls ON cls.cycle_id = ? AND cls.lock_number = ?
         WHERE cl.station_id = ?
         ORDER BY cl.id DESC 
         LIMIT 1`,
@@ -1794,8 +1817,7 @@ export const completeLockerQrOld = asyncHandler(async (req, resp) => {
   }
   await updateRecord(
     "cycle_list",
-    // { status: 1, lock_number: lock_number, device_status: 0 },
-    { status: 1, lock_number: lock_number, cycle_state: 0 },
+    { status: 1, lock_number: lock_number, device_status: 0 },
     ["cycle_id"],
     [cycle_id],
   );

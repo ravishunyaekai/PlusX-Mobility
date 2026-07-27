@@ -39,6 +39,7 @@ const adminRoutes = [
     { method: 'post',   path: '/cycle-booking-list',         handler: cycleBookingList },
     { method: 'post',   path: '/city-list',                  handler: getCityList },
     { method: 'post',   path: '/station-list',               handler: getStationList },
+    // { method: 'post',   path: '/add-coupon',                 handler: addCoupon },
     { method: 'post',   path: '/cycle-booking-details',      handler: cycleBookingDetails },
     { method: 'post',   path: '/cycle-booking-history',      handler: cycleBookinghistory },
     { method: 'post',   path: '/cycle-price-detail',         handler: cyclePrice },
@@ -47,9 +48,12 @@ const adminRoutes = [
     { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
     { method: 'post',   path: '/add-refund-comment',              handler: addRefundComment },
     { method: 'post',   path: '/issue-cycle-booking-detail', handler: IssuecycleBookingDetails },
-    { method: 'post',   path: '/refund-request-description-list',        handler: RefundRequestDescription },
-    { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
+    { method: 'post',   path: '/issue-status-update',        handler: IssueBookingUpdate },
+    { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
+    { method: 'post', path: '/approve-refund-request',       handler: approveRefundRequest },
 
+
+    
     { method: 'post',   path: '/issue-comments-list',        handler: IssuecycleBookingComments },
     { method: 'post',   path: '/issue-comments-add',        handler: addBookingComment },
 

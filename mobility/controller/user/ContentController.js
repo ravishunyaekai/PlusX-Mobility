@@ -9,19 +9,14 @@ dotenv.config();
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 
 export const userTransactionList = asyncHandler(async (req, resp) => {
-  try {
-    const {
-      rider_id,
-      page_no = 1,
-      start_date = "",
-      end_date = "",
-      limit = "",
-      transaction_type = "",
-    } = req.body;
-    const { isValid, errors } = validateFields(req.body, {
-      rider_id: ["required"],
-    });
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+    try {
+        const { 
+            rider_id, page_no = 1, start_date = '', end_date = '', limit = "", transaction_type = "" 
+        } = req.body;
+        const { isValid, errors } = validateFields(req.body, { 
+            rider_id : ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const params = {
       tableName: "transaction_history",
