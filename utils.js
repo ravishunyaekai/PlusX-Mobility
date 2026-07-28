@@ -92,11 +92,20 @@ export const delOTP = (key) => {
 //   const username = process.env.SMS_USERNAME;
 //   const password = process.env.SMS_PASSWORD;
 //   const from = "PLUSXM";
+// export const sendOtp = async (mobile, otpMsg) => {
+//   const username = process.env.SMS_USERNAME;
+//   const password = process.env.SMS_PASSWORD;
+//   const from = "PLUSXM";
 
 //   const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
 //     from
 //   )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
+//   const baseUrl = `https://api.smsglobal.com/http-api.php?action=sendsms&user=${username}&password=${password}&from=${encodeURIComponent(
+//     from
+//   )}&to=${mobile}&text=${encodeURIComponent(otpMsg)}`;
 
+//   try {
+//     const response = await axios.get(baseUrl);
 //   try {
 //     const response = await axios.get(baseUrl);
 

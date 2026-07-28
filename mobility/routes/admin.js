@@ -5,7 +5,7 @@ import { notificationList } from "../controller/admin/AuthController.js";
 
 import { handleFileUpload } from "../../fileUpload.js";
 
-import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, RefundRequestList, addRefundComment, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, RefundRequestDescription, cycleOnOff, lockerOpen, approveRefundRequest } from "../controller/admin/CycleController.js";
+import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, RefundRequestList, addRefundComment, RefundRequestList, addRefundComment, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, RefundRequestDescription, RefundRequestDescription, cycleOnOff, lockerOpen, approveRefundRequest, approveRefundRequest } from "../controller/admin/CycleController.js";
 
 import { AddMobilityStation, deletemobilityStation, editMobilityStation, mobilityStaionListforselectBox, mobilitystationDetails, mobilitystationList, stationlistforlockAssign } from "../controller/admin/MobilitystationController.js";
 
@@ -40,11 +40,15 @@ const adminRoutes = [
     { method: 'post',   path: '/city-list',                  handler: getCityList },
     { method: 'post',   path: '/station-list',               handler: getStationList },
     // { method: 'post',   path: '/add-coupon',                 handler: addCoupon },
+    { method: 'post',   path: '/city-list',                  handler: getCityList },
+    { method: 'post',   path: '/station-list',               handler: getStationList },
     { method: 'post',   path: '/cycle-booking-details',      handler: cycleBookingDetails },
     { method: 'post',   path: '/cycle-booking-history',      handler: cycleBookinghistory },
     { method: 'post',   path: '/cycle-price-detail',         handler: cyclePrice },
     { method: 'post',   path: '/failed-cycle-booking-list',  handler: FaildcycleBookingList },
     { method: 'post',   path: '/issue-cycle-booking-list',   handler: IssuecycleBookingList },
+    { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
+    { method: 'post',   path: '/add-refund-comment',              handler: addRefundComment },
     { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
     { method: 'post',   path: '/add-refund-comment',              handler: addRefundComment },
     { method: 'post',   path: '/issue-cycle-booking-detail', handler: IssuecycleBookingDetails },

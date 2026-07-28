@@ -11,6 +11,7 @@ import bcrypt from "bcryptjs";
 import { io } from "../../server.js";
 import { newcreateCustomer } from "../../mobility/controller/razorpay/razorpay.js";
 import Razorpay from "razorpay";
+import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 

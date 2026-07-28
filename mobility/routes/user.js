@@ -6,8 +6,8 @@ import { apiAuthentication } from '../../middleware/apiAuthenticationMiddleware.
 import {bookingList, cycleBookingDetail, routeLogs, fetchRouteLogs} from "../controller/user/RiderController.js";
 
 import {
-    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, requestRefund, feedbackBooking, stationLockerUpdate,
-    stationLockerRandomDataUpdate
+    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, requestRefund, requestRefund, feedbackBooking, stationLockerUpdate,
+    stationLockerRandomDataUpdate, stationLockerUpdate
 } from "../controller/user/BookingController.js";
 
 import { cycleStationDetails, cycleStationList, nearByStaion, nearByStaionDetails } from "../controller/user/MobilityStationController.js";
@@ -68,6 +68,8 @@ const authzRoutes = [
     { method: 'post', path: '/locker-update', handler: lockerUpdate },
     { method: 'post', path: '/station-locker-update',   handler: stationLockerUpdate },
     { method: 'post', path: '/station-locker-update-random-data',   handler: stationLockerRandomDataUpdate },
+
+    { method: 'post', path: '/station-locker-update',   handler: stationLockerUpdate },
 
 ];
 authzRoutes.forEach(({ method, path, handler }) => {

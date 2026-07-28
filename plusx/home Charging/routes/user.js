@@ -47,7 +47,7 @@ const authzAndAuthRoutes = [
    /* Portable charger */
     { method: 'get',  path: '/portable-charger-list',            handler: chargerList },
     { method: 'post', path: '/portable-charger-booking',         handler: chargerBooking },
-        { method: 'post', path: '/create-portable-charger-invoice',     handler: portableChargerInvoice },
+    { method: 'post', path: '/create-portable-charger-invoice',     handler: portableChargerInvoice },
     { method: 'get',  path: '/portable-charger-booking-list',    handler: chargerBookingList },
     { method: 'get',  path: '/portable-charger-booking-detail',  handler: chargerBookingDetail },
     { method: 'get',  path: '/portable-charger-slot-list',       handler: getPcSlotList },

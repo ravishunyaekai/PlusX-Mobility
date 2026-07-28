@@ -584,6 +584,7 @@ export const startScanLockerOld = asyncHandler(async (req, resp) => {
         FROM cycle_locker cl
         JOIN mobility_station_list msl ON msl.station_id = cl.station_id
         LEFT JOIN cities ct ON ct.city_id = msl.city_id
+        LEFT JOIN cities ct ON ct.city_id = msl.city_id
         LEFT JOIN cycle_list cls ON cls.cycle_id = ? AND cls.lock_number = ?
         WHERE cl.station_id = ?
         ORDER BY cl.id DESC 

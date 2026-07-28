@@ -25,13 +25,10 @@ dotenv.config();
 import cron from 'node-cron';
 
 const app  = express();
-
 const PORT = process.env.PORT || 3333;
 
 import { Server } from 'socket.io'; 
 import http from 'http';
-// import { testFunction } from './plusx/controller/TestController.js';
-// import mqqtClient from './mqtt/index.js';
 import { razorpayWebhook } from './common/controller/webhookController.js';
 import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
 import { cronjobAddMoney, mobilitynotification, deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
