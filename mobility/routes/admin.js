@@ -118,4 +118,6 @@ adminRoutes.forEach(({ method, path, handler }) => {
 
     router[method](path, ...middlewares, handler);
 });
+    // { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
+// router.post('/approve-refund-request',approveRefundRequest)
 export default router;

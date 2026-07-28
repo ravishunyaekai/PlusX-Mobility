@@ -1,96 +1,110 @@
 export const NOTIFICATION_CONTENT = {
-    USER_ON_GOING: {
-        heading:({ booking_id }) => `Ride Started : ${booking_id}`,
-        desc: 'Your ride has started successfully',
-        href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    ADMIN_ON_GOING: {
-        heading: "Ride Started",
-        desc: ({ booking_id }) => `New ride started- ${booking_id}`,
-        href: ({ booking_id }) => `ride/ride-booking-details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Admin",
-        panel_from: "Rider"
-    },
-    USER_STOP_RIDE: {
-        heading: "Ride Stopped Successfully",
-        desc: ({ booking_id }) => `Booking ID: ${booking_id}`,
-        href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    ADMIN_STOP_RIDE: {
-      heading: "Ride Stopped Successfully",
-      desc: ({ booking_id }) => `Booking ID: ${booking_id}`,
-      href: ({ booking_id }) => `/mobility/ride/ride-booking-details/${booking_id}`,
-      module_name: "mobility",
-      panel_to: "Admin",
-      panel_from: "Rider"
-    },
-    ADMIN_COMPLETE_RIDE: {
-        heading: "Ride Completed",
-        desc: ({ booking_id }) => `Ride completed - ${booking_id} `,
-        href: ({ booking_id }) => `/mobility/ride/ride-booking-details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Admin",
-        panel_from: "Rider"
-    },
-    USER_COMPLETE_RIDE: {
-        heading:({ booking_id }) => `Ride ID: ${booking_id}`,
-        desc: ({ amount }) => `Your ride is complete. Please pay now for smooth future rides.`, //INR ${amount} has been deducted from your wallet.`,
-        href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    USER_COMPLETE_RIDES: {
-        heading:({ booking_id }) => `Ride ID: ${booking_id}`,
-        desc: ({ amount }) => `INR ${amount} amount has been deducted from the security deposit.`, //INR ${amount} has been deducted from your wallet.`,
-        href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    //user home charger booking
-    USER_POD_CONFIRM: {
-        heading: "Portable Charging Booking!",
-        desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
-        href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
-        module_name: "Portable Charging Booking",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    ADMIN_POD_CONFIRM: {
-        heading: "Portable Charging Booking!",
-        desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
-        href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
-        module_name: "Portable Charging Booking",
-        panel_to: "Admin",
-        panel_from: "Rider"
-    },
-    ADMIN_FEEDBACK_RECEIVED: {
-        heading: "New Feedback Received",
-        desc: ({ booking_id}) => `Booking ID: ${booking_id} - The user has shared feedback for this booking.`,
-        href: ({ booking_id }) =>`ride/ride-booking-details/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Admin",
-        panel_from: "Rider"
-    },
-    SECURITY_DEPOSIT_DEDUCT_NOTIFICATION: {
-        heading:"Payment Deducted",
-        desc:({ amount }) =>`₹${amount} deducted from your security deposit.`,
-        href:({ booking_id }) => `mobility_booking_details/${booking_id}`,
-        module_name:"mobility",
-        panel_to:"Rider",
-        panel_from: "Admin"
-    },
-    USER_RIDE_COMPLETE_EMAIL:{
-        subject:({ booking_id }) => `Ride ID ${booking_id}: Your PlusX Mobility Ride Is Complete`,
-        content:({ rider_name,booking_id, cycle_id, pick_time,drop_time,time_taken,amount }) =>`
+  USER_ON_GOING: {
+    heading: ({ booking_id }) => `Ride Started : ${booking_id}`,
+    desc: "Your ride has started successfully",
+    href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  ADMIN_ON_GOING: {
+    heading: "Ride Started",
+    desc: ({ booking_id }) => `New ride started- ${booking_id}`,
+    href: ({ booking_id }) => `ride/ride-booking-details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  USER_STOP_RIDE: {
+    heading: "Ride Stopped Successfully",
+    desc: ({ booking_id }) => `Booking ID: ${booking_id}`,
+    href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  ADMIN_STOP_RIDE: {
+    heading: "Ride Stopped Successfully",
+    desc: ({ booking_id }) => `Booking ID: ${booking_id}`,
+    href: ({ booking_id }) =>
+      `/mobility/ride/ride-booking-details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  ADMIN_COMPLETE_RIDE: {
+    heading: "Ride Completed",
+    desc: ({ booking_id }) => `Ride completed - ${booking_id} `,
+    href: ({ booking_id }) =>
+      `/mobility/ride/ride-booking-details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  USER_COMPLETE_RIDE: {
+    heading: ({ booking_id }) => `Ride ID: ${booking_id}`,
+    // desc: ({ amount }) => `Your ride is complete. Please pay now for smooth future rides.`, //INR ${amount} has been deducted from your wallet.`,
+    desc: ({ amount }) => `Your ride has been completed successfully. ₹${amount} has been deducted from your wallet.`, //INR ${amount} has been deducted from your wallet.`,
+    href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  USER_COMPLETE_RIDES: {
+    heading: ({ booking_id }) => `Ride ID: ${booking_id}`,
+    // desc: ({ amount }) => `INR ${amount} amount has been deducted from the security deposit.`, //INR ${amount} has been deducted from your wallet.`,
+    desc: ({ amount }) => `Your ride has been completed successfully. ₹${amount} has been deducted from your wallet.`, //INR ${amount} has been deducted from your wallet.`,
+    href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  //user home charger booking
+  USER_POD_CONFIRM: {
+    heading: "Portable Charging Booking!",
+    desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
+    href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
+    module_name: "Portable Charging Booking",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  ADMIN_POD_CONFIRM: {
+    heading: "Portable Charging Booking!",
+    desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
+    href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
+    module_name: "Portable Charging Booking",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  ADMIN_FEEDBACK_RECEIVED: {
+    heading: "New Feedback Received",
+    desc: ({ booking_id }) =>
+      `Booking ID: ${booking_id} - The user has shared feedback for this booking.`,
+    href: ({ booking_id }) => `ride/ride-booking-details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  SECURITY_DEPOSIT_DEDUCT_NOTIFICATION: {
+    heading: "Payment Deducted",
+    desc: ({ amount }) => `₹${amount} deducted from your security deposit.`,
+    href: ({ booking_id }) => `mobility_booking_details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  USER_RIDE_COMPLETE_EMAIL: {
+    subject: ({ booking_id }) =>
+      `Ride ID ${booking_id}: Your PlusX Mobility Ride Is Complete`,
+    content: ({
+      rider_name,
+      booking_id,
+      cycle_id,
+      pick_time,
+      drop_time,
+      time_taken,
+      amount,
+    }) => `
             <html> 
                 <body> <h4>Hi ${rider_name} ,</h4>
                     <p>Your ride has been completed successfully. Below are the details of your trip :</p>
@@ -107,11 +121,21 @@ export const NOTIFICATION_CONTENT = {
                     <p>Team PlusX Mobility </p>
                 <body>
             </html>
-        `
-    },
-    ADMIN_RIDE_START_EMAIL:{
-        subject:({ booking_id }) => `New Cycle Ride Booked - Ride ID  ${booking_id} `,
-        content:({ booking_id,rider_name, rider_mobile , cycle_id, cycle_pick_time,pickup_station, latitude,longitude }) =>`
+        `,
+  },
+  ADMIN_RIDE_START_EMAIL: {
+    subject: ({ booking_id }) =>
+      `New Cycle Ride Booked - Ride ID  ${booking_id} `,
+    content: ({
+      booking_id,
+      rider_name,
+      rider_mobile,
+      cycle_id,
+      cycle_pick_time,
+      pickup_station,
+      latitude,
+      longitude,
+    }) => `
             <html> 
                 <body> 
                     <h4>Dear Admin, </h4>
@@ -133,81 +157,67 @@ export const NOTIFICATION_CONTENT = {
                     <p>Team PlusX Mobility </p>
                 <body>
             </html>
-        `
-    },
+        `,
+  },
+  MOBILITY_REFUND_REQ_CANCELLED: {
+    subject: () => `Update on Your Security Deposit Refund Request `,
+    content: ({ rider_name }) => `
+            <html> 
+                <body> 
+                    <h4>Dear ${rider_name}, </h4>
+                    <p>
+                        We have reviewed your security deposit refund request.
+                    </p>
+                    <p>
+                        After deducting any outstanding amount and the 3% processing fee, the remaining refundable amount is less than INR 60. Therefore, the amount is not eligible for a refund.
+                    </p>
 
-    REFUND_REQUEST_REJECTED_EMAIL: {
-    subject: () => `Security Deposit Refund Request Update`,
-    content: ({
-        rider_name,
-        security_deposit,
-        outstanding_amount,
-        refund_amount
-    }) => `
-        <p>Dear ${rider_name},</p>
+                    <p>Thank you for your understanding.</p>
+                    <p>Best regards,</p>
+                    <p>PlusX Mobility Team</p>
+                <body>
+            </html>
+        `,
+  },
+  //***************Home EV Charging - Notification & Email Content*********************** */
+  USER_HOME_CHARGER_CONFIRM_NOTIFICATION: {
+    heading: `Home EV Charging Booking!`,
+    desc: ({ booking_id }) => `Booking Confirmed! ${booking_id}`,
+    href: ({ booking_id }) => `portable_charger_booking/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  ADMIN_FAILED_BOOKING: {
+    heading: "Incomplete Booking",
+    desc: ({ booking_id }) => `Booking ID: ${booking_id}`,
+    href: ({ booking_id }) =>
+      `ride/ride-incomplete-booking-details/${booking_id}`,
+    module_name: "mobility",
+    panel_to: "Admin",
+    panel_from: "Rider",
+  },
+  REFUND_AMOUNT_WALLET: {
+    heading: "Refund Credited",
+    desc: ({ amount }) => `₹${amount} added to your wallet.`,
+    href: ({ riderId }) => `user_wallet/${riderId}`,
+    module_name: "user_wallet",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
+  USER_REFUND_APPROVED: {
+    heading: "Refund Successful!",
+    desc: ({ amount }) =>
+      `₹${amount} has been refunded to your linked account.`,
+    href: ({ rider_id }) => `refund_details/${rider_id}`,
+    module_name: "refund_request",
+    panel_to: "Rider",
+    panel_from: "Admin",
+  },
 
-        <p>
-            We regret to inform you that your security deposit refund request could not be processed.
-        </p>
-
-        <p>
-            <strong>Security Deposit:</strong> ₹${security_deposit}<br/>
-            <strong>Outstanding Amount:</strong> ₹${outstanding_amount}<br/>
-            <strong>Refundable Amount:</strong> ₹${refund_amount}
-        </p>
-
-        <p>
-            After adjusting the outstanding balance and applicable processing charges,
-            the refundable amount does not meet the minimum refund eligibility criteria.
-        </p>
-
-        <p>
-            If you have any questions, please contact our support team.
-        </p>
-
-        <p>
-            Regards,<br/>
-            PlusX Mobility Team
-        </p>
-    `
-},
-    //***************Home EV Charging - Notification & Email Content*********************** */
-    USER_HOME_CHARGER_CONFIRM_NOTIFICATION :{
-        heading:`Home EV Charging Booking!`,
-        desc: ({ booking_id }) => `Booking Confirmed! ${booking_id}`,
-        href: ({ booking_id }) => `portable_charger_booking/${booking_id}`,
-        module_name: "mobility",
-        panel_to: "Rider",
-        panel_from: "Admin"
-    },
-    ADMIN_FAILED_BOOKING: {
-        heading     : "Incomplete Booking",
-        desc        : ({ booking_id }) => `Booking ID: ${booking_id}`,
-        href        : ({ booking_id }) => `ride/ride-incomplete-booking-details/${booking_id}`,
-        module_name : "mobility",
-        panel_to    : "Admin",
-        panel_from  : "Rider"
-    },
-    REFUND_AMOUNT_WALLET: {
-        heading     : "Refund Credited",
-        desc        : ({ amount }) => `₹${amount} added to your wallet.`,
-        href        : ({ riderId }) => `user_wallet/${riderId}`,
-        module_name : "user_wallet",
-        panel_to    : "Rider",
-        panel_from  : "Admin"
-    },
-    USER_REFUND_APPROVED: {
-    heading     : "Refund Successful!",
-    desc        : ({ amount }) => `₹${amount} has been refunded to your linked account.`,
-    href        : ({ rider_id }) => `refund_details/${rider_id}`,
-    module_name : "refund_request",
-    panel_to    : "Rider",
-    panel_from  : "Admin"
-    },
-
-    PAYMENT_SUCCESS_EMAIL: {
-        subject: ({ booking_id }) =>`PlusX Mobility Ride Payment Confirmation`,
-        content: ({rider_name,amount,booking_id,cycle_id,time_taken}) => `
+  PAYMENT_SUCCESS_EMAIL: {
+    subject: ({ booking_id }) => `PlusX Mobility Ride Payment Confirmation`,
+    content: ({ rider_name, amount, booking_id, cycle_id, time_taken }) => `
         <html>
                 <body>
                     <h4>Hi ${rider_name},</h4>
@@ -236,13 +246,13 @@ export const NOTIFICATION_CONTENT = {
                     </p>
                 </body>
             </html>
-        `
-    },
+        `,
+  },
 
-
-    SECURITY_DEPOSIT_DEDUCT_EMAIL: {
-    subject: ({ booking_id }) =>`PlusX Mobility- Ride Payment Deducted from Security Deposit`,
-    content: ({rider_name,amount,booking_id,cycle_id,time_taken}) => `
+  SECURITY_DEPOSIT_DEDUCT_EMAIL: {
+    subject: ({ booking_id }) =>
+      `PlusX Mobility- Ride Payment Deducted from Security Deposit`,
+    content: ({ rider_name, amount, booking_id, cycle_id, time_taken }) => `
     <html>
         <body>
             <p>Hi ${rider_name},</p>
@@ -271,21 +281,21 @@ export const NOTIFICATION_CONTENT = {
 
         </body>
     </html>
-    `
-},
+    `,
+  },
 
-SECURITY_DEPOSIT_DEDUCT_EMAILS: {
+  SECURITY_DEPOSIT_DEDUCT_EMAILS: {
     subject: () =>
-        `PlusX Mobility - Ride Payment Deducted from Security Deposit`,
+      `PlusX Mobility - Ride Payment Deducted from Security Deposit`,
 
     content: ({
-        rider_name,
-        amount,
-        booking_id,
-        cycle_id,
-        time_taken,
-        pick_time,
-        drop_time
+      rider_name,
+      amount,
+      booking_id,
+      cycle_id,
+      time_taken,
+      pick_time,
+      drop_time,
     }) => `
     <html>
         <body>
@@ -325,8 +335,6 @@ SECURITY_DEPOSIT_DEDUCT_EMAILS: {
 
         </body>
     </html>
-    `
-},
+    `,
+  },
 };
-
-

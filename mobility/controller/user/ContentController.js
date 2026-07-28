@@ -1,130 +1,152 @@
 import moment from "moment-timezone";
 import db from "../../../config/indiadb.js";
 import validateFields from "../../../validation.js";
-import { getPaginatedData, queryDB } from '../../../dbUtils.js';  //,  updateRecord 
-import { formatDateTimeInQuery, asyncHandler }from '../../../utils.js';
+import { getPaginatedData, queryDB } from "../../../dbUtils.js"; //,  updateRecord
+import { formatDateTimeInQuery, asyncHandler } from "../../../utils.js";
 
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 
 export const userTransactionList = asyncHandler(async (req, resp) => {
-    try {
-        const { 
-            rider_id, page_no = 1, start_date = '', end_date = '', limit = "", transaction_type = "" 
-        } = req.body;
-        const { isValid, errors } = validateFields(req.body, { 
-            rider_id : ["required"],
-        });
-        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+  try {
+    const {
+      rider_id,
+      page_no = 1,
+      start_date = "",
+      end_date = "",
+      limit = "",
+      transaction_type = "",
+    } = req.body;
+    const { isValid, errors } = validateFields(req.body, {
+      rider_id: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-        const params = {
-            tableName  : 'transaction_history',
-            columns    : `order_id, current_balance, outstanding, amount, payment_type, ${formatDateTimeInQuery(['created_at'])}`,
-            sortColumn : 'created_at', 
-            sortOrder  : 'DESC',
-            page_no,
-            limit            : limit == "" ? 10 : limit,
-            liveSearchFields : [],
-            liveSearchTexts  : [],
-            whereField       : ['rider_id'],
-            whereValue       : [rider_id],
-            whereOperator    : ["="],
-        };
-        if (start_date ){
-            const startDate = moment(start_date, "YYYY-MM-DD", "Asia/Kolkata")
-                               .startOf("day").subtract(5.5, 'hours'); 
-             
-            params.whereField.push('created_at' );
-            params.whereValue.push(startDate.format("YYYY-MM-DD HH:mm:ss") );
-            params.whereOperator.push('>=');
-        }
-        if (end_date ) {
-            const endDate = moment(end_date, "YYYY-MM-DD", "Asia/Kolkata")
-                            .endOf("day").subtract(5.5, 'hours');
-            
-            params.whereField.push('created_at' );
-            params.whereValue.push(endDate.format("YYYY-MM-DD HH:mm:ss") );
-            params.whereOperator.push('<=');
-        }   
-        if(transaction_type) {
-            const filterOject =  { RC : "debt", WC : "crd", RBW : "fn_refund" };
+    const params = {
+      tableName: "transaction_history",
+      columns: `order_id, current_balance, outstanding, amount, payment_type, ${formatDateTimeInQuery(["created_at"])}`,
+      sortColumn: "created_at",
+      sortOrder: "DESC",
+      page_no,
+      limit: limit == "" ? 10 : limit,
+      liveSearchFields: [],
+      liveSearchTexts: [],
+      whereField: ["rider_id"],
+      whereValue: [rider_id],
+      whereOperator: ["="],
+    };
+    if (start_date) {
+      const startDate = moment(start_date, "YYYY-MM-DD", "Asia/Kolkata")
+        .startOf("day")
+        .subtract(5.5, "hours");
 
-            params.whereField.push( 'payment_type' );
-            params.whereValue.push(filterOject[transaction_type]);
-            params.whereOperator.push( '=' );
-        }
-        const result = await getPaginatedData(params);
-        const typeOject =  { 
-            crd : "Security Deposit", debt : "Ride", refund : "Refund Credited", sd_refund : "SD Refunded", fn_refund : "Refund", csd : "Security Deposit", 
-        };
-        const grouped = result.data.reduce((acc, item) => {
-            const date = moment(item.created_at).format('YYYY-MM-DD');
-            if (!acc[date]) {
-                acc[date] = [];
-            }
-            // Transform item
-            const formattedItem = {
-                ride_id     : (item.payment_type == 'debt' || item.payment_type == 'crd' ) ? item.order_id : "",
-                amount       : item.amount,
-                payment_type : typeOject[item.payment_type] || item.payment_type,
-                time         : item.created_at.split(" ")[1]
-            };
-            acc[date].push(formattedItem);
-            return acc;
-        }, {});
-                    console.log("result",result.data)
+      params.whereField.push("created_at");
+      params.whereValue.push(startDate.format("YYYY-MM-DD HH:mm:ss"));
+      params.whereOperator.push(">=");
+    }
+    if (end_date) {
+      const endDate = moment(end_date, "YYYY-MM-DD", "Asia/Kolkata")
+        .endOf("day")
+        .subtract(5.5, "hours");
 
-        // Convert to sorted array format
-        const finalData = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a)).map(date => ({
-            date         : date,
-            transactions : grouped[date]
-        }));
-        const [responseContent] = await db.execute(`
+      params.whereField.push("created_at");
+      params.whereValue.push(endDate.format("YYYY-MM-DD HH:mm:ss"));
+      params.whereOperator.push("<=");
+    }
+    if (transaction_type) {
+      const filterOject = { RC: "debt", WC: "crd", RBW: "fn_refund" };
+
+      params.whereField.push("payment_type");
+      params.whereValue.push(filterOject[transaction_type]);
+      params.whereOperator.push("=");
+    }
+    const result = await getPaginatedData(params);
+    const typeOject = {
+      crd: "Security Deposit",
+      debt: "Ride",
+      refund: "Refund Credited",
+      sd_refund: "SD Refunded",
+      fn_refund: "Refund",
+      csd: "Security Deposit",
+    };
+    const grouped = result.data.reduce((acc, item) => {
+      const date = moment(item.created_at).format("YYYY-MM-DD");
+      if (!acc[date]) {
+        acc[date] = [];
+      }
+      // Transform item
+      const formattedItem = {
+        ride_id:
+          item.payment_type == "debt" || item.payment_type == "crd"
+            ? item.order_id
+            : "",
+        amount: item.amount,
+        payment_type: typeOject[item.payment_type] || item.payment_type,
+        time: item.created_at.split(" ")[1],
+      };
+      acc[date].push(formattedItem);
+      return acc;
+    }, {});
+    console.log("result", result.data);
+
+    // Convert to sorted array format
+    const finalData = Object.keys(grouped)
+      .sort((a, b) => new Date(b) - new Date(a))
+      .map((date) => ({
+        date: date,
+        transactions: grouped[date],
+      }));
+    const [responseContent] = await db.execute(
+      `
             SELECT content 
             FROM response_content 
-            WHERE module_name = ? and status = 1 `, ['mobility-wallet']
-        );
-        let contentArray = responseContent.map(row => { return row.content; });
-        //let walletMessage = contentArray.join(" ");
-        let walletMessage = "";
+            WHERE module_name = ? and status = 1 `,
+      ["mobility-wallet"],
+    );
+    let contentArray = responseContent.map((row) => {
+      return row.content;
+    });
+    //let walletMessage = contentArray.join(" ");
+    let walletMessage = "";
 
-        const riderData = await queryDB(`
+    const riderData = await queryDB(
+      `
             SELECT r.out_standing_cost, r.amount, c.min_wallet_price FROM riders r 
-            LEFT JOIN country c ON c.country_id = r.country_id WHERE rider_id = ? `, [ rider_id ] 
-        );
-        const walletAmount = Number(riderData?.amount || 0);
+            LEFT JOIN country c ON c.country_id = r.country_id WHERE rider_id = ? `,
+      [rider_id],
+    );
+    const walletAmount = Number(riderData?.amount || 0);
 
-        const outstandingAmount = Number(riderData?.out_standing_cost || 0);
- 
-        const minWalletBalance = Number(riderData?.min_wallet_price || 0);
-        if(walletAmount < 0){
-        const debtAmount = Math.abs(walletAmount);
+    const outstandingAmount = Number(riderData?.out_standing_cost || 0);
 
-        const requiredAmount = debtAmount + minWalletBalance;
+    const minWalletBalance = Number(riderData?.min_wallet_price || 0);
+    if (walletAmount < 0) {
+      const debtAmount = Math.abs(walletAmount);
 
-        walletMessage =`INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
+      const requiredAmount = debtAmount + minWalletBalance;
+
+      walletMessage =
+        `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
         `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
-
-        } else if  (walletAmount < minWalletBalance){
-
-          walletMessage = contentArray[0] || "";
-
-        }
-        return resp.json({
-            status            : 1,
-            code              : 200,
-            message           : ["User Transaction List fetched successfully!"],
-            current_bal       : parseFloat( riderData?.amount || 0 ).toFixed(2),
-            out_standing_cost : parseFloat(riderData?.out_standing_cost || 0).toFixed(2),
-            data              : finalData,
-            total_page        : result.totalPage,
-            total             : result.total,
-            content           : walletMessage, 
-        });
-    } catch (error) {
-        console.error('Error Transaction List:', error);
-        tryCatchErrorHandler('Transaction List', error, resp );
+    } else if (walletAmount < minWalletBalance) {
+      walletMessage = contentArray[0] || "";
     }
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["User Transaction List fetched successfully!"],
+      current_bal: parseFloat(riderData?.amount || 0).toFixed(2),
+      out_standing_cost: parseFloat(riderData?.out_standing_cost || 0).toFixed(
+        2,
+      ),
+      data: finalData,
+      total_page: result.totalPage,
+      total: result.total,
+      content: walletMessage,
+    });
+  } catch (error) {
+    console.error("Error Transaction List:", error);
+    tryCatchErrorHandler("Transaction List", error, resp);
+  }
 });
- 

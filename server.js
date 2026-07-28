@@ -30,7 +30,7 @@ const PORT = process.env.PORT || 3333;
 import { Server } from 'socket.io'; 
 import http from 'http';
 import { razorpayWebhook } from './common/controller/webhookController.js';
-import {  deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
+import { deductOutstandingAmount } from './mobility/controller/user/cronjobController.js';
 import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,6 +39,7 @@ const __dirname = path.dirname(__filename);
 const corsOptions = {
     origin : [
         'http://localhost:2425',
+        'http://localhost:3000',
         'https://plusxmobility.shunyaekai.com',
         'https://swapping.shunyaekai.com',
     ],
