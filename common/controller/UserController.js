@@ -827,19 +827,26 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     html,
   );
 
-  sendOtp(fullMobile, 35, otp)
-    .then((result) => {
-      if (result.status === 0) return resp.json(result);
-      return resp.json({
+  return resp.json({
         status: 1,
         code: 200,
-        data: "",
+        data: otp,
         message: ["OTP sent successfully!"],
       });
-    })
-    .catch((err) => {
-      tryCatchErrorHandler(req.originalUrl, err, resp, "Failed to send OTP");
-    });
+
+  // sendOtp(fullMobile, 35, otp)
+  //   .then((result) => {
+  //     if (result.status === 0) return resp.json(result);
+  //     return resp.json({
+  //       status: 1,
+  //       code: 200,
+  //       data: "",
+  //       message: ["OTP sent successfully!"],
+  //     });
+  //   })
+  //   .catch((err) => {
+  //     tryCatchErrorHandler(req.originalUrl, err, resp, "Failed to send OTP");
+  //   });
 });
 
 export const register = asyncHandler(async (req, resp) => {
@@ -1095,27 +1102,27 @@ export const createOTP = asyncHandler(async (req, resp) => {
     html,
   );
 
-  // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+   return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 
-  //   sendOtp(
-  //     fullMobile,
-  //     `Your OTP for login is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`,
-  //   )
-  sendOtp(fullMobile, 34, otp)
-    .then((result) => {
-      if (result.status === 0) return resp.json(result);
-      return resp.json({
-        status: 1,
-        code: 200,
-        data: "",
-        message: ["OTP sent successfully!"],
-      });
-    })
-    .catch((err) => {
-      console.error("Error in otpController:", err.message);
-      return resp.json({ status: "error", msg: "Failed to send OTP" });
-    });
-  //return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+//   //   sendOtp(
+//   //     fullMobile,
+//   //     `Your OTP for login is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`,
+//   //   )
+//   sendOtp(fullMobile, 34, otp)
+//     .then((result) => {
+//       if (result.status === 0) return resp.json(result);
+//       return resp.json({
+//         status: 1,
+//         code: 200,
+//         data: "",
+//         message: ["OTP sent successfully!"],
+//       });
+//     })
+//     .catch((err) => {
+//       console.error("Error in otpController:", err.message);
+//       return resp.json({ status: "error", msg: "Failed to send OTP" });
+//     });
+//   //return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 });
 
 export const verifyOTP = asyncHandler(async (req, resp) => {

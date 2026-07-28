@@ -2322,22 +2322,22 @@ export const manualRideCreateOTPOld = asyncHandler(async (req, resp) => {
     html,
   );
 
-  // return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
+  return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
 
-  sendOtp(fullMobile, 38, otp)
-    .then((result) => {
-      if (result.status === 0) return resp.json(result);
-      return resp.json({
-        status: 1,
-        code: 200,
-        data: "",
-        message: ["OTP sent to the station operator for verification"],
-      });
-    })
-    .catch((err) => {
-      console.log("Error in otpController:", err.message);
-      return resp.json({ status: "error", msg: "Failed to send OTP" });
-    });
+  // sendOtp(fullMobile, 38, otp)
+  //   .then((result) => {
+  //     if (result.status === 0) return resp.json(result);
+  //     return resp.json({
+  //       status: 1,
+  //       code: 200,
+  //       data: otp,
+  //       message: ["OTP sent to the station operator for verification"],
+  //     });
+  //   })
+  //   .catch((err) => {
+  //     console.log("Error in otpController:", err.message);
+  //     return resp.json({ status: "error", msg: "Failed to send OTP" });
+  //   });
 });
 
 export const manualRideCreateOTP = asyncHandler(async (req, resp) => {
@@ -2435,20 +2435,20 @@ export const manualRideCreateOTP = asyncHandler(async (req, resp) => {
       return resp.json(result);
     }
 
-    return resp.json({
-      status: 1,
-      code: 200,
-      data: "",
-      message: ["OTP sent to the station operator for verification"],
-    });
-
-    // Uncomment for testing
     // return resp.json({
     //   status: 1,
     //   code: 200,
-    //   otp,
+    //   data: "",
     //   message: ["OTP sent to the station operator for verification"],
     // });
+
+    // Uncomment for testing
+    return resp.json({
+      status: 1,
+      code: 200,
+      otp,
+      message: ["OTP sent to the station operator for verification"],
+    });
   } catch (err) {
     console.error("Error in manualRideCreateOTP:", err);
 
