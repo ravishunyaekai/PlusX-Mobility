@@ -138,7 +138,7 @@ const client = mqtt.connect(process.env.MQTT_URL, {
         retain  : true
     }
 });
-console.log("Testing server code update: 27th July 2026 (Mobility new flow of security depost and refund request)")
+console.log("\n AFTER COMPARISION:- Testing server code update: 27th July 2026 (Mobility new flow of security depost and refund request)")
 
 client.on('connect', () => {
     console.log('mqtt Connected');
