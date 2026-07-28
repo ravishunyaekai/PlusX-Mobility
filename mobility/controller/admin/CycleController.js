@@ -21,10 +21,8 @@ import validateFields from "../../../validationForAdmin.js";
 import moment from "moment";
 import db from "../../../config/indiadb.js";
 import client from "../../../server.js";
-import Razorpay from "razorpay";
 import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
 import Razorpay from "razorpay";
-import { NOTIFICATION_CONTENT } from '../../../common/controller/notificationContent.js';
 import emailQueue from "../../../emailQueue.js";
 
 

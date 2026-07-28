@@ -7,7 +7,6 @@ import  db  from "../../config/indiadb.js";
 import emailQueue from "../../emailQueue.js";
 import { insertRecord, queryDB, updateRecord } from "../../dbUtils.js";
 import { NOTIFICATION_CONTENT } from "../../common/controller/notificationContent.js";
-import { NOTIFICATION_CONTENT } from "../../common/controller/notificationContent.js";
 import { verifyPayment } from "../../mobility/controller/razorpay/razorpay.js";
 import dotenv from "dotenv";
 dotenv.config();

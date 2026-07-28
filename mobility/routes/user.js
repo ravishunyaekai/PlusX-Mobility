@@ -6,7 +6,7 @@ import { apiAuthentication } from '../../middleware/apiAuthenticationMiddleware.
 import {bookingList, cycleBookingDetail, routeLogs, fetchRouteLogs} from "../controller/user/RiderController.js";
 
 import {
-    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, requestRefund, requestRefund, feedbackBooking, stationLockerUpdate,
+    startScanCycleQr, stopeRide, startScanLocker, completeCycleQr, completeLockerQr, lockerAvailable, lockerUpdate, manualRideCreateOTP, nearByStaionLocker, manualVerifyOTP, startBooking, havingIssueBooking, requestRefund, feedbackBooking,
     stationLockerRandomDataUpdate, stationLockerUpdate
 } from "../controller/user/BookingController.js";
 
