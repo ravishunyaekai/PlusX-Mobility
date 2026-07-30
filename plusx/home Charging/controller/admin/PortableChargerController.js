@@ -1,7 +1,7 @@
 import db from '../../../../config/indiadb.js';
 import dotenv from 'dotenv';
 import moment from 'moment';
-import { mergeParam, asyncHandler, convertTo24HourFormat, formatDateInQuery, createNotification, pushNotification, deleteFile, formatDateTimeInQuery} from '../../../../utils.js';
+import { mergeParam, asyncHandler, convertTo24HourFormat, formatDateInQuery, createNotification, pushNotification, deleteFile, formatDateTimeInQuery } from '../../../../utils.js';
 import { queryDB, getPaginatedData, insertRecord, updateRecord } from '../../../../dbUtils.js';
 import validateFields from "../../../../validation.js";
 import generateUniqueId from 'generate-unique-id';
@@ -10,34 +10,34 @@ dotenv.config();
 
 export const chargerList = async (req, resp) => {
     try {
-        const {rider_id, page_no, search_text = '' } = req.body;
-    const { isValid, errors } = validateFields(req.body, {page_no: ["required"]});
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        const { rider_id, page_no, search_text = '' } = req.body;
+        const { isValid, errors } = validateFields(req.body, { page_no: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const result = await getPaginatedData({
-        tableName: 'portable_charger',
-        columns: 'charger_id, charger_name, charger_price, charger_feature, image, charger_type, status',
-        sortColumn: 'created_at',
-        sortOrder: 'DESC',
-        page_no,
-        limit: 10,
-        liveSearchFields: ['charger_id', 'charger_name'],
-        liveSearchTexts: [search_text, search_text],
-        whereField: 'status',
-        whereValue: 1
-    });
+        const result = await getPaginatedData({
+            tableName: 'portable_charger',
+            columns: 'charger_id, charger_name, charger_price, charger_feature, image, charger_type, status',
+            sortColumn: 'created_at',
+            sortOrder: 'DESC',
+            page_no,
+            limit: 10,
+            liveSearchFields: ['charger_id', 'charger_name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: 'status',
+            whereValue: 1
+        });
 
-    const [slotData] = await db.execute(`SELECT slot_id, start_time, end_time, booking_limit FROM portable_charger_slot WHERE status = ?`, [1]);
+        const [slotData] = await db.execute(`SELECT slot_id, start_time, end_time, booking_limit FROM portable_charger_slot WHERE status = ?`, [1]);
 
-    return resp.json({
-        status     : 1,
-        code       : 200,
-        message    : ["Portable Charger List fetch successfully!"],
-        data       : result.data,
-        slot_data  : slotData,
-        total_page : result.totalPage,
-        total      : result.total,
-    });
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Portable Charger List fetch successfully!"],
+            data: result.data,
+            slot_data: slotData,
+            total_page: result.totalPage,
+            total: result.total,
+        });
     } catch (error) {
         console.error('Error fetching charger list:', error);
         resp.json({ message: 'Error fetching charger lists' });
@@ -60,18 +60,18 @@ export const chargerDetails = async (req, resp) => {
             FROM 
                 portable_charger 
             WHERE 
-                charger_id = ?`, 
+                charger_id = ?`,
             [charger_id]
         );
-        console.log('image',chargerDetails[0].image)
+        console.log('image', chargerDetails[0].image)
 
         return resp.json({
             status: 1,
             code: 200,
             message: ["Portable Charger Details fetched successfully!"],
             data: chargerDetails[0],
-            base_url    : `${process.env.DIR_UPLOADS}charger-images/`
-            
+            base_url: `${process.env.DIR_UPLOADS}charger-images/`
+
         });
     } catch (error) {
         console.error('Error fetching charger details:', error);
@@ -84,29 +84,29 @@ export const addCharger = async (req, resp) => {
         const { charger_name, charger_price, charger_feature, charger_type, status = 1 } = req.body;
         const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : null;
 
-        const { isValid, errors } = validateFields({ 
+        const { isValid, errors } = validateFields({
             charger_name, charger_price, charger_feature, charger_image, charger_type
         }, {
             charger_name: ["required"],
             charger_price: ["required"],
             charger_feature: ["required"],
-            charger_image: ["required"], 
+            charger_image: ["required"],
             charger_type: ["required"]
         });
 
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
         const last = await queryDB(`SELECT id FROM portable_charger ORDER BY id DESC LIMIT 1`);
         const start = last ? last.id : 0;
         const nextId = start + 1;
         const chargerId = 'PCGR' + String(nextId).padStart(4, '0');
-    
+
         const insert = await insertRecord('portable_charger', [
             'charger_id', 'charger_name', 'charger_price', 'charger_feature', 'image', 'charger_type', 'status'
-        ],[
+        ], [
             chargerId, charger_name, charger_price, charger_feature, charger_image, charger_type, status
         ]);
-    
+
         return resp.json({
             code: 200,
             message: insert.affectedRows > 0 ? ['Charger added successfully!'] : ['Oops! Something went wrong. Please try again.'],
@@ -130,13 +130,13 @@ export const editCharger = async (req, resp) => {
             status: ["required"]
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        
+
         const charger = await queryDB(`SELECT image FROM portable_charger WHERE charger_id = ?`, [charger_id]);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not edit, or invalid charger Id"});
-        
+        if (!charger) return resp.json({ status: 0, message: "Charger Data can not edit, or invalid charger Id" });
+
         const charger_image = req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.image;
 
-        const updates = { charger_name, charger_price, charger_feature, charger_type, status, image : charger_image };
+        const updates = { charger_name, charger_price, charger_feature, charger_type, status, image: charger_image };
         const update = await updateRecord('portable_charger', updates, ['charger_id'], [charger_id]);
 
         deleteFile('charger-images', charger.image);
@@ -155,18 +155,18 @@ export const editCharger = async (req, resp) => {
 
 export const deleteCharger = async (req, resp) => {
     try {
-        const { charger_id } = req.body; 
+        const { charger_id } = req.body;
         const { isValid, errors } = validateFields(req.body, { charger_id: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const charger = await queryDB(`SELECT image FROM portable_charger WHERE charger_id = ?`, [charger_id]);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not be deleted, or invalid"});
-        
+        if (!charger) return resp.json({ status: 0, message: "Charger Data can not be deleted, or invalid" });
+
         const [del] = await db.execute(`DELETE FROM portable_charger WHERE charger_id = ?`, [charger_id]);
         deleteFile('charger-images', charger.image);
 
         return resp.json({
-            code:200,
+            code: 200,
             message: del.affectedRows > 0 ? ['Charger deleted successfully!'] : ['Oops! Something went wrong. Please try again.'],
             status: del.affectedRows > 0 ? 1 : 0
         });
@@ -179,75 +179,77 @@ export const deleteCharger = async (req, resp) => {
 export const chargerBookingList = async (req, resp) => {
     try {
         const { page_no, booking_id, name, contact, status, start_date, end_date, search_text = '', scheduleFilters, areaSelected, rowSelected } = req.body;
-
-        const { isValid, errors } = validateFields(req.body, { page_no : ["required"] });
+        console.log(req.body);
+        console.log(req.query);
+        console.log(mergeParam(req));
+        const { isValid, errors } = validateFields(req.body, { page_no: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const params = {
-            tableName : 'portable_charger_booking',
-            columns   : `city,booking_id, rider_id, user_name, status, address_alert, rescheduled_booking, 
+            tableName: 'portable_charger_booking',
+            columns: `city,booking_id, rider_id, user_name, status, address_alert, rescheduled_booking, 
             (select rsa_name from rsa where rsa.rsa_id = portable_charger_booking.rsa_id) as rsa_name, 
                 ${formatDateInQuery(['slot_date'])}, concat(slot_date, " ", slot_time) as slot_time, ${formatDateTimeInQuery(['created_at'])}, area`,
-            sortColumn : 'created_at DESC,slot_date DESC, slot_time ASC',
-            sortOrder  : '',
+            sortColumn: 'created_at DESC,slot_date DESC, slot_time ASC',
+            sortOrder: '',
             page_no,
-            limit            : rowSelected || 10,
-            liveSearchFields : ['booking_id', 'user_name' ],
-            liveSearchTexts  : [search_text, search_text ],
-            whereField       : ['status'],
-            whereValue       : ['PNR'],
-            whereOperator    : ["!="],
+            limit: rowSelected || 10,
+            liveSearchFields: ['booking_id', 'user_name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: ['status'],
+            whereValue: ['PNR'],
+            whereOperator: ["!="],
             // whereValue       : ['exp'],
             // whereOperator    : ["!="]
         };
 
         if (start_date && end_date) {
-            
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                        
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
-            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
+            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
         }
         if (scheduleFilters.start_date && scheduleFilters.end_date) {
-            
+
             const schStart = moment(scheduleFilters.start_date).format("YYYY-MM-DD");
             const schEnd = moment(scheduleFilters.end_date, "YYYY-MM-DD").format("YYYY-MM-DD");
-            
+
             params.whereField.push('slot_date', 'slot_date');
             params.whereValue.push(schStart, schEnd);
             params.whereOperator.push('>=', '<=');
         }
-        if(status) {
+        if (status) {
             params.whereField.push('status');
             params.whereValue.push(status);
             params.whereOperator.push('=');
         }
-        if(areaSelected) {
+        if (areaSelected) {
             params.whereField.push('area');
             params.whereValue.push(areaSelected);
             params.whereOperator.push('=');
         }
         const result = await getPaginatedData(params);
-
+        console.log("\nresult", result.data);
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Portable Charger Booking List fetched successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Portable Charger Booking List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching charger booking list:', error);
@@ -260,7 +262,7 @@ export const chargerBookingDetails = async (req, resp) => {
         const { booking_id } = req.body;
 
         if (!booking_id) {
-            return resp.json({ status : 0, code : 400, message : ['Booking ID is required.'] });
+            return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
         }
         const [[bookingResult]] = await db.execute(`
             SELECT 
@@ -272,12 +274,12 @@ export const chargerBookingDetails = async (req, resp) => {
             FROM 
                 portable_charger_booking 
             WHERE 
-                booking_id = ?`, 
+                booking_id = ?`,
             [booking_id]
-        ); 
+        );
         if (bookingResult.length === 0) {
-            return resp.json({ status : 0, code : 404, message : ['Booking not found.'] });
-        } 
+            return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
+        }
         // if(bookingResult.vehicle_data == '' || bookingResult.vehicle_data == null) {
         //     const vehicledata = await queryDB(`
         //         SELECT                 
@@ -299,17 +301,17 @@ export const chargerBookingDetails = async (req, resp) => {
             FROM 
                 portable_charger_history 
             WHERE 
-                booking_id = ? order by id asc`, 
+                booking_id = ? order by id asc`,
             [booking_id]
         );
-        const history        = bookingHistory ;
+        const history = bookingHistory;
         const order_status = history.filter(item => item.order_status === 'CNF');
-        if(order_status.length > 1) {
+        if (order_status.length > 1) {
 
             const matchingIndexes = history.map((item, index) => item.order_status === 'CNF' ? index : -1)
                 .filter(index => index !== -1);
 
-            const lastValue                 = matchingIndexes[matchingIndexes.length - 1];
+            const lastValue = matchingIndexes[matchingIndexes.length - 1];
             history[lastValue].order_status = 'RSB'
         }
         bookingResult.imageUrl = `${process.env.DIR_UPLOADS}portable-charger/`;
@@ -320,24 +322,24 @@ export const chargerBookingDetails = async (req, resp) => {
                 portable_charger_booking_feedback 
             WHERE 
                 booking_id = ?
-            LIMIT 1`, 
-        [booking_id]);
+            LIMIT 1`,
+            [booking_id]);
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["Booking details fetched successfully!"],
-            data : {
-                booking : bookingResult,
+            status: 1,
+            code: 200,
+            message: ["Booking details fetched successfully!"],
+            data: {
+                booking: bookingResult,
                 history,
                 feedBack
-            }, 
+            },
         });
     } catch (error) {
         console.error('Error fetching booking details:', error);
-        return resp.json({ 
-            status  : 0, 
-            code    : 500, 
-            message : 'Error fetching booking details' 
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: 'Error fetching booking details'
         });
     }
 };
@@ -353,51 +355,51 @@ export const invoiceList = async (req, resp) => {
 
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-        const whereFields    = []
-        const whereValues    = []
+        const whereFields = []
+        const whereValues = []
         const whereOperators = []
 
         if (start_date && end_date) {
-            
-            const startToday         = new Date(start_date);
+
+            const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                       
-            const givenStartDateTime    = startFormattedDate+' 00:00:01';
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
             const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
-            const start                 = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
-            const endToday         = new Date(end_date);
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
+            const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
-    
+            const end = formattedEndDate + ' 19:59:59';
+
             whereFields.push('created_at', 'created_at');
             whereValues.push(start, end);
             whereOperators.push('>=', '<=');
         }
         const result = await getPaginatedData({
-            tableName : 'portable_charger_invoice',
-            columns   : `invoice_id, amount, payment_status, invoice_date, currency, 
+            tableName: 'portable_charger_invoice',
+            columns: `invoice_id, amount, payment_status, invoice_date, currency, 
                 (select concat(user_name, ",", country_code, "-", contact_no) from portable_charger_booking as pcb where pcb.booking_id = portable_charger_invoice.request_id limit 1)
                 AS riderDetails`,
-            sortColumn : 'invoice_date',
-            sortOrder  : 'DESC',
+            sortColumn: 'invoice_date',
+            sortOrder: 'DESC',
             page_no,
-            limit            : 10,
-            liveSearchFields : ['invoice_id'],
-            liveSearchTexts  : [search_text],
-            whereField       : whereFields,
-            whereValue       : whereValues,
-            whereOperator    : whereOperators
+            limit: 10,
+            liveSearchFields: ['invoice_id'],
+            liveSearchTexts: [search_text],
+            whereField: whereFields,
+            whereValue: whereValues,
+            whereOperator: whereOperators
         });
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Portable Charger Invoice List fetched successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Portable Charger Invoice List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching invoice list:', error);
@@ -422,75 +424,75 @@ export const invoiceDetails = async (req, resp) => {
         WHERE pci.invoice_id = ?
     `, [invoice_id]);
 
-    const today       = moment('2025-07-17').format("YYYY-MM-DD");
+    const today = moment('2025-07-17').format("YYYY-MM-DD");
     const bookingdate = moment(data.created_at).format("YYYY-MM-DD");
 
     data.kw = 25;
-    if( bookingdate > today) {
-        let chargeLevel       = data.end_charging_level - data.start_charging_level;
-        const chargingPercent =  Math.floor(( chargeLevel ) * 36) / 100;
+    if (bookingdate > today) {
+        let chargeLevel = data.end_charging_level - data.start_charging_level;
+        const chargingPercent = Math.floor((chargeLevel) * 36) / 100;
 
-        data.kw        = chargeLevel + chargingPercent ;
+        data.kw = chargeLevel + chargingPercent;
     }
     // data.kw           = 25;
-    data.kw_dewa_amt  = data.kw * 0.44;
-    data.kw_cpo_amt   = data.kw * 0.26;
-    data.delv_charge  = (parseFloat( data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt) ); 
-    data.dis_price    = 0;
-    if(data.discount > 0){
-        if ( data.discount != parseFloat(100) ) {  
-            const dis_price = ( parseFloat( data.booking_price) * data.discount ) ;
-            const total_amt = parseFloat( data.booking_price) - dis_price;  
+    data.kw_dewa_amt = data.kw * 0.44;
+    data.kw_cpo_amt = data.kw * 0.26;
+    data.delv_charge = (parseFloat(data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt));
+    data.dis_price = 0;
+    if (data.discount > 0) {
+        if (data.discount != parseFloat(100)) {
+            const dis_price = (parseFloat(data.booking_price) * data.discount);
+            const total_amt = parseFloat(data.booking_price) - dis_price;
 
-            data.dis_price  = dis_price ;
-            data.t_vat_amt  = Math.floor(( total_amt ) * 185) ; 
-            data.price      = total_amt + data.t_vat_amt;
+            data.dis_price = dis_price;
+            data.t_vat_amt = Math.floor((total_amt) * 185);
+            data.price = total_amt + data.t_vat_amt;
 
         } else {
-            data.t_vat_amt  = Math.floor(( parseFloat( data.booking_price) ) * 18) ;
-            const total_amt  = parseFloat( parseFloat( data.booking_price)) + parseFloat( data.t_vat_amt ); 
+            data.t_vat_amt = Math.floor((parseFloat(data.booking_price)) * 18);
+            const total_amt = parseFloat(parseFloat(data.booking_price)) + parseFloat(data.t_vat_amt);
 
-            const dis_price = ( total_amt * data.discount);
-            data.dis_price  = dis_price;
-            data.price      = total_amt - dis_price;
+            const dis_price = (total_amt * data.discount);
+            data.dis_price = dis_price;
+            data.price = total_amt - dis_price;
         }
     } else {
-        data.t_vat_amt = ( ( parseFloat( data.booking_price) )  * 18)  ;
-        data.price     = parseFloat( data.booking_price) + data.t_vat_amt;
+        data.t_vat_amt = ((parseFloat(data.booking_price)) * 18);
+        data.price = parseFloat(data.booking_price) + data.t_vat_amt;
     }
     return resp.json({
-        message : ["Portable Charger Invoice Details fetched successfully!"],
-        data    : data,
-        status  : 1,
-        code    : 200,
+        message: ["Portable Charger Invoice Details fetched successfully!"],
+        data: data,
+        status: 1,
+        code: 200,
     });
 };
 
 /* Slot */
 export const slotList = async (req, resp) => {
     try {
-        const { page_no,  search_text = '', start_date, end_date} = req.body;
+        const { page_no, search_text = '', start_date, end_date } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
             page_no: ["required"]
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        let slot_date = moment().format("YYYY-MM-DD"); 
- 
+        let slot_date = moment().format("YYYY-MM-DD");
+
         const params = {
-            tableName  : 'portable_charger_slot',
-            columns    : `slot_id, slot_date, start_time, end_time, booking_limit, status, 
+            tableName: 'portable_charger_slot',
+            columns: `slot_id, slot_date, start_time, end_time, booking_limit, status, 
                 (SELECT COUNT(id) FROM portable_charger_booking AS pod WHERE pod.slot_time = portable_charger_slot.start_time AND pod.slot_date = portable_charger_slot.slot_date AND status NOT IN ("C")) AS slot_booking_count
             `,
-            sortColumn : 'slot_date DESC, start_time ASC',
-            sortOrder  : '',
+            sortColumn: 'slot_date DESC, start_time ASC',
+            sortOrder: '',
             page_no,
-            limit            : 10,
-            liveSearchFields : ['slot_id',],
-            liveSearchTexts  : [search_text,],
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : []
+            limit: 10,
+            liveSearchFields: ['slot_id',],
+            liveSearchTexts: [search_text,],
+            whereField: [],
+            whereValue: [],
+            whereOperator: []
         };
         if (start_date && end_date) {
             const start = moment(start_date, "YYYY-MM-DD").format("YYYY-MM-DD");
@@ -502,20 +504,20 @@ export const slotList = async (req, resp) => {
         }
         const result = await getPaginatedData(params);
         const formattedData = result.data.map((item) => ({
-            slot_id            : item.slot_id,
-            slot_date          : moment(item.slot_date, "DD-MM-YYYY").format('YYYY-MM-DD'),
-            booking_limit      : item.booking_limit,
-            status             : item.status,
-            slot_booking_count : item.slot_booking_count,
-            timing             : `${item.start_time} - ${item.end_time}`
+            slot_id: item.slot_id,
+            slot_date: moment(item.slot_date, "DD-MM-YYYY").format('YYYY-MM-DD'),
+            booking_limit: item.booking_limit,
+            status: item.status,
+            slot_booking_count: item.slot_booking_count,
+            timing: `${item.start_time} - ${item.end_time}`
         }));
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Portable Charger Slot List fetched successfully!"],
-            data       : formattedData,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Portable Charger Slot List fetched successfully!"],
+            data: formattedData,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching slot list:', error);
@@ -525,8 +527,8 @@ export const slotList = async (req, resp) => {
 
 export const slotDetails = async (req, resp) => {
     try {
-        const { slot_id, slot_date} = req.body;
-        const { isValid, errors } = validateFields(req.body, {slot_date: ["required"] });
+        const { slot_id, slot_date } = req.body;
+        const { isValid, errors } = validateFields(req.body, { slot_date: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const [slotDetails] = await db.execute(`
@@ -537,15 +539,15 @@ export const slotDetails = async (req, resp) => {
             FROM 
                 portable_charger_slot 
             WHERE 
-                slot_date = ?`, 
+                slot_date = ?`,
             [slot_date]
         );
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["Portable Charger Slot Details fetched successfully!"],
-            data    : slotDetails,
-            
+            status: 1,
+            code: 200,
+            message: ["Portable Charger Slot Details fetched successfully!"],
+            data: slotDetails,
+
         });
     } catch (error) {
         console.error('Error fetching slot list:', error);
@@ -558,25 +560,25 @@ export const addSlot = async (req, resp) => {
         const { slot_date, start_time, end_time, booking_limit, status = 1 } = req.body;
         const { isValid, errors } = validateFields(req.body, { slot_date: ["required"], start_time: ["required"], end_time: ["required"], booking_limit: ["required"], });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        
-        if ( !Array.isArray(start_time) || !Array.isArray(end_time) || !Array.isArray(booking_limit) || !Array.isArray(status)) {
+
+        if (!Array.isArray(start_time) || !Array.isArray(end_time) || !Array.isArray(booking_limit) || !Array.isArray(status)) {
             return resp.json({ status: 0, code: 422, message: 'Input data must be in array format.' });
         }
-        if ( start_time.length !== end_time.length || end_time.length !== booking_limit.length || booking_limit.length !== status.length) {
+        if (start_time.length !== end_time.length || end_time.length !== booking_limit.length || booking_limit.length !== status.length) {
             return resp.json({ status: 0, code: 422, message: 'All input arrays must have the same length.' });
         }
 
         const values = []; const placeholders = [];
         const fSlotDate = moment(slot_date, "DD-MM-YYYY").format("YYYY-MM-DD");
-        for (let i = 0; i < start_time.length; i++) {            
-            const slotId = `PTS${generateUniqueId({ length:6 })}`;
+        for (let i = 0; i < start_time.length; i++) {
+            const slotId = `PTS${generateUniqueId({ length: 6 })}`;
             values.push(slotId, fSlotDate, convertTo24HourFormat(start_time[i]), convertTo24HourFormat(end_time[i]), booking_limit[i], status[i]);
             placeholders.push('(?, ?, ?, ?, ?, ?)');
         }
-        
+
         const query = `INSERT INTO portable_charger_slot (slot_id, slot_date, start_time, end_time, booking_limit, status) VALUES ${placeholders.join(', ')}`;
         const [insert] = await db.execute(query, values);
-        
+
         return resp.json({
             code: 200,
             message: insert.affectedRows > 0 ? ['Slots added successfully!'] : ['Oops! Something went wrong. Please try again.'],
@@ -591,11 +593,11 @@ export const addSlot = async (req, resp) => {
 export const editSlot = asyncHandler(async (req, resp) => {
     const { slot_id, slot_date, start_time, end_time, booking_limit, status } = req.body;
     const { isValid, errors } = validateFields(req.body, {
-        slot_id       : ["required"],
-        slot_date     : ["required"],
-        start_time    : ["required"],
-        end_time      : ["required"],
-        booking_limit : ["required"],
+        slot_id: ["required"],
+        slot_date: ["required"],
+        start_time: ["required"],
+        end_time: ["required"],
+        booking_limit: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
@@ -613,7 +615,7 @@ export const editSlot = asyncHandler(async (req, resp) => {
     let errMsg = [];
 
     //  Fetch existing slots for the given date
-    const [existingSlots] = await db.execute("SELECT slot_id FROM portable_charger_slot WHERE slot_date = ?",[fSlotDate]);
+    const [existingSlots] = await db.execute("SELECT slot_id FROM portable_charger_slot WHERE slot_date = ?", [fSlotDate]);
     const existingSlotIds = existingSlots.map((slot) => slot.slot_id);
 
     // Determine slots to delete
@@ -621,7 +623,7 @@ export const editSlot = asyncHandler(async (req, resp) => {
 
     //Delete slots that are no longer needed
     for (let id of slotsToDelete) {
-        const [deleteResult] = await db.execute("DELETE FROM portable_charger_slot WHERE slot_id = ?", [id] );
+        const [deleteResult] = await db.execute("DELETE FROM portable_charger_slot WHERE slot_id = ?", [id]);
 
         if (deleteResult.affectedRows === 0) {
             errMsg.push(`Failed to delete slot with id ${id}.`);
@@ -679,9 +681,9 @@ export const editSlot = asyncHandler(async (req, resp) => {
 
 export const deleteSlot = async (req, resp) => {
     try {
-        const { slot_date } = req.body; 
-        console.log('slot_date',req.body.slot_date);
-        
+        const { slot_date } = req.body;
+        console.log('slot_date', req.body.slot_date);
+
 
         const { isValid, errors } = validateFields(req.body, {
             slot_date: ["required"]
@@ -704,39 +706,39 @@ export const deleteSlot = async (req, resp) => {
 
 /* Assign Booking */
 export const assignBooking = async (req, resp) => {
-    const {  rsa_id, booking_id  } = mergeParam(req);
-    const { isValid, errors }      = validateFields(mergeParam(req), {
-        rsa_id     : ["required"],
-        booking_id : ["required"],
+    const { rsa_id, booking_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rsa_id: ["required"],
+        booking_id: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-   
-    try{ 
-        const booking_data = await queryDB( `SELECT rider_id, rsa_id, slot_date, slot_time, (select fcm_token from riders as r where r.rider_id = portable_charger_booking.rider_id ) as fcm_token FROM portable_charger_booking WHERE booking_id = ?
-        `, [booking_id ] );
-    
+
+    try {
+        const booking_data = await queryDB(`SELECT rider_id, rsa_id, slot_date, slot_time, (select fcm_token from riders as r where r.rider_id = portable_charger_booking.rider_id ) as fcm_token FROM portable_charger_booking WHERE booking_id = ?
+        `, [booking_id]);
+
         if (!booking_data) {
             return resp.json({ message: `Sorry no booking found with this booking id ${booking_id}`, status: 0, code: 404 });
         }
         const rsa = await queryDB(`SELECT rsa_name, email, fcm_token FROM rsa WHERE rsa_id = ?`, [rsa_id]);
-        if(rsa_id == booking_data.rsa_id) {
+        if (rsa_id == booking_data.rsa_id) {
             return resp.json({ message: `The booking is already assigned to Driver Name ${rsa.rsa_name}. Would you like to assign it to another driver?`, status: 0, code: 404 });
         }
-        const slotDateTime = moment(booking_data.slot_date).format('YYYY-MM-DD') +' '+ booking_data.slot_time;
-        await insertRecord('portable_charger_booking_assign', 
+        const slotDateTime = moment(booking_data.slot_date).format('YYYY-MM-DD') + ' ' + booking_data.slot_time;
+        await insertRecord('portable_charger_booking_assign',
             ['order_id', 'rsa_id', 'rider_id', 'slot_date_time', 'status'], [booking_id, rsa_id, booking_data.rider_id, slotDateTime, 0]
         );
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id = ? AND rsa_id = ?`, [booking_id, booking_data.rsa_id]);
-        await updateRecord('portable_charger_booking', {rsa_id: rsa_id}, ['booking_id'], [booking_id]);
-       
-        const href    = 'portable_charger_booking/' + booking_id;
+        await updateRecord('portable_charger_booking', { rsa_id: rsa_id }, ['booking_id'], [booking_id]);
+
+        const href = 'portable_charger_booking/' + booking_id;
         const heading = 'Booking Assigned!';
-        const desc    = `Booking Assigned : ${booking_id}`; //`Your POD Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
+        const desc = `Booking Assigned : ${booking_id}`; //`Your POD Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
         // createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
         // /pushNotification(booking_data.fcm_token, heading, desc, 'RDRFCM', href);
 
         const heading1 = 'Portable Charging Booking!';
-        const desc1    = `Booking Assigned : ${booking_id}`;
+        const desc1 = `Booking Assigned : ${booking_id}`;
         createNotification(heading, desc1, 'Portable Charger', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
         pushNotification(rsa.fcm_token, heading1, desc1, 'RSAFCM', href);
 
@@ -751,20 +753,20 @@ export const assignBooking = async (req, resp) => {
             </body>
         </html>`;
         emailQueue.addEmail(rsa.email, 'PlusX Electric App: Booking Confirmation for Your Portable EV Charger', htmlDriver);
-        
-       
+
+
         return resp.json({
-            status  : 1, 
-            code    : 200,
-            message : "You have successfully assigned POD booking." 
+            status: 1,
+            code: 200,
+            message: "You have successfully assigned POD booking."
         });
 
-    } catch(err){
-        
+    } catch (err) {
+
         console.error("Transaction failed:", err);
-        return resp.json({status: 0, code: 500, message: "Oops! There is something went wrong! Please Try Again" });
+        return resp.json({ status: 0, code: 500, message: "Oops! There is something went wrong! Please Try Again" });
     } finally {
-        
+
     }
 };
 
@@ -772,8 +774,8 @@ export const assignBooking = async (req, resp) => {
 export const subscriptionList = asyncHandler(async (req, resp) => {
     const { page_no, start_date, end_date, search_text = '' } = req.body;
 
-    const whereFields    = []
-    const whereValues    = []
+    const whereFields = []
+    const whereValues = []
     const whereOperators = []
 
     if (start_date && end_date) {
@@ -785,21 +787,21 @@ export const subscriptionList = asyncHandler(async (req, resp) => {
         whereOperators.push('>=', '<=');
     }
     const result = await getPaginatedData({
-        tableName : 'portable_charger_subscriptions',
-        columns   : `subscription_id, amount, expiry_date, booking_limit, total_booking, payment_date,
+        tableName: 'portable_charger_subscriptions',
+        columns: `subscription_id, amount, expiry_date, booking_limit, total_booking, payment_date,
             (SELECT rider_name FROM riders AS r WHERE r.rider_id = portable_charger_subscriptions.rider_id LIMIT 1) AS rider_name,
             (SELECT country_code FROM riders AS r WHERE r.rider_id = portable_charger_subscriptions.rider_id LIMIT 1) AS country_code,
             (SELECT rider_mobile FROM riders AS r WHERE r.rider_id = portable_charger_subscriptions.rider_id LIMIT 1) AS rider_mobile
         `,
-        sortColumn       : 'id',
-        sortOrder        : 'DESC',
-        liveSearchFields : ['subscription_id'],
-        liveSearchTexts  : [search_text],
+        sortColumn: 'id',
+        sortOrder: 'DESC',
+        liveSearchFields: ['subscription_id'],
+        liveSearchTexts: [search_text],
         page_no,
-        limit         : 10,
-        whereField    : whereFields,
-        whereValue    : whereValues,
-        whereOperator : whereOperators
+        limit: 10,
+        whereField: whereFields,
+        whereValue: whereValues,
+        whereOperator: whereOperators
     });
 
     return resp.json({
@@ -809,7 +811,7 @@ export const subscriptionList = asyncHandler(async (req, resp) => {
         data: result.data,
         total_page: result.totalPage,
         total: result.total,
-    });    
+    });
 });
 
 export const subscriptionDetail = asyncHandler(async (req, resp) => {
@@ -825,17 +827,17 @@ export const subscriptionDetail = asyncHandler(async (req, resp) => {
         JOIN 
             riders r ON r.rider_id = pcs.rider_id
         WHERE 
-            pcs.subscription_id = ? `, 
-    [subscription_id]);
-      
+            pcs.subscription_id = ? `,
+        [subscription_id]);
 
-    return resp.json({status: 1, code: 200, data: subscription, message: "Subscription Detail fetch successfully!"});
+
+    return resp.json({ status: 1, code: 200, data: subscription, message: "Subscription Detail fetch successfully!" });
 });
 
 /* Admin Cancel Booking */
 export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
     const { rider_id, booking_id, reason } = req.body;
-    const { isValid, errors } = validateFields(req.body, {rider_id: ["required"], booking_id: ["required"], reason: ["required"]});
+    const { isValid, errors } = validateFields(req.body, { rider_id: ["required"], booking_id: ["required"], reason: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const checkOrder = await queryDB(`
@@ -850,7 +852,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
         WHERE 
             booking_id = ? AND rider_id = ? AND status IN ('CNF','A','ER') 
         LIMIT 1
-    `,[booking_id, rider_id]);
+    `, [booking_id, rider_id]);
 
     if (!checkOrder) {
         return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
@@ -859,23 +861,23 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
         'INSERT INTO portable_charger_history (booking_id, rider_id, order_status, rsa_id, cancel_by, cancel_reason) VALUES (?, ?, "C", ?, "Admin", ?)',
         [booking_id, rider_id, checkOrder.rsa_id, reason]
     );
-    if(insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
+    if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
 
-    await updateRecord('portable_charger_booking', {status : 'C'}, ['booking_id'], [booking_id]);
-    const href    = `portable_charger_booking/${booking_id}`;
-    const title   = 'Portable Charger Cancel!';
+    await updateRecord('portable_charger_booking', { status: 'C' }, ['booking_id'], [booking_id]);
+    const href = `portable_charger_booking/${booking_id}`;
+    const title = 'Portable Charger Cancel!';
     const message = `We regret to inform you that your portable charging booking (ID: ${booking_id}) has been cancelled by the admin.`;
-    await createNotification(title, message, 'Portable Charging', 'Rider', 'Rider',  rider_id, rider_id, href);
+    await createNotification(title, message, 'Portable Charging', 'Rider', 'Rider', rider_id, rider_id, href);
     await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
-    if(checkOrder.rsa_id) {
+    if (checkOrder.rsa_id) {
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id=? AND rider_id=?`, [booking_id, rider_id]);
         await db.execute('UPDATE rsa SET running_order = running_order - 1 WHERE rsa_id = ?', [checkOrder.rsa_id]);
 
         const message1 = `A Booking of the portable charging booking has been cancelled by admin with booking id : ${booking_id}`;
-        await createNotification(title, message1, 'Portable Charging', 'RSA', 'Rider', rider_id, checkOrder.rsa_id,  href);
+        await createNotification(title, message1, 'Portable Charging', 'RSA', 'Rider', rider_id, checkOrder.rsa_id, href);
         await pushNotification(checkOrder.rsa_fcm_token, title, message1, 'RSAFCM', href);
-    } 
+    }
 
     const html = `<html>
         <body>
@@ -916,56 +918,56 @@ export const customerChargerBookingList = async (req, resp) => {
         const { page_no, customerId, status, start_date, end_date, search_text = '', scheduleFilters } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
-            customerId : ["required"],
-            page_no : ["required"]
+            customerId: ["required"],
+            page_no: ["required"]
         });
-        
+
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const params = {
-            tableName : 'portable_charger_booking',
-            columns   : `booking_id, rider_id, rsa_id, charger_id, vehicle_id, service_name, service_price, service_type, user_name, country_code, contact_no, status, rescheduled_booking, 
+            tableName: 'portable_charger_booking',
+            columns: `booking_id, rider_id, rsa_id, charger_id, vehicle_id, service_name, service_price, service_type, user_name, country_code, contact_no, status, rescheduled_booking, 
             (select rsa_name from rsa where rsa.rsa_id = portable_charger_booking.rsa_id) as rsa_name, 
                 ${formatDateInQuery(['slot_date'])}, concat(slot_date, " ", slot_time) as slot_time, ${formatDateTimeInQuery(['created_at'])}`,
-            sortColumn : 'slot_date',
-            sortOrder  : 'DESC',
+            sortColumn: 'slot_date',
+            sortOrder: 'DESC',
             page_no,
             limit: 10,
-            liveSearchFields : ['booking_id', 'user_name', 'service_name'],
-            liveSearchTexts  : [search_text, search_text, search_text],
-            whereField       : ['rider_id', 'status'],
-            whereValue       : [customerId, 'PNR'],
-            whereOperator    : ['=', "!="]
+            liveSearchFields: ['booking_id', 'user_name', 'service_name'],
+            liveSearchTexts: [search_text, search_text, search_text],
+            whereField: ['rider_id', 'status'],
+            whereValue: [customerId, 'PNR'],
+            whereOperator: ['=', "!="]
         };
         if (start_date && end_date) {
-            
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                        
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
             const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
         }
         if (scheduleFilters.start_date && scheduleFilters.end_date) {
-            
+
             const schStart = moment(scheduleFilters.start_date).format("YYYY-MM-DD");
             const schEnd = moment(scheduleFilters.end_date, "YYYY-MM-DD").format("YYYY-MM-DD");
-            
+
             params.whereField.push('slot_date', 'slot_date');
             params.whereValue.push(schStart, schEnd);
             params.whereOperator.push('>=', '<=');
         }
-        if(status) {
+        if (status) {
             params.whereField.push('status');
             params.whereValue.push(status);
             params.whereOperator.push('=');
@@ -973,12 +975,12 @@ export const customerChargerBookingList = async (req, resp) => {
         const result = await getPaginatedData(params);
 
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Customer POD Booking List fetched successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Customer POD Booking List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching charger booking list:', error);
@@ -990,50 +992,50 @@ export const failedChargerBookingList = async (req, resp) => {
         const { page_no, start_date, end_date, search_text = '', scheduleFilters } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
-            page_no : ["required"]
+            page_no: ["required"]
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const params = {
-            tableName : 'failed_portable_charger_booking',
-            columns   : `booking_id, user_name, status, ${formatDateInQuery(['slot_date'])}, concat(slot_date, " ", slot_time) as slot_time, ${formatDateTimeInQuery(['created_at'])}`,
-            sortColumn : 'id',
-            sortOrder  : 'DESC',
+            tableName: 'failed_portable_charger_booking',
+            columns: `booking_id, user_name, status, ${formatDateInQuery(['slot_date'])}, concat(slot_date, " ", slot_time) as slot_time, ${formatDateTimeInQuery(['created_at'])}`,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
             page_no,
             limit: 10,
-            liveSearchFields : ['booking_id', 'user_name'],
-            liveSearchTexts  : [search_text, search_text],
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : [],          
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : []
+            liveSearchFields: ['booking_id', 'user_name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: [],
+            whereValue: [],
+            whereOperator: [],
+            whereField: [],
+            whereValue: [],
+            whereOperator: []
         };
         if (start_date && end_date) {
-            
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                       
-            const givenStartDateTime    = startFormattedDate+' 00:00:01';
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
             const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
         }
         if (scheduleFilters.start_date && scheduleFilters.end_date) {
-          
+
             const schStart = moment(scheduleFilters.start_date).format("YYYY-MM-DD");
-            const schEnd   = moment(scheduleFilters.end_date, "YYYY-MM-DD").format("YYYY-MM-DD");
-            
+            const schEnd = moment(scheduleFilters.end_date, "YYYY-MM-DD").format("YYYY-MM-DD");
+
             params.whereField.push('slot_date', 'slot_date');
             params.whereValue.push(schStart, schEnd);
             params.whereOperator.push('>=', '<=');
@@ -1041,12 +1043,12 @@ export const failedChargerBookingList = async (req, resp) => {
         const result = await getPaginatedData(params);
 
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Failed POD Booking List fetched successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Failed POD Booking List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching charger booking list:', error);
@@ -1058,36 +1060,36 @@ export const failedchargerBookingDetails = async (req, resp) => {
         const { booking_id } = req.body;
 
         if (!booking_id) {
-            return resp.json({ status : 0, code : 400, message : 'Booking ID is required.'});
-        } 
+            return resp.json({ status: 0, code: 400, message: 'Booking ID is required.' });
+        }
         const [[bookingResult]] = await db.execute(`
             SELECT 
                 booking_id, rider_id, ${formatDateTimeInQuery(['created_at'])}, user_name, country_code, contact_no, status, address, latitude, longitude, service_name, service_price, service_type, service_feature, ${formatDateInQuery(['slot_date'])}, slot_time, parking_number, parking_floor, vehicle_data
             FROM 
                 failed_portable_charger_booking 
             WHERE 
-                booking_id = ?`, 
+                booking_id = ?`,
             [booking_id]
-        ); 
+        );
         if (bookingResult.length === 0) {
             return resp.json({
-                status  : 0,
-                code    : 404,
-                message : 'Booking not found.',
+                status: 0,
+                code: 404,
+                message: 'Booking not found.',
             });
-        } 
+        }
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["failed Booking details fetched successfully!"],
-            data : bookingResult, 
+            status: 1,
+            code: 200,
+            message: ["failed Booking details fetched successfully!"],
+            data: bookingResult,
         });
     } catch (error) {
         console.error('Error fetching booking details:', error);
-        return resp.json({ 
-            status  : 0, 
-            code    : 500, 
-            message : 'Error fetching booking details' 
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: 'Error fetching booking details'
         });
     }
 };
@@ -1125,16 +1127,16 @@ export const AddChargingPackage = asyncHandler(async (req, resp) => {
             [package_name]
         );
 
-       console.log(checkPackage.length > 0);
+        console.log(checkPackage.length > 0);
         if (checkPackage.length > 0)
             return resp.json({
                 status: 0,
                 message: "Package already exists."
-        });
-        const [lastIdResult] = await db.execute( "SELECT IFNULL(MAX(id), 0) AS lastId FROM home_ev_charging_packages");
+            });
+        const [lastIdResult] = await db.execute("SELECT IFNULL(MAX(id), 0) AS lastId FROM home_ev_charging_packages");
 
         const package_id = `PKG${1401 + lastIdResult[0].lastId}`;
-        console.log("---------------",package_id)
+        console.log("---------------", package_id)
         const insert = await insertRecord(
             "home_ev_charging_packages",
             [

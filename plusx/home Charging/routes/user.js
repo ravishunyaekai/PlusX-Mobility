@@ -77,5 +77,6 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
+// router.post('/portable-charger-booking', chargerBooking);
 
 export default router;

@@ -102,4 +102,7 @@ adminRoutes.forEach(({ method, path, handler }) => {
 
     router[method](path, ...middlewares, handler);
 });
+// { method: 'post',   path: '/charger-booking-list',            handler: chargerBookingList },
+
+// router.post('/charger-booking-list', chargerBookingList);
 export default router;
