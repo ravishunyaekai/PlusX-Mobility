@@ -644,21 +644,21 @@ const getPodBatteryData = async (pod_id) => {
 // ye new bana hai 
 export const portableChargerInvoice = async (rider_id, request_id ) => {
     try {
-         const checkOrder = await queryDB(` 
+        const checkOrder = await queryDB(` 
             SELECT 
-                payment_intent_id, booking_price, 
+                payment_intent_id, service_price as booking_price, package_data, 
                 (SELECT coupan_percentage FROM coupon_usage as cu WHERE cu.booking_id = pod.booking_id LIMIT 1) AS discount
             FROM 
                 portable_charger_booking as pod
             WHERE 
                 pod.booking_id = ? AND pod.rider_id = ?
-            LIMIT 1
-        `,[request_id, rider_id]);
-
+            LIMIT 1 `, [ request_id, rider_id ]
+        );
         if (!checkOrder) {
             return { status : 0  };
         }
-        const payment_intent_id = checkOrder.payment_intent_id;
+        const { payment_intent_id, booking_price, discount, package_data } = checkOrder
+         
         const invoiceId         = request_id.replace('PCB', 'INVPC');
         const createObj = {
             invoice_id     : invoiceId,
@@ -671,25 +671,20 @@ export const portableChargerInvoice = async (rider_id, request_id ) => {
         if(payment_intent_id && payment_intent_id.trim() != '' ){
             const charge = await getPaymentDetails(payment_intent_id);
 
-           
-                        createObj.amount            = charge.amount ;  
-                        createObj.payment_intent_id = charge.id;  
-                        createObj.payment_method_id = '';  
-                        createObj.payment_cust_id   = charge.customer_id;  
-                        createObj.charge_id         = '';  
-                        createObj.transaction_id    = ""//charge.payment_method_details.card.three_d_secure?.transaction_id || null;  
-                        createObj.payment_type      = charge.method//charge.payment_method_details.type;  
-                        createObj.currency          = charge.currency;
-                        createObj.invoice_date      = moment.unix(charge.created_at).format('YYYY-MM-DD HH:mm:ss');
-                        createObj.receipt_url       = ''//charge.receipt_url;
-                        createObj.card_data         = charge;
-            
+            createObj.amount            = charge.amount ;  
+            createObj.payment_intent_id = charge.id;  
+            createObj.payment_method_id = null;
+            createObj.payment_cust_id   = charge.customer_id;  
+            createObj.charge_id         = null;
+            createObj.transaction_id    = null;
+            createObj.payment_type      = charge.method;
+            createObj.currency          = charge.currency;
+            createObj.invoice_date      = moment.unix(charge.created_at).format('YYYY-MM-DD HH:mm:ss');
+            createObj.receipt_url       = null;
+            createObj.card_data         = charge;
         }
-        let booking_price = parseFloat( checkOrder.booking_price) ;
-        if(checkOrder.current_percent == 0){
-            booking_price = parseFloat( checkOrder.booking_price) + parseFloat(checkOrder.additional_price); 
-        }
-        createObj.price_details = await makeInvoicePriceDetails(booking_price, checkOrder.discount) ;
+        // let bookingPrice       = parseFloat( booking_price);
+        createObj.price_details = await makeInvoicePriceDetails(booking_price, discount, package_data) ;
         const columns = Object.keys(createObj);
         const values  = Object.values(createObj);
         const insert  = await insertRecord('portable_charger_invoice', columns, values);
@@ -703,19 +698,11 @@ export const portableChargerInvoice = async (rider_id, request_id ) => {
     }
 };
 
-const makeInvoicePriceDetails = async (amount, discount) => {
+const makeInvoicePriceDetails = async (amount, discount, package_data) => {
 
-    let baseAmount      = Number(amount) || 0;
+    let baseAmount      = Number(amount)   || 0;
     let discountPercent = Number(discount) || 0;
-
-    const kwConsume = 25;
-    const dewaUnit  = 0.44;
-    const cpoUnit   = 0.26;
-
-    const kwDewaAmt      = kwConsume * dewaUnit;
-    const kwCpoAmt       = kwConsume * cpoUnit;
-    const deliveryCharge = baseAmount - (kwDewaAmt + kwCpoAmt);
-
+ 
     let discountAmt = 0;
     let vatAmount   = 0;
     let totalPrice  = 0;
@@ -740,12 +727,11 @@ const makeInvoicePriceDetails = async (amount, discount) => {
     const priceDetails = {
         amount          : baseAmount,
         discount_prcnt  : discountPercent,
-        kw_consume      : kwConsume,
-        dewa_unit_price : dewaUnit,
-        cpo_unit_price  : cpoUnit,
-        kw_dewa_amt     : kwDewaAmt,
-        kw_cpo_amt      : kwCpoAmt,
-        delivry_charge  : deliveryCharge,
+
+        kw_consume      : Number(package_data.charging_capacity) || 0,
+        price_per_unit  : Number(package_data.price_per_unit) || 0,
+        service_fee     : Number(package_data.service_fee) || 0,
+         
         discount_amt    : discountAmt,
         vat_amount      : vatAmount,
         total_price     : totalPrice
