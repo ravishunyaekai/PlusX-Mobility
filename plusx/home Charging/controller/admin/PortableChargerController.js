@@ -380,9 +380,19 @@ export const invoiceList = async (req, resp) => {
         }
         const result = await getPaginatedData({
             tableName: 'portable_charger_invoice',
-            columns: `invoice_id, amount, payment_status, invoice_date, currency, 
-                (select concat(user_name, ",", country_code, "-", contact_no) from portable_charger_booking as pcb where pcb.booking_id = portable_charger_invoice.request_id limit 1)
-                AS riderDetails`,
+            columns: `
+                invoice_id, 
+                amount, 
+                payment_status, 
+                invoice_date, 
+                currency, 
+                (
+                    select 
+                        concat(user_name, ",", country_code, "-", contact_no) 
+                    from portable_charger_booking as pcb 
+                    where pcb.booking_id = portable_charger_invoice.request_id 
+                    limit 1
+                ) AS riderDetails`,
             sortColumn: 'invoice_date',
             sortOrder: 'DESC',
             page_no,
@@ -407,14 +417,23 @@ export const invoiceList = async (req, resp) => {
     }
 };
 export const invoiceDetails = async (req, resp) => {
-    const { invoice_id } = req.body;
-    const { isValid, errors } = validateFields(req.body, { invoice_id: ["required"] });
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+    try {
+        const { invoice_id } = req.body;
+        console.log('invoice_id', invoice_id);
+        const { isValid, errors } = validateFields(req.body, { invoice_id: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const data = await queryDB(`
+        const data = await queryDB(`
         SELECT 
-            invoice_id, invoice_date, currency,  
-            pcb.user_name, pcb.booking_id, pcb.created_at, pcb.start_charging_level, pcb.end_charging_level,
+            invoice_id, 
+            invoice_date, 
+            currency,  
+            pcb.user_name, 
+            pcb.booking_id, 
+            pcb.created_at, 
+            pcb.start_charging_level, 
+            pcb.end_charging_level,
+            pcb.package_data,
             (SELECT coupan_percentage FROM coupon_usage WHERE booking_id = pci.request_id) AS discount,
             (SELECT portable_price FROM booking_price LIMIT 1) as booking_price
         FROM 
@@ -424,48 +443,53 @@ export const invoiceDetails = async (req, resp) => {
         WHERE pci.invoice_id = ?
     `, [invoice_id]);
 
-    const today = moment('2025-07-17').format("YYYY-MM-DD");
-    const bookingdate = moment(data.created_at).format("YYYY-MM-DD");
+        const today = moment('2025-07-17').format("YYYY-MM-DD");
+        const bookingdate = moment(data.created_at).format("YYYY-MM-DD");
 
-    data.kw = 25;
-    if (bookingdate > today) {
-        let chargeLevel = data.end_charging_level - data.start_charging_level;
-        const chargingPercent = Math.floor((chargeLevel) * 36) / 100;
+        data.kw = 25;
+        if (bookingdate > today) {
+            let chargeLevel = data.end_charging_level - data.start_charging_level;
+            const chargingPercent = Math.floor((chargeLevel) * 36) / 100;
 
-        data.kw = chargeLevel + chargingPercent;
-    }
-    // data.kw           = 25;
-    data.kw_dewa_amt = data.kw * 0.44;
-    data.kw_cpo_amt = data.kw * 0.26;
-    data.delv_charge = (parseFloat(data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt));
-    data.dis_price = 0;
-    if (data.discount > 0) {
-        if (data.discount != parseFloat(100)) {
-            const dis_price = (parseFloat(data.booking_price) * data.discount);
-            const total_amt = parseFloat(data.booking_price) - dis_price;
-
-            data.dis_price = dis_price;
-            data.t_vat_amt = Math.floor((total_amt) * 185);
-            data.price = total_amt + data.t_vat_amt;
-
-        } else {
-            data.t_vat_amt = Math.floor((parseFloat(data.booking_price)) * 18);
-            const total_amt = parseFloat(parseFloat(data.booking_price)) + parseFloat(data.t_vat_amt);
-
-            const dis_price = (total_amt * data.discount);
-            data.dis_price = dis_price;
-            data.price = total_amt - dis_price;
+            data.kw = chargeLevel + chargingPercent;
         }
-    } else {
-        data.t_vat_amt = ((parseFloat(data.booking_price)) * 18);
-        data.price = parseFloat(data.booking_price) + data.t_vat_amt;
+        // data.kw           = 25;
+        data.kw_dewa_amt = data.kw * 0.44;
+        data.kw_cpo_amt = data.kw * 0.26;
+        data.delv_charge = (parseFloat(data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt));
+        data.dis_price = 0;
+        if (data.discount > 0) {
+            if (data.discount != parseFloat(100)) {
+                const dis_price = (parseFloat(data.booking_price) * data.discount);
+                const total_amt = parseFloat(data.booking_price) - dis_price;
+
+                data.dis_price = dis_price;
+                data.t_vat_amt = Math.floor((total_amt) * 185);
+                data.price = total_amt + data.t_vat_amt;
+
+            } else {
+                data.t_vat_amt = Math.floor((parseFloat(data.booking_price)) * 18);
+                const total_amt = parseFloat(parseFloat(data.booking_price)) + parseFloat(data.t_vat_amt);
+
+                const dis_price = (total_amt * data.discount);
+                data.dis_price = dis_price;
+                data.price = total_amt - dis_price;
+            }
+        } else {
+            data.t_vat_amt = ((parseFloat(data.booking_price)) * 18);
+            data.price = parseFloat(data.booking_price) + data.t_vat_amt;
+        }
+        return resp.json({
+            message: ["Portable Charger Invoice Details fetched successfully!"],
+            data: data,
+            status: 1,
+            code: 200,
+        });
     }
-    return resp.json({
-        message: ["Portable Charger Invoice Details fetched successfully!"],
-        data: data,
-        status: 1,
-        code: 200,
-    });
+    catch (error) {
+        console.error('Error fetching invoice details:', error);
+        return resp.json({ status: 0, message: 'Error fetching invoice details' });
+    }
 };
 
 /* Slot */

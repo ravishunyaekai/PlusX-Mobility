@@ -46,7 +46,7 @@ const authzAndAuthRoutes = [
     
    /* Portable charger */
     { method: 'get',  path: '/portable-charger-list',            handler: chargerList },
-    { method: 'post', path: '/portable-charger-booking',         handler: chargerBooking },
+    // { method: 'post', path: '/portable-charger-booking',         handler: chargerBooking },
     { method: 'post', path: '/create-portable-charger-invoice',     handler: portableChargerInvoice },
     { method: 'get',  path: '/portable-charger-booking-list',    handler: chargerBookingList },
     { method: 'get',  path: '/portable-charger-booking-detail',  handler: chargerBookingDetail },
@@ -77,6 +77,6 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
-// router.post('/portable-charger-booking', chargerBooking);
+router.post('/portable-charger-booking', chargerBooking);
 
 export default router;

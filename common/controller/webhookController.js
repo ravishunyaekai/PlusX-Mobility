@@ -140,6 +140,24 @@ export const razorpayWebhook = async (req, res) => {
                 break;
             case "PCB":
                 if (event.event === "payment.captured") {
+                    console.log("PCB case hit, calling portableChargerBookingConfirm");
+                    await portableChargerBookingConfirm(
+                        payment.notes.booking_id,
+                        payment.id,
+                        payment.notes.coupon_code,
+                    );
+                } else {
+                    await updateRecord(
+                        "portable_charger_booking",
+                        { status: "PNR" },
+                        ["booking_id"],
+                        [payment.notes.booking_id],
+                    );
+                }
+                break;
+            case "HEV":
+                if (event.event === "payment.captured") {
+                    console.log("HEV case hit, calling portableChargerBookingConfirm");
                     await portableChargerBookingConfirm(
                         payment.notes.booking_id,
                         payment.id,
@@ -324,7 +342,7 @@ const rsaInvoice = async (
         return false;
     }
 };
-const portableChargerBookingConfirm = async (booking_id, payment_intent_id, couponCode) => {
+const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, couponCode) => {
     // const conn = await startTransaction();
 
     try {
@@ -433,80 +451,156 @@ const portableChargerBookingConfirm = async (booking_id, payment_intent_id, coup
         return false;
     }
 };
+export const portableChargerBookingConfirm = async (req, res) => {
+    // const conn = await startTransaction();
+    const { booking_id, payment_intent_id, couponCode } = req.body;
+    try {
+        console.log("function called", booking_id, payment_intent_id, couponCode);
+        // PCB0049 pay_TK3XElf3IAL2yA
+        const checkOrder = await queryDB(`
+          SELECT 
+            pcb.current_percent, 
+            pcb.rider_id, 
+            pcb.user_name, 
+            pcb.country_code, 
+            pcb.contact_no, 
+            pcb.slot_date, 
+            pcb.slot_time, 
+            pcb.address, 
+            pcb.latitude, 
+            pcb.longitude,
+            pcb.service_type, 
+            rd.fcm_token, 
+            rd.rider_email, 
+            pcb.vehicle_data
+        FROM 
+            portable_charger_booking as pcb
+        LEFT JOIN
+            riders AS rd ON rd.rider_id = pcb.rider_id
+        WHERE 
+            pcb.booking_id = ? AND pcb.status = 'PNR'
+        LIMIT 1
+    `, [booking_id]);
+
+        if (!checkOrder) {
+            console.log("No order found for booking_id:", booking_id);
+            return res.status(404).json({ success: false, message: "Booking not found or already confirmed." });
+        }
+        console.log("Order found:", checkOrder);
+        const battery_percent = checkOrder?.current_percent > 0 ? "More than 10 %" : "0 %";
+
+        const ordHistoryCount = await queryDB(
+            `SELECT COUNT(*) as count 
+            FROM portable_charger_history 
+            WHERE booking_id = ? 
+            AND order_status = "CNF"`, [booking_id]
+        );
+        console.log("Order history count:", ordHistoryCount.count);
+        if (ordHistoryCount.count === 0) {
+
+            const insert = await insertRecord('portable_charger_history', ['booking_id', 'rider_id', 'order_status'], [booking_id, checkOrder.rider_id, 'CNF']);
+
+            if (insert.affectedRows == 0) return false;
+            await updateRecord('portable_charger_booking', { status: 'CNF', payment_intent_id }, ['booking_id', 'rider_id'], [booking_id, checkOrder.rider_id]);
+
+            if (couponCode) {
+                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [couponCode]);
+
+                let coupan_percentage = coupon.coupan_percentage;
+                await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [couponCode, checkOrder.rider_id, booking_id, coupan_percentage]);
+            }
+            if (checkOrder.service_type.toLowerCase() === "get monthly subscription") {
+                await db.execute('UPDATE portable_charger_subscriptions SET total_booking = total_booking + 1 WHERE rider_id = ?', [checkOrder.rider_id]);
+            }
+            const href = 'portable_charger_booking/' + booking_id;
+            const heading = 'Home EV Charging Booking!';
+            const desc = `Booking Confirmed! ${booking_id}`;
+            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
+            pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
+
+            const htmlUser = `<html>
+                <body>
+                    <h4>Dear ${checkOrder.user_name},</h4>
+                    <p>Thank you for choosing our Home EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Booking Details:</p>
+                    <p>Booking ID: ${booking_id}</p>
+                    <p>Vehicle Battery %  : ${battery_percent}   </p>
+                    <p>Date and Time of Service: ${moment(checkOrder.slot_date, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(checkOrder.slot_time, 'HH:mm').format('h:mm A')}</p>
+                    <p>We look forward to serving you and providing a seamless EV charging experience.</p>
+                    <p> Best regards,<br/>PlusX Electric Team </p>
+                </body>
+            </html>`;
+            emailQueue.addEmail("shivani@shunyaekai.tech", 'PlusX Electric App: Booking Confirmation for Your Home EV Charging', htmlUser);
+
+            const htmlAdmin = `<html>
+                <body>
+                    <h4>Dear Admin,</h4>
+                    <p>We have received a new booking for our Home EV charging service. Please find the details below:</p> 
+                    <p>Customer Name : ${checkOrder.user_name}</p>
+                    <p>Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
+                    <p>Vehicle Battery % : ${battery_percent}   </p>
+                    <p>Address       : ${checkOrder.address}</p>            
+                    <p>Service Date & Time : ${moment(checkOrder.slot_date, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(checkOrder.slot_time, 'HH:mm').format('h:mm A')}</p>       
+                    <p>Vechile Details  :  ${checkOrder.vehicle_data}</p> 
+                    <a href="https://www.google.com/maps?q=${checkOrder.latitude},${checkOrder.longitude}">Address Link</a><br>
+                    <p> Best regards,<br/>PlusX Electric Team </p>
+                </body>
+            </html>`;
+            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Home EV Charging  Booking - ${booking_id}`, htmlAdmin);
+
+            io.emit('plusx-notification-list', { msCount: 1 });
+
+            return true;
+        } else {
+            return false;
+        }
+
+    } catch (err) {
+        // await rollbackTransaction(conn);
+        console.error("Transaction failed:", err);
+
+        webHooktryCatchErrorHandler("POD  Webhook Error", err);
+    } finally {
+        // if (conn) conn.release();
+        return false;
+    }
+};
+
 
 
 
 const addMoneywebhook = async (rider_id, payment_intent_id, razorpay_order_id, amount) => {
     try {
         const paidAmount = amount; // / 100;
-
         const riders = await queryDB(`
-            SELECT r.amount, r.security_deposit, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, cb.cycle_id, cb.booking_id, cb.time_taken
-            FROM riders r JOIN country c ON r.country_code = c.country_code
-            LEFT JOIN cycle_booking cb 
-            ON cb.booking_id = (
-                SELECT booking_id 
-                FROM cycle_booking 
-                WHERE rider_id = r.rider_id
-                ORDER BY created_at DESC 
-                LIMIT 1
-            )
-            WHERE r.rider_id = ?`, [rider_id]
+            SELECT amount, out_standing_cost 
+            FROM riders 
+            WHERE rider_id = ?`, [rider_id]
         );
-        let current_balance = parseFloat(riders.amount);  //current_balance
-        let security_deposit = parseFloat(riders.security_deposit || 0);
-        //let paymentAmount   = parseFloat(riders.min_wallet_price);  // min wallet 
-        let out_standing_cost = parseFloat(riders.out_standing_cost || 0);
+        let current_balance = parseFloat(riders.amount) + parseFloat(paidAmount);
 
-        let rechargeAmount = parseFloat(paidAmount);
+        let queryParams = `amount = ? `;  // amount +
+        let out_standing_cost = parseFloat(riders.out_standing_cost);
 
-        let orderIdToSave = razorpay_order_id;
-        // if ( current_balance < paymentAmount ) {
-        //     current_balance = current_balance + paidAmount;    
-        //     orderIdToSave = riders.booking_id;
-        // }
-        //let queryParams       = `amount = ? `;  // amount +
-        //let out_standing_cost = parseFloat(riders.out_standing_cost);
-
-        // if( out_standing_cost > 0 ) {
-        //     current_balance = current_balance - out_standing_cost
-        //     queryParams +=` , out_standing_cost = 0 `;
-        //     out_standing_cost = 0;
-        // }
-        // let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;    
-        // await db.execute( query, [current_balance, rider_id]);
-        // First recharge => split 100 deposit + remaining wallet
-        if (security_deposit < 100) {
-
-            security_deposit = 100;
-
-            rechargeAmount = rechargeAmount - 100;
+        if (out_standing_cost > 0) {
+            current_balance = current_balance - out_standing_cost
+            queryParams += ` , out_standing_cost = 0 `;
+            out_standing_cost = 0;
         }
-        if (out_standing_cost > 0 && rechargeAmount > 0) {
-
-            const settleAmount = Math.min(
-                rechargeAmount,
-                out_standing_cost
-            );
-
-            out_standing_cost -= settleAmount;
-
-            rechargeAmount -= settleAmount;
-        }
-        current_balance += rechargeAmount;
-
-        await db.execute(`UPDATE riders SET amount = ?, security_deposit = ?, out_standing_cost = ? WHERE rider_id = ?`,
-            [current_balance, security_deposit, out_standing_cost, rider_id]);
+        let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;
+        await db.execute(query, [current_balance, rider_id]);
 
         await insertRecord('transaction_history',
             [
                 'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
                 "prev_balance", "status", "payment_id",
             ], [
-            rider_id, paidAmount, 'crd', orderIdToSave, out_standing_cost, current_balance,
+            rider_id, paidAmount, 'crd', razorpay_order_id, out_standing_cost, current_balance,
             riders.amount, "CNF", payment_intent_id,
         ]
         );
+        // await updateRecord('transaction_history',{status:"CNF",payment_id:payment_intent_id,payment_type:"crd"}, ['order_id'],[razorpay_order_id] )
 
         return true;
     } catch (err) {
@@ -516,7 +610,8 @@ const addMoneywebhook = async (rider_id, payment_intent_id, razorpay_order_id, a
         // if (conn) conn.release();
         return false;
     }
-};
+}
+
 export const webHooktryCatchErrorHandler = (action, err) => {
     try {
         const stackLine = err.stack?.split("\n")[1]?.trim() || "Webhook api";

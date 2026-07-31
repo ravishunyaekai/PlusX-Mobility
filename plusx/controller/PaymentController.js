@@ -1,6 +1,6 @@
 import db from "../../config/indiadb.js";
 import validateFields from "../../validation.js";
-import { mergeParam, formatNumber } from '../../utils.js';
+import { mergeParam, formatNumber, checkCoupon } from '../../utils.js';
 import moment from "moment";
 import Stripe from "stripe";
 import dotenv from 'dotenv';
@@ -13,6 +13,7 @@ import { createCustomer } from "../../mobility/controller/razorpay/razorpay.js";
 
 export const createIntent = async (req, resp) => {
     try {
+        console.log("createIntent called with params:", mergeParam(req));
 
         const { rider_id, rider_name, rider_email, package_id = "", amount = "", currency = '', booking_id = '', building_name = '', street_name = '', unit_no = '', area = '', emirate = '', booking_type = '', coupon_code = '' } = mergeParam(req);
         const bookingType = booking_type.toUpperCase();
@@ -52,8 +53,10 @@ export const createIntent = async (req, resp) => {
         if (bookingType === "HEV") {
 
             const packageData = await queryDB(
-                `SELECT * FROM home_ev_charging_packages WHERE package_id = ? AND status = 1 AND is_deleted = 0
-             LIMIT 1`,
+                `SELECT * 
+                FROM home_ev_charging_packages 
+                WHERE package_id = ? AND status = 1 AND is_deleted = 0
+                LIMIT 1`,
                 [package_id]
             );
             if (!packageData) {
@@ -66,12 +69,35 @@ export const createIntent = async (req, resp) => {
             chargingCost = Number(packageData.charging_capacity) * Number(packageData.price_per_unit);
             serviceFee = Number(packageData.service_fee);
             if (coupon_code) {
-                // TODO Coupon Validation
-                discount = 0;
+
+                // package price before GST
+                const packagePrice = chargingCost + serviceFee;
+
+                const couponData = await checkCoupon(
+                    rider_id,
+                    "POD-On Demand Service",   // same booking type used in chargerBooking
+                    coupon_code,
+                    packagePrice
+                );
+
+                if (couponData.status === 0) {
+                    return resp.json({
+                        status: 0,
+                        code: couponData.code,
+                        message: [couponData.message]
+                    });
+                }
+
+                discount = Number(couponData.dis_price || 0);
+                gst = Number(couponData.vat_amt || 0);
+                totalAmount = Number(couponData.service_price);
             }
-            const subtotal = chargingCost + serviceFee - discount;
-            gst = Number((subtotal * 0.18).toFixed(2));
-            totalAmount = Number((subtotal + gst).toFixed(2));
+            if (!coupon_code) {
+                const subtotal = chargingCost + serviceFee;
+
+                gst = Number((subtotal * 0.18).toFixed(2));
+                totalAmount = Number((subtotal + gst).toFixed(2));
+            }
 
             packageDetails = {
                 package_id: packageData.package_id,
@@ -79,6 +105,7 @@ export const createIntent = async (req, resp) => {
                 charging_capacity: packageData.charging_capacity,
                 price_per_unit: packageData.price_per_unit
             };
+            console.log(`Charging Cost: ${chargingCost}, Service Fee: ${serviceFee}, Discount: ${discount}, GST: ${gst}, Total Amount: ${totalAmount}`);
 
         } else {
             totalAmount = Number(amount);
@@ -136,6 +163,7 @@ export const createIntent = async (req, resp) => {
 
                 break;
             case "HEV":
+                console.log("HEV booking type detected");
                 await updateRecord("home_ev_charging_packages", { order_id: order.id }, ["package_id"],
                     [package_id]);
 

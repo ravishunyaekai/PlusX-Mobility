@@ -39,6 +39,7 @@ import {vehicleList, vehicleDetail, interestedPeople, areaList, sellVehicle, all
 
 import rateLimit from 'express-rate-limit';
 import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, packageList, packageVehicleList, addressList, timeSlotList, outputAndConnector ,chargeShareDelete,editChargShare} from "../controller/api/ChargeShareController.js";
+import { portableChargerBookingConfirm } from "../../common/controller/webhookController.js";
 const router = Router();
 
 const limiter = rateLimit({
@@ -153,7 +154,7 @@ const authzAndAuthRoutes = [
    
 
     /* Payment */
-    { method: 'post', path: '/payment-intent',                       handler: createIntent },
+    // { method: 'post', path: '/payment-intent',                       handler: createIntent },
    
     
     /* Invoice */ 
@@ -213,5 +214,7 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
+router.post('/payment-intent', createIntent);
+router.post('/charger-booking-payment-confirm-test', portableChargerBookingConfirm);
 
 export default router;

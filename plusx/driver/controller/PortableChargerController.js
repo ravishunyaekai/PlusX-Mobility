@@ -363,7 +363,10 @@ const chargingComplete = async (req, resp) => {
 
     const checkOrder = await queryDB(`
         SELECT 
-            pcba.rider_id, r.rider_name, r.rider_email, r.fcm_token,
+            pcba.rider_id, 
+            r.rider_name, 
+            r.rider_email, 
+            r.fcm_token,
             (SELECT pcb.pod_id FROM portable_charger_booking AS pcb WHERE pcb.booking_id = pcba.order_id LIMIT 1) AS pod_id
         FROM 
             portable_charger_booking_assign AS pcba
@@ -395,7 +398,9 @@ const chargingComplete = async (req, resp) => {
         const sumOfLevel = podBatteryData.sum ? podBatteryData.sum : 0;
 
         const insert = await db.execute(
-            'INSERT INTO portable_charger_history (booking_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data) VALUES (?, ?, "CC", ?, ?, ?, ?)',
+            `INSERT INTO portable_charger_history 
+            (booking_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data) 
+            VALUES (?, ?, "CC", ?, ?, ?, ?)`,
             [booking_id, checkOrder.rider_id, rsa_id, latitude, longitude, podData]
         );
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
@@ -646,8 +651,15 @@ export const portableChargerInvoice = async (rider_id, request_id) => {
     try {
         const checkOrder = await queryDB(` 
             SELECT 
-                payment_intent_id, service_price as booking_price, package_data, 
-                (SELECT coupan_percentage FROM coupon_usage as cu WHERE cu.booking_id = pod.booking_id LIMIT 1) AS discount
+                payment_intent_id, 
+                service_price as booking_price, 
+                package_data, 
+                (
+                    SELECT coupan_percentage 
+                    FROM coupon_usage AS cu 
+                    WHERE cu.booking_id = pod.booking_id 
+                    LIMIT 1
+                ) AS discount
             FROM 
                 portable_charger_booking as pod
             WHERE 
