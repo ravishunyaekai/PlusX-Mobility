@@ -317,7 +317,8 @@ export const chargerBookingDetails = async (req, resp) => {
         }
         // if (booking.package_data) {
         try {
-            bookingResult.package_details = {
+            bookingResult.package_data = {
+                charging_fee: bookingResult.package_data?.charging_fees || 0,
                 package_id: bookingResult.package_data?.package_id || "",
                 package_name: bookingResult.package_data?.package_name || "",
                 charging_capacity: bookingResult.package_data?.charging_capacity || 0,
@@ -562,21 +563,19 @@ export const invoiceDetails = async (req, resp) => {
                 pci.invoice_date,
                 pci.currency,
                 pci.price_details,
-
                 pcb.user_name,
                 pcb.booking_id,
+                pci.amount,
                 pcb.created_at,
                 pcb.start_charging_level,
                 pcb.end_charging_level,
                 pcb.package_data,
-
                 (
                     SELECT coupan_percentage
                     FROM coupon_usage
                     WHERE booking_id = pci.request_id
                     LIMIT 1
                 ) AS discount,
-
                 (
                     SELECT portable_price
                     FROM booking_price
@@ -584,10 +583,8 @@ export const invoiceDetails = async (req, resp) => {
                 ) AS booking_price
 
             FROM portable_charger_invoice AS pci
-
             LEFT JOIN portable_charger_booking AS pcb
                 ON pcb.booking_id = pci.request_id
-
             WHERE pci.invoice_id = ?
             LIMIT 1
         `, [invoice_id]);
@@ -604,16 +601,16 @@ export const invoiceDetails = async (req, resp) => {
         // Parse JSON columns
         //----------------------------------------
 
-        let packageData = {};
+        let packageData = data.package_data || {};
         let priceDetails = {};
 
-        try {
-            packageData = data.package_data
-                ? JSON.parse(data.package_data)
-                : {};
-        } catch (e) {
-            packageData = {};
-        }
+        // try {
+        //     packageData = data.package_data
+        //         ? JSON.parse(data.package_data)
+        //         : {};
+        // } catch (e) {
+        //     packageData = {};
+        // }
 
         try {
             priceDetails = data.price_details
@@ -724,7 +721,7 @@ export const invoiceDetails = async (req, resp) => {
         // Extra response fields
         //----------------------------------------
 
-        data.package_data = packageData;
+        data.package_data = { ...packageData, charging_fee: packageData.charging_fees || 0, amount: data.price_details.amount || 0 };
         data.price_details = priceDetails;
 
         return resp.json({

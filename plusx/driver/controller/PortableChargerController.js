@@ -683,7 +683,7 @@ export const portableChargerInvoice = async (rider_id, request_id) => {
         if (payment_intent_id && payment_intent_id.trim() != '') {
             const charge = await getPaymentDetails(payment_intent_id);
 
-            createObj.amount = charge.amount;
+            createObj.amount = Number(charge.amount) / 100;
             createObj.payment_intent_id = charge.id;
             createObj.payment_method_id = null;
             createObj.payment_cust_id = charge.customer_id;

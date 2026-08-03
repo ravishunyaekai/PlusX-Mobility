@@ -196,6 +196,14 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         const vatAmt = Number(package_price) * 18 / 100;
         let bookingPrice = Number(package_price) + Number(vatAmt);
 
+        const charging_fees2 =
+            Number(packageData.charging_capacity || 0) *
+            Number(packageData.price_per_unit || 0);
+        const service_fees2 = Number(packageData.service_fee || 0);
+        const package_price_before_vat2 = Number(service_fees2) + Number(charging_fees2);
+        const vatAmt2 = Number(package_price_before_vat2) * 18 / 100;
+        const bookingPrice2 = Number(package_price_before_vat2) + Number(vatAmt2);
+
         console.log("\nservice_price, bookingPrice, coupon_code", service_price, bookingPrice, coupon_code);
 
         if (parseFloat(service_price).toFixed(2) != parseFloat(bookingPrice).toFixed(2) && coupon_code == '') {
@@ -261,7 +269,7 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
             'booking_id', 'rider_id', 'vehicle_id', 'service_name', 'service_price', 'service_type', 'service_feature', 'user_name', 'country_code', 'contact_no', 'slot', 'slot_date', 'slot_time', 'address', 'latitude', 'longitude', 'status', 'address_alert', 'parking_number', 'parking_floor', 'address_id', 'device_name', 'area', 'vehicle_data', 'current_percent'
             , 'state', 'city', 'pincode', 'package_data'
         ], [
-            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageData
+            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, { ...packageData, charging_fees: charging_fees2 }
         ]);
         if (insert.affectedRows == 0) {
             return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
@@ -429,7 +437,8 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
         [rider_id, booking_id]);
 
     try {
-        booking.package_details = {
+        booking.package_data = {
+            charging_fee: booking.package_data?.charging_fees || 0,
             package_id: booking.package_data?.package_id || "",
             package_name: booking.package_data?.package_name || "",
             charging_capacity: booking.package_data?.charging_capacity || 0,
@@ -946,12 +955,19 @@ export const podInvoiceDetails = asyncHandler(async (req, resp) => {
 
     const data = await queryDB(`
         SELECT 
-            pcb.booking_id, invoice_id, invoice_date, pcb.address,
-            pcb.user_name, pcb.country_code, pcb.contact_no, price_details
+            pcb.booking_id, 
+            invoice_id, 
+            invoice_date, 
+            pcb.address,
+            pcb.user_name, 
+            pcb.country_code, 
+            pcb.contact_no, 
+            price_details,
         FROM 
             portable_charger_invoice AS pci 
         LEFT JOIN
-            portable_charger_booking AS pcb ON pcb.booking_id = pci.request_id
+        portable_charger_booking AS pcb 
+        ON pcb.booking_id = pci.request_id
         WHERE 
             pci.request_id = ? AND pci.rider_id = ?
     `, [booking_id, rider_id]);
