@@ -167,8 +167,10 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     try {
-        const service_name = "Home Charging";
-        const service_type = "Home Charging";
+        // const service_name = "Home Charging";
+        // const service_type = "Home Charging";
+        const service_name = "Mobile Ev Charging";
+        const service_type = "Mobile Ev Charging";
 
         const riderAddress = await queryDB(`
             SELECT 
@@ -390,9 +392,34 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     const booking = await queryDB(`
         SELECT 
-            current_percent, booking_id, rescheduled_booking, rider_id, rsa_id, charger_id, vehicle_id, vehicle_data, service_name, service_type, service_feature, status,
-             user_name, country_code, contact_no, slot, slot_date, slot_time, address, pod_id, parking_number, parking_floor, payment_intent_id, address_id,
-              area, device_name, ROUND(portable_charger_booking.service_price, 2) AS service_price, 
+            current_percent, 
+            booking_id, 
+            rescheduled_booking, 
+            rider_id, 
+            rsa_id, 
+            charger_id, 
+            vehicle_id, 
+            vehicle_data, 
+            service_name, 
+            service_type, 
+            service_feature, 
+            status,
+            user_name, 
+            country_code, 
+            contact_no, 
+            slot, 
+            slot_date, 
+            slot_time, 
+            address, 
+            pod_id, 
+            parking_number, 
+            parking_floor, 
+            payment_intent_id, 
+            address_id, 
+            package_data,
+            area, 
+            device_name, 
+            ROUND(portable_charger_booking.service_price, 2) AS service_price, 
             ${formatDateTimeInQuery(['created_at', 'updated_at'])}, ${formatDateInQuery(['slot_date'])} 
         FROM 
             portable_charger_booking 
@@ -400,6 +427,18 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
             rider_id = ? AND booking_id = ? 
         LIMIT 1`,
         [rider_id, booking_id]);
+
+    try {
+        booking.package_details = {
+            package_id: booking.package_data?.package_id || "",
+            package_name: booking.package_data?.package_name || "",
+            charging_capacity: booking.package_data?.charging_capacity || 0,
+            price_per_unit: booking.package_data?.price_per_unit || 0,
+            service_fee: booking.package_data?.service_fee || 0
+        };
+    } catch (e) {
+        booking.package_data = {};
+    }
 
     if (booking.vehicle_data == '' || booking.vehicle_data == null) {
         const vehicledata = await queryDB(`
