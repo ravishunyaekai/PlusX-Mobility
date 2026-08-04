@@ -792,24 +792,20 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
 
         // 1. Lock all bookings for this slot
         const [lockedRows] = await db.execute(
-            `SELECT
-                id
-            FROM 
-                portable_charger_booking
-            WHERE
-                slot_time = ? AND slot_date = ?  AND  status NOT IN ('C')
+            `SELECT id
+            FROM portable_charger_booking
+            WHERE slot_time = ? 
+            AND slot_date = ? 
+            AND  status NOT IN ('C')
             FOR UPDATE`,
             [slot_time, fSlotDate]  // 'PU', 'RO' 
         ); //, 'PNR'
         const bookingCount = lockedRows.length;
 
         const [slotLimitRows] = await db.execute(`
-            SELECT
-                booking_limit
-            FROM 
-                portable_charger_slot
-            WHERE
-                slot_date = ? AND start_time = ? LIMIT 1 
+            SELECT booking_limit
+            FROM portable_charger_slot
+            WHERE slot_date = ? AND start_time = ? LIMIT 1 
             FOR UPDATE`,
             [fSlotDate, slot_time]
         );
@@ -822,17 +818,29 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         }
         const checkOrder = await queryDB(`
             SELECT
-                pcb.user_name, pcb.country_code, pcb.contact_no, pcb.address, pcb.latitude, pcb.longitude,
-                pcb.rescheduled_booking, pcb.slot_date, pcb.slot_time, rd.fcm_token, rd.rider_email, 
-                pcb.vehicle_data, rsa.rsa_name, rsa.fcm_token as rsa_fcm_token, rsa.email as rsa_email, pcb.rsa_id
-            FROM 
-                portable_charger_booking as pcb
-            LEFT JOIN
-                riders AS rd ON rd.rider_id = pcb.rider_id
-            LEFT JOIN
-                rsa ON rsa.rsa_id = pcb.rsa_id
-            WHERE 
-                pcb.booking_id = ? AND pcb.rider_id = ?
+                pcb.user_name, 
+                pcb.country_code, 
+                pcb.contact_no, 
+                pcb.address, 
+                pcb.latitude, 
+                pcb.longitude,
+                pcb.rescheduled_booking, 
+                pcb.slot_date, 
+                pcb.slot_time, 
+                rd.fcm_token, 
+                rd.rider_email,                
+                pcb.vehicle_data, 
+                rsa.rsa_name, 
+                rsa.fcm_token as rsa_fcm_token, 
+                rsa.email as rsa_email, 
+                pcb.rsa_id
+            FROM portable_charger_booking as pcb
+            LEFT JOIN riders AS rd 
+            ON rd.rider_id = pcb.rider_id
+            LEFT JOIN rsa 
+            ON rsa.rsa_id = pcb.rsa_id
+            WHERE pcb.booking_id = ? 
+            AND pcb.rider_id = ?
             LIMIT 1
         `, [
             booking_id, rider_id
@@ -945,7 +953,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
     }
 });
 
-export const podInvoiceDetails = asyncHandler(async (req, resp) => {
+export const podInvoiceDetailsOld1 = asyncHandler(async (req, resp) => {
     const { rider_id, booking_id } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
         rider_id: ["required"],
@@ -997,5 +1005,190 @@ export const podInvoiceDetails = asyncHandler(async (req, resp) => {
         status: 1,
         code: 200,
     });
+});
+
+export const podInvoiceDetails = asyncHandler(async (req, resp) => {
+    const { rider_id, booking_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"],
+        booking_id: ["required"]
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const data = await queryDB(`
+        SELECT
+                pci.invoice_id,
+                pci.invoice_date,
+                pci.currency,
+                pci.price_details,
+                pcb.user_name,
+                pcb.booking_id,
+                pci.amount,
+                pcb.created_at,
+                pcb.start_charging_level,
+                pcb.end_charging_level,
+                pcb.package_data,
+                (
+                    SELECT coupan_percentage
+                    FROM coupon_usage
+                    WHERE booking_id = pci.request_id
+                    LIMIT 1
+                ) AS discount,
+                (
+                    SELECT portable_price
+                    FROM booking_price
+                    LIMIT 1
+                ) AS booking_price
+            FROM portable_charger_invoice AS pci
+            LEFT JOIN portable_charger_booking AS pcb
+            ON pcb.booking_id = pci.request_id
+            WHERE pci.request_id = ? AND pci.rider_id = ?
+            LIMIT 1
+    `, [booking_id, rider_id]);
+
+
+    if (!data) {
+        return resp.json({
+            status: 0,
+            code: 404,
+            message: ["Invoice not found."]
+        });
+    }
+
+    //----------------------------------------
+    // Parse JSON columns
+    //----------------------------------------
+
+    let packageData = data.package_data || {};
+    let priceDetails = {};
+
+    // try {
+    //     packageData = data.package_data
+    //         ? JSON.parse(data.package_data)
+    //         : {};
+    // } catch (e) {
+    //     packageData = {};
+    // }
+
+    try {
+        priceDetails = data.price_details
+            ? JSON.parse(data.price_details)
+            : {};
+    } catch (e) {
+        priceDetails = {};
+    }
+
+    //----------------------------------------
+    // NEW Invoice (price_details available)
+    //----------------------------------------
+
+    if (Object.keys(priceDetails).length > 0) {
+
+        data.amount = Number(priceDetails.amount || 0);
+        data.discount = Number(priceDetails.discount_prcnt || 0);
+
+        data.kw = Number(priceDetails.kw_consume || 0);
+        data.price_per_unit = Number(priceDetails.price_per_unit || 0);
+        data.service_fee = Number(priceDetails.service_fee || 0);
+
+        data.dis_price = Number(priceDetails.discount_amt || 0);
+        data.t_vat_amt = Number(priceDetails.vat_amount || 0);
+        data.price = Number(priceDetails.total_price || 0);
+
+        // Additional breakdown
+        data.kw_dewa_amt = data.kw * 0.44;
+        data.kw_cpo_amt = data.kw * 0.26;
+
+        data.delv_charge = data.service_fee;
+    }
+
+    //----------------------------------------
+    // OLD Invoice (fallback)
+    //----------------------------------------
+
+    else {
+
+        const today = moment('2025-07-17').format("YYYY-MM-DD");
+        const bookingDate = moment(data.created_at).format("YYYY-MM-DD");
+
+        data.kw = 25;
+
+        if (bookingDate > today) {
+            const chargeLevel =
+                Number(data.end_charging_level || 0) -
+                Number(data.start_charging_level || 0);
+
+            const chargingPercent =
+                Math.floor(chargeLevel * 36) / 100;
+
+            data.kw = chargeLevel + chargingPercent;
+        }
+
+        data.kw_dewa_amt = data.kw * 0.44;
+        data.kw_cpo_amt = data.kw * 0.26;
+
+        data.delv_charge =
+            Number(data.booking_price) -
+            (data.kw_dewa_amt + data.kw_cpo_amt);
+
+        data.dis_price = 0;
+
+        const bookingPrice = Number(data.booking_price || 0);
+        const discount = Number(data.discount || 0);
+
+        if (discount > 0) {
+
+            if (discount !== 100) {
+
+                data.dis_price =
+                    (bookingPrice * discount) / 100;
+
+                const total =
+                    bookingPrice - data.dis_price;
+
+                data.t_vat_amt = (total * 18) / 100;
+
+                data.price = total + data.t_vat_amt;
+
+            } else {
+
+                data.dis_price = bookingPrice;
+                data.t_vat_amt = 0;
+                data.price = 0;
+            }
+
+        } else {
+
+            data.t_vat_amt =
+                (bookingPrice * 18) / 100;
+
+            data.price =
+                bookingPrice + data.t_vat_amt;
+        }
+
+        data.amount = bookingPrice;
+
+        data.price_per_unit =
+            Number(packageData.price_per_unit || 0);
+
+        data.service_fee =
+            Number(packageData.service_fee || 0);
+    }
+
+    //----------------------------------------
+    // Extra response fields
+    //----------------------------------------
+
+    data.package_data = { ...packageData, charging_fee: packageData.charging_fees || 0, amount: data.price_details.amount || 0 };
+    data.price_details = priceDetails;
+
+    return resp.json({
+        message: ["POD Invoice Details fetch successfully!"],
+        data: data,
+        vat_percentage: '18%',
+        status: 1,
+        code: 200,
+    });
+
 });
 
