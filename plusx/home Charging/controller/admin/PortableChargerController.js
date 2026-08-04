@@ -570,6 +570,9 @@ export const invoiceDetails = async (req, resp) => {
                 pcb.start_charging_level,
                 pcb.end_charging_level,
                 pcb.package_data,
+                pcb.country_code, 
+                pcb.contact_no, 
+                pcb.address,
                 (
                     SELECT coupan_percentage
                     FROM coupon_usage
@@ -721,8 +724,13 @@ export const invoiceDetails = async (req, resp) => {
         // Extra response fields
         //----------------------------------------
 
-        data.package_data = { ...packageData, charging_fee: packageData.charging_fees || 0, amount: data.price_details.amount || 0 };
+        data.package_data = {
+            ...packageData,
+            charging_fee: packageData.charging_fees || 0,
+            amount: data.price_details.amount || 0,
+        };
         data.price_details = priceDetails;
+        data.vat_percetange = '18%';
 
         return resp.json({
             message: [
