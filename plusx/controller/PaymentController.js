@@ -66,44 +66,74 @@ export const createIntent = async (req, resp) => {
                     message: ["Charging package not found."]
                 });
             }
-            chargingCost = Number(packageData.charging_capacity) * Number(packageData.price_per_unit);
-            serviceFee = Number(packageData.service_fee);
-            if (coupon_code) {
 
-                // package price before GST
-                const packagePrice = chargingCost + serviceFee;
+            chargingCost =
+                Number(packageData.charging_capacity || 0) *
+                Number(packageData.price_per_unit || 0);
+
+            serviceFee = Number(packageData.service_fee || 0);
+
+            const subtotal = chargingCost + serviceFee;
+
+            const gstPercentage = 18;
+            gst = Number((subtotal * gstPercentage / 100).toFixed(2));
+
+            const grossAmount = Number((subtotal + gst).toFixed(2));
+
+            discount = 0;
+            totalAmount = grossAmount;
+
+            if (coupon_code) {
 
                 const couponData = await checkCoupon(
                     rider_id,
-                    "POD-On Demand Service",   // same booking type used in chargerBooking
+                    "Mobile EV Charging",   // same booking type used in chargerBooking
                     coupon_code,
-                    packagePrice
+                    subtotal
                 );
 
-                if (couponData.status === 0) {
+                if (couponData.status == 0) {
                     return resp.json({
                         status: 0,
-                        code: couponData.code,
+                        code: couponData.code || 422,
                         message: [couponData.message]
                     });
                 }
 
-                discount = Number(couponData.dis_price || 0);
-                gst = Number(couponData.vat_amt || 0);
                 totalAmount = Number(couponData.service_price);
-            }
-            if (!coupon_code) {
-                const subtotal = chargingCost + serviceFee;
+                discount = Number(couponData.dis_price || 0);
 
-                gst = Number((subtotal * 0.18).toFixed(2));
-                totalAmount = Number((subtotal + gst).toFixed(2));
+                // If your coupon API returns GST after discount
+                gst = Number(couponData.vat_amt || gst);
             }
 
             packageDetails = {
                 package_id: packageData.package_id,
                 package_name: packageData.package_name,
                 charging_capacity: packageData.charging_capacity,
-                price_per_unit: packageData.price_per_unit
+                price_per_unit: packageData.price_per_unit,
+                
+                charging_cost: chargingCost,
+                service_fee: serviceFee,
+                discount,
+                gst,
+                total_amount: totalAmount,
+
+                charging_fees: chargingCost,
+                service_fee: serviceFee,
+
+                subtotal,
+
+                gst_percentage: gstPercentage,
+                gst_amount: gst,
+
+                gross_amount: grossAmount,
+
+                coupon_code,
+                coupon_discount: discount,
+
+                total_amount: totalAmount,
+                payable_amount: totalAmount
             };
             console.log(`Charging Cost: ${chargingCost}, Service Fee: ${serviceFee}, Discount: ${discount}, GST: ${gst}, Total Amount: ${totalAmount}`);
 
@@ -182,14 +212,7 @@ export const createIntent = async (req, resp) => {
             customer_id,
             key_id: process.env.RAZORPAY_KEY_ID,
             payment_summary: bookingType === "HEV"
-                ? {
-                    ...packageDetails,
-                    charging_cost: chargingCost,
-                    service_fee: serviceFee,
-                    discount,
-                    gst,
-                    total_amount: totalAmount
-                }
+                ? packageDetails
                 : {
                     total_amount: totalAmount
                 }

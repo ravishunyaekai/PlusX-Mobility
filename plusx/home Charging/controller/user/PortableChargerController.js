@@ -214,17 +214,69 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         if (!packageData) return resp.json({ message: ["Package Id not valid!"], status: 0, code: 422, error: true });
         console.log("\npackageData", packageData);
 
-        const package_price = (Number(packageData.charging_capacity || 0) * Number(packageData.price_per_unit || 0)) + Number(packageData.service_fee || 0);
-        const vatAmt = Number(package_price) * 18 / 100;
-        let bookingPrice = Number(package_price) + Number(vatAmt);
+        // const package_price = (Number(packageData.charging_capacity || 0) * Number(packageData.price_per_unit || 0)) + Number(packageData.service_fee || 0);
+        // const vatAmt = Number(package_price) * 18 / 100;
+        // if (coupon_code) {
+        //     const couponData = await checkCoupon(rider_id, 'Mobile EV Charging', coupon_code, service_price);
+        //     console.log("\ncouponData", couponData);
+        // }
+        // let bookingPrice = Number(package_price) + Number(vatAmt);
 
+        // const charging_fees2 =
+        //     Number(packageData.charging_capacity || 0) *
+        //     Number(packageData.price_per_unit || 0);
+        // const service_fees2 = Number(packageData.service_fee || 0);
+        // const package_price_before_vat2 = Number(service_fees2) + Number(charging_fees2);
+        // const vatAmt2 = Number(package_price_before_vat2) * 18 / 100;
+        // const bookingPrice2 = Number(package_price_before_vat2) + Number(vatAmt2);
         const charging_fees2 =
             Number(packageData.charging_capacity || 0) *
             Number(packageData.price_per_unit || 0);
-        const service_fees2 = Number(packageData.service_fee || 0);
-        const package_price_before_vat2 = Number(service_fees2) + Number(charging_fees2);
-        const vatAmt2 = Number(package_price_before_vat2) * 18 / 100;
-        const bookingPrice2 = Number(package_price_before_vat2) + Number(vatAmt2);
+        const chargingFees =
+            Number(packageData.charging_capacity || 0) *
+            Number(packageData.price_per_unit || 0);
+
+        const serviceFees = Number(packageData.service_fee || 0);
+
+        // Before GST
+        const subTotal = chargingFees + serviceFees;
+
+        // GST
+        const gstPercentage = 18;
+        const gstAmount = Number((subTotal * gstPercentage / 100).toFixed(2));
+
+        // Amount before coupon
+        const grossAmount = Number((subTotal + gstAmount).toFixed(2));
+
+        let couponDiscount = 0;
+        let finalAmount = grossAmount;
+
+        if (coupon_code) {
+
+            const couponData = await checkCoupon(
+                rider_id,
+                "Mobile EV Charging",
+                coupon_code,
+                subTotal
+            );
+
+            if (couponData.status == 0) {
+                return resp.json({
+                    message: [couponData.message],
+                    status: 0,
+                    code: 422,
+                    error: true
+                });
+            }
+
+            finalAmount = Number(couponData.service_price);
+
+            couponDiscount = Number(
+                (grossAmount - finalAmount).toFixed(2)
+            );
+        }
+
+        let bookingPrice = finalAmount;
 
         console.log("\nservice_price, bookingPrice, coupon_code", service_price, bookingPrice, coupon_code);
 
@@ -234,8 +286,15 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         else if (parseFloat(service_price).toFixed(2) != bookingPrice.toFixed(2) && coupon_code) {
             const servicePrice = parseFloat(service_price).toFixed(2);
             // const couponData = await checkCoupon(rider_id, 'POD-On Demand Service', coupon_code, package_price);
-            const couponData = await checkCoupon(rider_id, 'Mobile EV Charging', coupon_code, package_price);
+            const couponData = await checkCoupon(
+                rider_id,
+                'Mobile EV Charging',
+                coupon_code,
+                subTotal
+            );
 
+            const clientPrice = Number(service_price).toFixed(2);
+            const expectedPrice = Number(bookingPrice).toFixed(2);
             if (couponData.status == 0) {
                 return resp.json({
                     message: [couponData.message],
@@ -244,14 +303,13 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
                     error: true
                 });
 
-            } else if (servicePrice != parseFloat(couponData.service_price).toFixed(2)) {
-
+            } else if (clientPrice !== expectedPrice) {
                 return resp.json({
-                    message: ['Booking price is not valid!'],
                     status: 0,
                     code: 422,
                     error: true,
-                    bookingPrice: couponData.service_price
+                    message: ["Booking price is not valid!"],
+                    expected_price: expectedPrice
                 });
             }
         }
@@ -303,6 +361,28 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         }
         const bookingLimit = slotLimitRows[0].booking_limit;
 
+        const packageDetails = {
+            ...packageData,
+
+            // Package Charges
+            charging_fees: chargingFees,
+            service_fee: serviceFees,
+
+            // Payment Details
+            subtotal: subTotal,
+            gst_percentage: gstPercentage,
+            gst_amount: gstAmount,
+            gross_amount: grossAmount,
+
+            // Coupon
+            coupon_code: coupon_code || "",
+            coupon_discount: couponDiscount,
+
+            // Final
+            total_amount: finalAmount,
+            payable_amount: finalAmount
+        };
+
         // 3.  Double-check limit AFTER locking
         if (bookingCount >= bookingLimit) {
 
@@ -311,7 +391,7 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         const insert = await insertRecord('portable_charger_booking', [
             'booking_id', 'rider_id', 'vehicle_id', 'service_name', 'service_price', 'service_type', 'service_feature', 'user_name', 'country_code', 'contact_no', 'slot', 'slot_date', 'slot_time', 'address', 'latitude', 'longitude', 'status', 'address_alert', 'parking_number', 'parking_floor', 'address_id', 'device_name', 'area', 'vehicle_data', 'current_percent', 'state', 'city', 'pincode', 'package_data'
         ], [
-            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, { ...packageData, charging_fees: charging_fees2 }
+            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails
         ]);
         if (insert.affectedRows == 0) {
             return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });

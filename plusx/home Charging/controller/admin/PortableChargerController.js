@@ -321,7 +321,7 @@ export const chargerBookingDetails = async (req, resp) => {
                 charging_fee: bookingResult.package_data?.charging_fees || 0,
                 package_id: bookingResult.package_data?.package_id || "",
                 package_name: bookingResult.package_data?.package_name || "",
-                charging_capacity: bookingResult.package_data?.charging_capacity || 0,
+                charging_capacity: parseFloat(bookingResult.package_data?.charging_capacity ?? 0).toFixed(0) || 0,
                 price_per_unit: bookingResult.package_data?.price_per_unit || 0,
                 service_fee: bookingResult.package_data?.service_fee || 0
             };

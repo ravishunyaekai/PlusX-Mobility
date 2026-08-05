@@ -766,13 +766,25 @@ export const checkCoupon = async (rider_id, booking_type, coupon_code, bookingPr
     `, [rider_id, coupon_code]);
 
     if (moment(coupon.end_date).isBefore(moment(), 'day') || coupon.status < 1) {
-        return { status: 0, code: 422, message: "The coupon you entered has expired." };
+        return {
+            status: 0,
+            code: 422,
+            message: "The coupon you entered has expired."
+        };
 
     } else if (coupon.booking_for != booking_type) {
-        return { status: 0, code: 422, message: "The coupon code entered is not valid. Please check and try again." };
+        return {
+            status: 0,
+            code: 422,
+            message: "The coupon code entered is not valid. Please check and try again."
+        };
 
     } else if (coupon.use_count >= coupon.user_per_user) {
-        return { status: 0, code: 422, message: "This coupon code has already been used the maximum number of times." };
+        return {
+            status: 0,
+            code: 422,
+            message: "This coupon code has already been used the maximum number of times."
+        };
     }
 
     var amount;
@@ -782,7 +794,9 @@ export const checkCoupon = async (rider_id, booking_type, coupon_code, bookingPr
     } else {
         const priceQry = `SELECT portable_price, portable_price FROM booking_price LIMIT 1`;
         const priceData = await queryDB(priceQry, []);
-        amount = (booking_type == 'Roadside Assistance') ? priceData.pick_drop_price : priceData.portable_price;
+        amount = (booking_type == 'Roadside Assistance')
+            ? priceData.pick_drop_price
+            : priceData.portable_price;
 
     }
 
@@ -794,7 +808,6 @@ export const checkCoupon = async (rider_id, booking_type, coupon_code, bookingPr
     if (coupon.coupan_percentage != parseFloat(100)) {
         const dis_price = (amount * coupon.coupan_percentage) / 100;
         const total_amt = amount - dis_price;
-
 
         const vat_amt = Math.floor((total_amt) * 18) / 100;
         data.total_amt = total_amt + vat_amt;
