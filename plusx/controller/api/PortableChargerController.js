@@ -722,7 +722,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
                 <p>Best regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Home EV Charging  Booking Rescheduled (Booking ID : ${booking_id} )`, htmlAdmin);
+        emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking Rescheduled (Booking ID : ${booking_id} )`, htmlAdmin);
         
         if(checkOrder.rsa_id ){
  

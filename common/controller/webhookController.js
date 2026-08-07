@@ -382,7 +382,7 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
                 await db.execute('UPDATE portable_charger_subscriptions SET total_booking = total_booking + 1 WHERE rider_id = ?', [checkOrder.rider_id]);
             }
             const href = 'portable_charger_booking/' + booking_id;
-            const heading = 'Home EV Charging Booking!';
+            const heading = 'Mobile EV Charging Booking!';
             const desc = `Booking Confirmed! ${booking_id}`;
             createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
             createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
@@ -391,7 +391,7 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
-                    <p>Thank you for choosing our Home EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Thank you for choosing our Mobile EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
                     <p>Booking Details:</p>
                     <p>Booking ID: ${booking_id}</p>
                     <p>Vehicle Battery %  : ${battery_percent}   </p>
@@ -400,12 +400,12 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Home EV Charging', htmlUser);
+            emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlUser);
 
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
-                    <p>We have received a new booking for our Home EV charging service. Please find the details below:</p> 
+                    <p>We have received a new booking for our Mobile EV charging service. Please find the details below:</p> 
                     <p>Customer Name : ${checkOrder.user_name}</p>
                     <p>Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                     <p>Vehicle Battery % : ${battery_percent}   </p>
@@ -416,7 +416,7 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Home EV Charging  Booking - ${booking_id}`, htmlAdmin);
+            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking - ${booking_id}`, htmlAdmin);
 
             io.emit('plusx-notification-list', { msCount: 1 });
 
@@ -497,7 +497,7 @@ export const portableChargerBookingConfirm = async (req, res) => {
                 await db.execute('UPDATE portable_charger_subscriptions SET total_booking = total_booking + 1 WHERE rider_id = ?', [checkOrder.rider_id]);
             }
             const href = 'portable_charger_booking/' + booking_id;
-            const heading = 'Home EV Charging Booking!';
+            const heading = 'Mobile EV Charging Booking!';
             const desc = `Booking Confirmed! ${booking_id}`;
             createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
             createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
@@ -506,7 +506,7 @@ export const portableChargerBookingConfirm = async (req, res) => {
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
-                    <p>Thank you for choosing our Home EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Thank you for choosing our Mobile EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
                     <p>Booking Details:</p>
                     <p>Booking ID: ${booking_id}</p>
                     <p>Vehicle Battery %  : ${battery_percent}   </p>
@@ -515,12 +515,12 @@ export const portableChargerBookingConfirm = async (req, res) => {
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail("shivani@shunyaekai.tech", 'PlusX Electric App: Booking Confirmation for Your Home EV Charging', htmlUser);
+            emailQueue.addEmail("shivani@shunyaekai.tech", 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlUser);
 
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
-                    <p>We have received a new booking for our Home EV charging service. Please find the details below:</p> 
+                    <p>We have received a new booking for our Mobile EV charging service. Please find the details below:</p> 
                     <p>Customer Name : ${checkOrder.user_name}</p>
                     <p>Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                     <p>Vehicle Battery % : ${battery_percent}   </p>
@@ -531,7 +531,7 @@ export const portableChargerBookingConfirm = async (req, res) => {
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Home EV Charging  Booking - ${booking_id}`, htmlAdmin);
+            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking - ${booking_id}`, htmlAdmin);
 
             io.emit('plusx-notification-list', { msCount: 1 });
 

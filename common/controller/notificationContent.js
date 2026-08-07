@@ -179,9 +179,9 @@ export const NOTIFICATION_CONTENT = {
             </html>
         `,
   },
-  //***************Home EV Charging - Notification & Email Content*********************** */
+  //***************Mobile EV Charging - Notification & Email Content*********************** */
   USER_HOME_CHARGER_CONFIRM_NOTIFICATION: {
-    heading: `Home EV Charging Booking!`,
+    heading: `Mobile EV Charging Booking!`,
     desc: ({ booking_id }) => `Booking Confirmed! ${booking_id}`,
     href: ({ booking_id }) => `portable_charger_booking/${booking_id}`,
     module_name: "mobility",
