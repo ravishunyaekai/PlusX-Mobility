@@ -560,12 +560,16 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
 
     try {
         booking.package_data = {
+            ...booking.package_data,
             charging_fee: booking.package_data?.charging_fees || 0,
             package_id: booking.package_data?.package_id || "",
             package_name: booking.package_data?.package_name || "",
             charging_capacity: booking.package_data?.charging_capacity || 0,
             price_per_unit: booking.package_data?.price_per_unit || 0,
-            service_fee: booking.package_data?.service_fee || 0
+            service_fee: booking.package_data?.service_fee || 0,
+            price: booking?.package_data?.amount,
+            discount_amt : booking?.package_data?.coupon_discount,
+            vat_amount: booking?.package_data?.gst_amount,
         };
     } catch (e) {
         booking.package_data = {};
@@ -1130,6 +1134,7 @@ export const podInvoiceDetailsOld1 = asyncHandler(async (req, resp) => {
 });
 
 export const podInvoiceDetails = asyncHandler(async (req, resp) => {
+    console.log("functionn called")
     const { rider_id, booking_id } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
         rider_id: ["required"],
@@ -1308,9 +1313,16 @@ export const podInvoiceDetails = asyncHandler(async (req, resp) => {
         ...packageData,
         charging_fee: packageData.charging_fees || 0,
         amount: data.price_details.amount || 0,
+        discount: packageData.coupon_discount || 0,
     };
     data.price_details = priceDetails;
     data.vat_percetange = '18%';
+    if (data.package_data) {
+        data.price = data.package_data.amount;
+        data.discount_amt = data.package_data.discount;
+        // data.vat_percetange = data.package_data.gst_percentage;
+        data.vat_amount = data.package_data.gst_amount;
+    }
 
     return resp.json({
         message: ["POD Invoice Details fetch successfully!"],

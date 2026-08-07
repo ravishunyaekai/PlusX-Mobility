@@ -347,39 +347,23 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
 
     try {
         const checkOrder = await queryDB(`
-          SELECT 
-            pcb.current_percent, 
-            pcb.rider_id, 
-            pcb.user_name, 
-            pcb.country_code, 
-            pcb.contact_no, 
-            pcb.slot_date, 
-            pcb.slot_time, 
-            pcb.address, 
-            pcb.latitude, 
-            pcb.longitude,
-            pcb.service_type, 
-            rd.fcm_token, 
-            rd.rider_email, 
-            pcb.vehicle_data
-        FROM 
-            portable_charger_booking as pcb
-        LEFT JOIN
-            riders AS rd ON rd.rider_id = pcb.rider_id
-        WHERE 
-            pcb.booking_id = ? AND pcb.status = 'PNR'
-        LIMIT 1
-    `, [booking_id]);
+              SELECT   pcb.current_percent, pcb.rider_id, pcb.user_name, pcb.country_code, pcb.contact_no, pcb.slot_date, pcb.slot_time, pcb.address, pcb.latitude, pcb.longitude,
+            pcb.service_type, rd.fcm_token, rd.rider_email, pcb.vehicle_data
+            FROM 
+                portable_charger_booking as pcb
+            LEFT JOIN
+                riders AS rd ON rd.rider_id = pcb.rider_id
+            WHERE 
+                pcb.booking_id = ? AND pcb.status = 'PNR'
+            LIMIT 1
+        `, [booking_id]);
         const battery_percent = checkOrder.current_percent > 0 ? "More than 10 %" : "0 %";
 
         if (!checkOrder) {
             return false;
         }
         const ordHistoryCount = await queryDB(
-            `SELECT COUNT(*) as count 
-            FROM portable_charger_history 
-            WHERE booking_id = ? 
-            AND order_status = "CNF"`, [booking_id]
+            'SELECT COUNT(*) as count FROM portable_charger_history WHERE booking_id = ? AND order_status = "CNF"', [booking_id]
         );
         if (ordHistoryCount.count === 0) {
 

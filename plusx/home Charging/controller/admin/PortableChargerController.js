@@ -452,6 +452,7 @@ export const invoiceList = async (req, resp) => {
             whereValue: whereValues,
             whereOperator: whereOperators
         });
+        console.log(result.data)
         return resp.json({
             status: 1,
             code: 200,
@@ -544,6 +545,7 @@ export const invoiceDetailsOld = async (req, resp) => {
 export const invoiceDetails = async (req, resp) => {
     try {
         const { invoice_id } = req.body;
+        console.log("invoiceDetails", req.body)
 
         const { isValid, errors } = validateFields(req.body, {
             invoice_id: ["required"]
@@ -728,9 +730,16 @@ export const invoiceDetails = async (req, resp) => {
             ...packageData,
             charging_fee: packageData.charging_fees || 0,
             amount: data.price_details.amount || 0,
+            discount: packageData.coupon_discount || 0,
         };
         data.price_details = priceDetails;
         data.vat_percetange = '18%';
+        if (data.package_data) {
+            data.price = data.package_data.amount;
+            data.discount_amt = data.package_data.discount;
+            // data.vat_percetange = data.package_data.gst_percentage;
+            data.vat_amount = data.package_data.gst_amount;
+        }
 
         return resp.json({
             message: [
