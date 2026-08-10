@@ -82,7 +82,7 @@ export const couponDetail = asyncHandler(async (req, resp) => {
 export const couponData = asyncHandler(async (req, resp) => {
     const bookingType = [
         'Charger Installation', 'EV Pre-Sale', 'POD-On Demand Service', 'POD-Get Monthly Subscription',
-        'Roadside Assistance', 'Valet Charging',
+        'Roadside Assistance', 'Valet Charging', 'Mobile EV Charging','EV Roadside Assistance', 'EV Charger Installation'
     ];
     return resp.json({ status: 1, message: "Coupon data fetch successfully!" }, bookingType);
 });

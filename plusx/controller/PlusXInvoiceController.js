@@ -146,7 +146,7 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
         `,[request_id, rider_id]);
 
         if (!checkOrder) {
-            let respMsg = "Booking Request Received! Thank you for booking our portable charger service for your EV. Our team will arrive at the scheduled time."; 
+            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
             return resp.json({ message : [respMsg], status: 1, code : 200 });
         }
         const ordHistoryCount = await queryDB(
@@ -184,7 +184,7 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
-                    <p>Thank you for choosing our portable charger service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Thank you for choosing our mobile EV charging service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
                     <p>Booking Details:</p>
                     Booking ID: ${request_id}<br>
                     Date and Time of Service: ${moment(checkOrder.slot_date, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(checkOrder.slot_time, 'HH:mm').format('h:mm A')}<br>
@@ -199,7 +199,7 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
-                    <p>We have received a new booking for our Portable Charger service. Below are the details:</p> 
+                    <p>We have received a new booking for our Mobile EV Charging service. Below are the details:</p> 
                     Customer Name : ${checkOrder.user_name}<br>
                     Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}<br>
                     Address       : ${checkOrder.address}<br>
@@ -210,10 +210,10 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Portable Charger Booking - ${request_id}`, htmlAdmin);
+            emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging Booking - ${request_id}`, htmlAdmin);
             
             // await commitTransaction(conn);
-            let respMsg = "Booking Request Received! Thank you for booking our portable charger service for your EV. Our team will arrive at the scheduled time."; 
+            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
             return resp.json({ message: [respMsg], status: 1, code: 200 });
         } else {
             return resp.json({ message: ['Your booking has been already confirmed!'], status: 0, code: 200 });

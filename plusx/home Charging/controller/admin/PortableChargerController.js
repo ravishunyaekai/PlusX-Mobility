@@ -32,7 +32,7 @@ export const chargerList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger List fetch successfully!"],
+            message: ["Mobile EV Charging List fetch successfully!"],
             data: result.data,
             slot_data: slotData,
             total_page: result.totalPage,
@@ -68,7 +68,7 @@ export const chargerDetails = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger Details fetched successfully!"],
+            message: ["Mobile EV Charging Details fetched successfully!"],
             data: chargerDetails[0],
             base_url: `${process.env.DIR_UPLOADS}charger-images/`
 
@@ -171,8 +171,8 @@ export const deleteCharger = async (req, resp) => {
             status: del.affectedRows > 0 ? 1 : 0
         });
     } catch (err) {
-        console.error('Error deleting portable charger', err);
-        return resp.json({ status: 0, message: 'Error deleting portable charger' });
+        console.error('Error deleting mobile EV charging', err);
+        return resp.json({ status: 0, message: 'Error deleting mobile EV charging' });
     }
 };
 
@@ -246,7 +246,7 @@ export const chargerBookingList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger Booking List fetched successfully!"],
+            message: ["Mobile EV Charging Booking List fetched successfully!"],
             data: result.data,
             total_page: result.totalPage,
             total: result.total,
@@ -456,7 +456,7 @@ export const invoiceList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger Invoice List fetched successfully!"],
+            message: ["Mobile EV Charging Invoice List fetched successfully!"],
             data: result.data,
             total_page: result.totalPage,
             total: result.total,
@@ -530,7 +530,7 @@ export const invoiceDetailsOld = async (req, resp) => {
             data.price = parseFloat(data.booking_price) + data.t_vat_amt;
         }
         return resp.json({
-            message: ["Portable Charger Invoice Details fetched successfully!"],
+            message: ["Mobile EV Charging Invoice Details fetched successfully!"],
             data: data,
             status: 1,
             code: 200,
@@ -743,7 +743,7 @@ export const invoiceDetails = async (req, resp) => {
 
         return resp.json({
             message: [
-                "Portable Charger Invoice Details fetched successfully!"
+                "Mobile EV Charging Invoice Details fetched successfully!"
             ],
             data,
             status: 1,
@@ -808,7 +808,7 @@ export const slotList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger Slot List fetched successfully!"],
+            message: ["Mobile EV Charging Slot List fetched successfully!"],
             data: formattedData,
             total_page: result.totalPage,
             total: result.total,
@@ -839,7 +839,7 @@ export const slotDetails = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Portable Charger Slot Details fetched successfully!"],
+            message: ["Mobile EV Charging Slot Details fetched successfully!"],
             data: slotDetails,
 
         });
@@ -1027,13 +1027,13 @@ export const assignBooking = async (req, resp) => {
 
         const href = 'portable_charger_booking/' + booking_id;
         const heading = 'Booking Assigned!';
-        const desc = `Booking Assigned : ${booking_id}`; //`Your POD Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
+        const desc = `Booking Assigned : ${booking_id}`; //`Your Charging Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
         // createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
         // /pushNotification(booking_data.fcm_token, heading, desc, 'RDRFCM', href);
 
         const heading1 = 'Portable Charging Booking!';
         const desc1 = `Booking Assigned : ${booking_id}`;
-        createNotification(heading, desc1, 'Portable Charger', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
+        createNotification(heading, desc1, 'Mobile EV Charging', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
         pushNotification(rsa.fcm_token, heading1, desc1, 'RSAFCM', href);
 
         const htmlDriver = `<html>
@@ -1052,7 +1052,7 @@ export const assignBooking = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: "You have successfully assigned POD booking."
+            message: "You have successfully assigned Charging booking."
         });
 
     } catch (err) {
@@ -1159,7 +1159,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
 
     await updateRecord('portable_charger_booking', { status: 'C' }, ['booking_id'], [booking_id]);
     const href = `portable_charger_booking/${booking_id}`;
-    const title = 'Portable Charger Cancel!';
+    const title = 'Mobile EV Charging Cancel!';
     const message = `We regret to inform you that your portable charging booking (ID: ${booking_id}) has been cancelled by the admin.`;
     await createNotification(title, message, 'Portable Charging', 'Rider', 'Rider', rider_id, rider_id, href);
     await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
@@ -1186,7 +1186,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
             <p>Best regards,<br/> The PlusX Electric Team </p>
         </body>
     </html>`;
-    emailQueue.addEmail(checkOrder.rider_email, `Booking Cancellation Confirmation - PlusX Electric Portable Charger Service (Booking ID : ${booking_id} )`, html);
+    emailQueue.addEmail(checkOrder.rider_email, `Booking Cancellation Confirmation - PlusX Electric Mobile EV Charging Service (Booking ID : ${booking_id} )`, html);
 
     const adminHtml = `<html>
         <body>
@@ -1202,7 +1202,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
             <p>Best regards,<br/> The PlusX Electric Team </p>
         </body>
     </html>`;
-    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Portable Charger Service Booking Cancellation ( :Booking ID : ${booking_id} )`, adminHtml);
+    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging Service Booking Cancellation ( :Booking ID : ${booking_id} )`, adminHtml);
 
     return resp.json({ message: ['Booking has been cancelled successfully!'], status: 1, code: 200 });
 });
@@ -1271,7 +1271,7 @@ export const customerChargerBookingList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Customer POD Booking List fetched successfully!"],
+            message: ["Customer Charging Booking List fetched successfully!"],
             data: result.data,
             total_page: result.totalPage,
             total: result.total,
@@ -1339,7 +1339,7 @@ export const failedChargerBookingList = async (req, resp) => {
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Failed POD Booking List fetched successfully!"],
+            message: ["Failed Charging Booking List fetched successfully!"],
             data: result.data,
             total_page: result.totalPage,
             total: result.total,

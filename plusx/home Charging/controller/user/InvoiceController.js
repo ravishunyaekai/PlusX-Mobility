@@ -155,7 +155,7 @@ export const oldportableChargerInvoice = asyncHandler(async (req, resp) => {
 
         if (!checkOrder || parseFloat( checkOrder.service_price) > 0 ) {
             
-            let respMsg = "Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
+            let respMsg = "Thank you for booking our Mobile EV Charging service for your EV. Our team will arrive at the scheduled time."; 
             return resp.json({ message : [respMsg], status: 1, code : 200 });
         }
         const ordHistoryCount = await queryDB(

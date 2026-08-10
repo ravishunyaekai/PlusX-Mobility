@@ -78,6 +78,7 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     router[method](path, ...middlewares, handler);
 });
 // router.post('/portable-charger-booking', chargerBooking);
+// router.get('/portable-charger-booking-detail', chargerBookingDetail);
     //  { method: 'get',  path: '/portable-charger-invoice',            handler: podInvoiceDetails },
 // router.get('/portable-charger-invoice', podInvoiceDetails);
 

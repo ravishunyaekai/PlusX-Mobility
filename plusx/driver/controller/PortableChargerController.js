@@ -51,8 +51,8 @@ export const getActivePodList = asyncHandler(async (req, resp) => {
         ORDER BY CAST(SUBSTRING(pod_name, LOCATE(' ', pod_name) + 1) AS UNSIGNED)
     `, [data.lat, data.lon, data.lat]);
 
-    return resp.json({ status: 1, code: 200, message: ["POD List fetch successfully!"], active_pod_id, data: result });
-    // return resp.json({status:1, code:200, message:["POD List fetch successfully!"], data: result });
+    return resp.json({ status: 1, code: 200, message: ["Charging Device List fetch successfully!"], active_pod_id, data: result });
+    // return resp.json({status:1, code:200, message:["Charging Device List fetch successfully!"], data: result });
 });
 
 /* RSA - Booking Action */
@@ -143,23 +143,23 @@ export const rejectBooking = asyncHandler(async (req, resp) => {
 
     const href = `portable_charger_booking/${booking_id}`;
     const title = 'Booking Rejected';
-    const message = `Driver has rejected the portable charger booking with booking id: ${booking_id}`;
-    await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+    const message = `Driver has rejected the mobile EV charging booking with booking id: ${booking_id}`;
+    await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
 
     const html = `<html>
         <body>
             <h4>Dear Admin,</h4>
-            <p>Driver has rejected the portable charger booking. please assign one Driver on this booking</p> <br />
+            <p>Driver has rejected the Mobile EV Charging booking. please assign one Driver on this booking</p> <br />
             <p>Booking ID: ${booking_id}</p>
             <p>Best Regards,<br/> The PlusX Electric Team </p>
         </body>
     </html>`;
-    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `POD Service Booking rejected - ${booking_id}`, html);
+    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Charging Service Booking rejected - ${booking_id}`, html);
 
     return resp.json({ message: ['Booking has been rejected successfully!'], status: 1, code: 200 });
 });
 
-/* POD booking action helper */
+/* Charging booking action helper */
 const acceptBooking = async (req, resp) => {
     const { booking_id, rsa_id, latitude, longitude } = mergeParam(req);
 
@@ -185,10 +185,10 @@ const acceptBooking = async (req, resp) => {
         await updateRecord('portable_charger_booking', { status: 'A', rsa_id }, ['booking_id'], [booking_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
+        const title = 'Mobile EV Charging Booking!';
         const message = `Booking Accepted! ${booking_id}`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
         await db.execute('UPDATE portable_charger_booking_assign SET status = 1 WHERE order_id = ? AND rsa_id = ?', [booking_id, rsa_id]);
@@ -201,7 +201,7 @@ const acceptBooking = async (req, resp) => {
 
         // await db.execute('UPDATE rsa SET running_order = running_order + 1 WHERE rsa_id = ?', [rsa_id]);
 
-        return resp.json({ message: ['POD Booking accepted successfully!'], status: 1, code: 200 });
+        return resp.json({ message: ['Charging Booking accepted successfully!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
@@ -243,10 +243,10 @@ const driverEnroute = async (req, resp) => {
         await updateRecord('portable_charger_booking', { status: 'ER' }, ['booking_id'], [booking_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
+        const title = 'Mobile EV Charging Booking!';
         const message = `PlusX Electric team is on the way!`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        //await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        //await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
         return resp.json({ message: ['PlusX Electric team is on the way!  Please have your EV ready for charging.'], status: 1, code: 200 });
@@ -290,13 +290,13 @@ const reachedLocation = async (req, resp) => {
         await updateRecord('portable_charger_booking', { status: 'RL', rsa_id }, ['booking_id'], [booking_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
-        const message = `The POD has arrived. Please unlock your EV.`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        const title = 'Mobile EV Charging Booking!';
+        const message = `The Charging Van has arrived. Please unlock your EV.`;
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
-        return resp.json({ message: ['The Portable Power Pod has arrived. Please unlock your EV.'], status: 1, code: 200 });
+        return resp.json({ message: ['The Charging Van has arrived. Please unlock your EV.'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
@@ -347,13 +347,13 @@ const chargingStart = async (req, resp) => {
         await updateRecord('pod_devices', { charging_status: 1, latitude, longitude }, ['pod_id'], [pod_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
-        const message = `The POD has started charging your EV!`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        const title = 'Mobile EV Charging Booking!';
+        const message = `The Charging Van has started charging your EV!`;
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
-        return resp.json({ message: ['Charging has started. The Pod is now powering your EV!'], status: 1, code: 200 });
+        return resp.json({ message: ['Charging has started. The Charging Van is now powering your EV!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
@@ -410,11 +410,11 @@ const chargingComplete = async (req, resp) => {
         await db.execute(`UPDATE pod_devices SET charging_status = 0, temp1 = temp1 + 30, temp2 = temp2 + 25 WHERE pod_id = ?`, [checkOrder.pod_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
+        const title = 'Mobile EV Charging Booking!';
         const message = `Charging complete. Please lock your EV.`;
 
-        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
 
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
@@ -574,13 +574,13 @@ const reachedOffice = async (req, resp) => {
         if (checkOrder.pod_id) {
             await updateRecord('pod_devices', { latitude, longitude }, ['pod_id'], [checkOrder.pod_id]);
         }
-        return resp.json({ message: ['POD reached the office successfully!'], status: 1, code: 200 });
+        return resp.json({ message: ['Charging Van reached the office successfully!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
 };
 
-/* Save POD Charging History */
+/* Save Mobile EV Charging History */
 export const storePodChargerHistory = asyncHandler(async (req, resp) => {
     const { rsa_id, pod_id, charging_status, latitude, longitude } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), { rsa_id: ["required"], pod_id: ["required"], charging_status: ["required"], latitude: ["required"], longitude: ["required"] });
@@ -607,12 +607,12 @@ export const storePodChargerHistory = asyncHandler(async (req, resp) => {
 
     return resp.json({
         status: isStored ? 1 : 0,
-        message: isStored ? 'POD charger history saved successfully' : 'Failed to store, Please Try Again.'
+        message: isStored ? 'Charging Van charger history saved successfully' : 'Failed to store, Please Try Again.'
     });
 
 });
 
-/* POD Battery */
+/* Mobile EV Charging Battery */
 const getPodBatteryData = async (pod_id) => {
     try {
         // const { pod_id, } = req.body;

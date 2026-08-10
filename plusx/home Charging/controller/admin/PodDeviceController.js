@@ -33,7 +33,7 @@ export const podDeviceList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Device List fetch successfully!"],
+            message    : ["Charging Device List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -76,7 +76,7 @@ export const podDeviceDetails = async (req, resp) => {
         return resp.json({
             status  : 1,
             code    : 200,
-            message : ["POD Device Details fetched successfully!"],
+            message : ["Charging Device Details fetched successfully!"],
             data    : chargerDetails[0],
             batteryData 
         });
@@ -123,7 +123,7 @@ export const addPodDevice = async (req, resp) => {
         `, [deviceId, podId]);
 
         if( isExist.check_device ) return resp.json({ status : 0, code : 422, message : 'Device Id is already registered.'});
-        if( isExist.check_pod ) return resp.json({ status : 0, code : 422, message : 'POD Id is already registered.'});
+        if( isExist.check_pod ) return resp.json({ status : 0, code : 422, message : 'Charging Device Id is already registered.'});
         
         let date_manufacturing    = date_of_manufacturing.split("-");
         const dateOfManufacturing = date_manufacturing[2] +'-'+ date_manufacturing[1] +'-'+date_manufacturing[0];
@@ -145,7 +145,7 @@ export const addPodDevice = async (req, resp) => {
 
         return resp.json({
             code    : 200,
-            message : insert.affectedRows > 0 ? ['POD Device added successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : insert.affectedRows > 0 ? ['Charging Device added successfully!'] : ['Oops! Something went wrong. Please try again.'],
             status : insert.affectedRows > 0 ? 1 : 0
         });
     } catch (error) {
@@ -156,7 +156,7 @@ export const addPodDevice = async (req, resp) => {
 
 export const editPodDevice = async (req, resp) => {
     // console.log(req.body)
-    // return resp.json({ status : 0, code : 422, message : 'POD Id is not registered.'});
+    // return resp.json({ status : 0, code : 422, message : 'Charging Device Id is not registered.'});
     try {
         const { podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing, battery_ids, capacities } = req.body;
        
@@ -192,9 +192,9 @@ export const editPodDevice = async (req, resp) => {
         `, [deviceId, podId, podId, podId]);
 
         const err = [];
-        if( isExist.length == 0 ) return resp.json({ status : 0, code : 422, message : 'POD Id is not registered.'});
+        if( isExist.length == 0 ) return resp.json({ status : 0, code : 422, message : 'Charging Device Id is not registered.'});
         if( isExist.check_device ) return resp.json({ status : 0, code : 422, message : 'Device Id is already registered.'});
-        if( isExist.check_pod ) return resp.json({ status : 0, code : 422, message : 'POD Id is already registered.'});
+        if( isExist.check_pod ) return resp.json({ status : 0, code : 422, message : 'Charging Device Id is already registered.'});
 
         let date_manufacturing = date_of_manufacturing.split("-");
         const dateOfManufacturing = date_manufacturing[2] +'-'+ date_manufacturing[1] +'-'+date_manufacturing[0];
@@ -245,7 +245,7 @@ export const editPodDevice = async (req, resp) => {
         return resp.json({
             status  : update.affectedRows > 0 ? 1 : 0,
             code    : 200,
-            message : update.affectedRows > 0 ? ['POD Device updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : update.affectedRows > 0 ? ['Charging Device updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
         });
 
     } catch (error) {
@@ -265,12 +265,12 @@ export const deletePodDevice = async (req, resp) => {
         const [del] = await db.execute(`DELETE FROM pod_devices WHERE device_id = ?`, [deviceId]);
         return resp.json({
             code    : 200,
-            message : del.affectedRows > 0 ? ['POD Device deleted successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : del.affectedRows > 0 ? ['Charging Device deleted successfully!'] : ['Oops! Something went wrong. Please try again.'],
             status: del.affectedRows > 0 ? 1 : 0
         });
     } catch (err) {
-        console.error('Error deleting portable charger', err);
-        return resp.json({ status: 0, message: 'Error deleting portable charger' });
+        console.error('Error deleting mobile EV charging device', err);
+        return resp.json({ status: 0, message: 'Error deleting mobile ev charging device' });
     }
 };
 
@@ -283,7 +283,7 @@ export const AllpodDevice = async (req, resp) => {
         return resp.json({
             status  : 1,
             code    : 200,
-            message : ["All POD Device fetch successfully!"],
+            message : ["All Charging Device fetch successfully!"],
             data    : allDevice,
         });
     } catch (error) {
@@ -291,7 +291,7 @@ export const AllpodDevice = async (req, resp) => {
         resp.status(500).json({ message: 'Error fetching device lists' });
     }
 };
-// POD Device End
+// Charging Device End
 
 // Brand Start
 export const addPodBrand = async (req, resp) => {
@@ -325,7 +325,7 @@ export const addPodBrand = async (req, resp) => {
         ]);
         return resp.json({
             code    : 200,
-            message : insert.affectedRows > 0 ? ['POD Brand added successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : insert.affectedRows > 0 ? ['Charging Brand added successfully!'] : ['Oops! Something went wrong. Please try again.'],
             status : insert.affectedRows > 0 ? 1 : 0
         });
     } catch (error) {
@@ -355,7 +355,7 @@ export const podBrandList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Brand List fetch successfully!"],
+            message    : ["Charging Brand List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -388,7 +388,7 @@ export const deviceBrandList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Brand List fetch successfully!"],
+            message    : ["Charging Brand List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -424,7 +424,7 @@ export const podAreaList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Area List fetch successfully!"],
+            message    : ["Charging Area List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -487,7 +487,7 @@ export const podAreaDetails = async (req, resp) => {
         return resp.json({
             status  : 1,
             code    : 200,
-            message : ["POD Area Details fetched successfully!"],
+            message : ["Charging Area Details fetched successfully!"],
             data    : areaDetails[0],
         });
     } catch (error) {
@@ -530,7 +530,7 @@ export const editPodArea = async (req, resp) => {
         return resp.json({
             status  : update.affectedRows > 0 ? 1 : 0,
             code    : 200,
-            message : update.affectedRows > 0 ? ['POD Area updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : update.affectedRows > 0 ? ['Charging Area updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
         });
 
     } catch (error) {
@@ -548,7 +548,7 @@ export const AllpodArea = async (req, resp) => {
         return resp.json({
             status  : 1,
             code    : 200,
-            message : ["All POD Area fetch successfully!"],
+            message : ["All Charging Area fetch successfully!"],
             data    : allDevice,
         });
     } catch (error) {
@@ -579,7 +579,7 @@ export const assignPodDeviceArea = async (req, resp) => {
         `, [podId, selectedArea]);
 
         const err = [];
-        if( isExist.check_device == 0 ) err.push('POD Id is not registered.');
+        if( isExist.check_device == 0 ) err.push('Charging Device Id is not registered.');
         if( isExist.check_area == 0 ) err.push('Area Id is not registered.');
         if(err.length > 0) return resp.json({ status : 0, code : 422, message : err });
 
@@ -591,7 +591,7 @@ export const assignPodDeviceArea = async (req, resp) => {
         ]);
         return resp.json({
             code    : 200,
-            message : insert.affectedRows > 0 ? ['POD Area Assign successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : insert.affectedRows > 0 ? ['Charging Area Assign successfully!'] : ['Oops! Something went wrong. Please try again.'],
             status : insert.affectedRows > 0 ? 1 : 0
         });
     } catch (error) {
@@ -621,7 +621,7 @@ export const podAreaAssignList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Assign Area List fetch successfully!"],
+            message    : ["Charging Area List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -652,7 +652,7 @@ export const podDeviceStatusChange = async (req, resp) => {
             LIMIT 1
         `, [ podId]);
 
-        if( isExist.length == 0 ) return resp.json({ status : 0, code : 422, message : 'POD Id is not registered.'});
+        if( isExist.length == 0 ) return resp.json({ status : 0, code : 422, message : 'Charging Van Id is not registered.'});
 
         const updates = { 
             status : deviceStatus,
@@ -661,7 +661,7 @@ export const podDeviceStatusChange = async (req, resp) => {
         return resp.json({
             status  : update.affectedRows > 0 ? 1 : 0,
             code    : 200,
-            message : update.affectedRows > 0 ? ['POD Device status updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            message : update.affectedRows > 0 ? ['Charging Device status updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
         });
 
     } catch (error) {
@@ -692,7 +692,7 @@ export const podAreaInputList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Input History List fetch successfully!"],
+            message    : ["Charging Input History List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,
@@ -725,7 +725,7 @@ export const podAreaBookingList = async (req, resp) => {
         return resp.json({
             status     : 1,
             code       : 200,
-            message    : ["POD Booking History List fetch successfully!"],
+            message    : ["Charging Booking History List fetch successfully!"],
             data       : result.data,
             total_page : result.totalPage,
             total      : result.total,

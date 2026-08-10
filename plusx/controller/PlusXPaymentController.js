@@ -46,7 +46,7 @@ export const createIntent = async (req, resp) => {
                     country     : "United Arab Emirates",
                 },
                 email       : rider_email,
-                description : `This booking Id : ${booking_id} for POD Booking.`
+                description : `This booking Id : ${booking_id} for Charging Booking.`
             });
             customerId = customer.id;
         }
@@ -529,7 +529,7 @@ export const getPaymentSession = async (req, resp) => {
                     country     : "United Arab Emirates",
                 },
                 email       : rider_email,
-                description : `This booking Id : ${booking_id} for POD Booking.`
+                description : `This booking Id : ${booking_id} for Charging Booking.`
             });
             customerId = customer.id;
         }
@@ -539,7 +539,7 @@ export const getPaymentSession = async (req, resp) => {
                 {
                     price_data : {
                         currency     : currency,
-                        product_data : { name : `This booking Id : ${booking_id} for POD Booking.` },
+                        product_data : { name : `This booking Id : ${booking_id} for Charging Booking.` },
                         unit_amount  : amount < 200 ? 200 : Math.floor(amount), // $50.00
                     },
                     quantity : 1,

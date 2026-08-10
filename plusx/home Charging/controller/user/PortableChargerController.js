@@ -34,7 +34,7 @@ export const chargerList = asyncHandler(async (req, resp) => {
     return resp.json({
         status: 1,
         code: 200,
-        message: ["Portable Charger List fetch successfully!"],
+        message: ["Mobile EV Charging List fetch successfully!"],
         data: result.data,
         slot_data: slotData,
         total_page: result.totalPage,
@@ -136,7 +136,7 @@ export const getPcSlotList = asyncHandler(async (req, resp) => {
         is_booking: 0,
         status: 1,
         code: 200,
-        alert2: "The slots for the selected date are fully booked. Please select another date to book the POD for your EV.",
+        alert2: "The slots for the selected date are fully booked. Please select another date to book the Charging Van for your EV.",
         alert: "",
         booking_price: 1
     });
@@ -435,8 +435,8 @@ export const failedPODBooking = async () => {
         await db.query(`DELETE FROM portable_charger_booking WHERE status = ? AND created_at < NOW() - INTERVAL 5 MINUTE`, ['PNR']);
 
         // await conn.commit();
-        // console.log("POD Data moved successfully!");
-        return "POD Data moved successfully!";
+        // console.log("Charging Data moved successfully!");
+        return "Charging Data moved successfully!";
 
     } catch (err) {
         // await conn.rollback();
@@ -445,7 +445,7 @@ export const failedPODBooking = async () => {
         return false;
     } finally {
         // conn.release();
-        console.log("POD Data connection released");
+        console.log("Charging Data connection released");
         return "connection released";
     }
 };
@@ -505,7 +505,7 @@ export const chargerBookingList = asyncHandler(async (req, resp) => {
         inProcessBookingList = inProcessrow;
     }
     return resp.json({
-        message: ["Portable Charger Booking List fetched successfully!"],
+        message: ["Mobile EV Charging Booking List fetched successfully!"],
         data: bookingList,
         total_page: totalPage,
         inProcessBookingList,
@@ -517,10 +517,11 @@ export const chargerBookingList = asyncHandler(async (req, resp) => {
 });
 
 export const chargerBookingDetail = asyncHandler(async (req, resp) => {
-    const { rider_id, booking_id } = mergeParam(req);
-    const { isValid, errors } = validateFields(mergeParam(req), { rider_id: ["required"], booking_id: ["required"] });
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    const booking = await queryDB(`
+    try {
+        const { rider_id, booking_id } = mergeParam(req);
+        const { isValid, errors } = validateFields(mergeParam(req), { rider_id: ["required"], booking_id: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        const booking = await queryDB(`
         SELECT 
             current_percent, 
             booking_id, 
@@ -556,27 +557,37 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
         WHERE 
             rider_id = ? AND booking_id = ? 
         LIMIT 1`,
-        [rider_id, booking_id]);
+            [rider_id, booking_id]);
 
-    try {
-        booking.package_data = {
-            ...booking.package_data,
-            charging_fee: booking.package_data?.charging_fees || 0,
-            package_id: booking.package_data?.package_id || "",
-            package_name: booking.package_data?.package_name || "",
-            charging_capacity: booking.package_data?.charging_capacity || 0,
-            price_per_unit: booking.package_data?.price_per_unit || 0,
-            service_fee: booking.package_data?.service_fee || 0,
-            price: booking?.package_data?.amount,
-            discount_amt : booking?.package_data?.coupon_discount,
-            vat_amount: booking?.package_data?.gst_amount,
-        };
-    } catch (e) {
-        booking.package_data = {};
-    }
+        if (!booking) {
+            return resp.status(404).json({
+                message: ["Booking not found"],
+                data: [],
+                service_history: [],
+                status: 0,
+                code: 404
+            });
+        }
 
-    if (booking.vehicle_data == '' || booking.vehicle_data == null) {
-        const vehicledata = await queryDB(`
+        try {
+            booking.package_data = {
+                ...booking.package_data,
+                charging_fee: booking.package_data?.charging_fees || 0,
+                package_id: booking.package_data?.package_id || "",
+                package_name: booking.package_data?.package_name || "",
+                charging_capacity: booking.package_data?.charging_capacity || 0,
+                price_per_unit: booking.package_data?.price_per_unit || 0,
+                service_fee: booking.package_data?.service_fee || 0,
+                price: booking?.package_data?.amount,
+                discount_amt: booking?.package_data?.coupon_discount,
+                vat_amount: booking?.package_data?.gst_amount,
+            };
+        } catch (e) {
+            booking.package_data = {};
+        }
+
+        if (booking.vehicle_data == '' || booking.vehicle_data == null) {
+            const vehicledata = await queryDB(`
             SELECT                 
                 vehicle_make, vehicle_model, vehicle_specification, emirates, vehicle_code, vehicle_number
             FROM 
@@ -584,12 +595,12 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
             WHERE 
                 rider_id = ? and vehicle_id = ? 
             LIMIT 1 `,
-            [rider_id, booking.vehicle_id]);
-        if (vehicledata) {
-            booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_number;
+                [rider_id, booking.vehicle_id]);
+            if (vehicledata) {
+                booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_number;
+            }
         }
-    }
-    const [history] = await db.execute(`
+        const [history] = await db.execute(`
         SELECT 
             order_status, cancel_by, cancel_reason as reason, rsa_id, ${formatDateTimeInQuery(['created_at'])}, image, remarks,   
             (select rsa.rsa_name from rsa where rsa.rsa_id = portable_charger_history.rsa_id) as rsa_name
@@ -597,24 +608,33 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
             portable_charger_history 
         WHERE 
             booking_id = ? order by id asc`,
-        [booking_id]
-    );
-    const order_status = history.filter(item => item.order_status === 'CNF');
-    if (order_status.length > 1) {
+            [booking_id]
+        );
+        const order_status = history.filter(item => item.order_status === 'CNF');
+        if (order_status.length > 1) {
 
-        const matchingIndexes = history.map((item, index) => item.order_status === 'CNF' ? index : -1).filter(index => index !== -1);
+            const matchingIndexes = history.map((item, index) => item.order_status === 'CNF' ? index : -1).filter(index => index !== -1);
 
-        const lastValue = matchingIndexes[matchingIndexes.length - 1];
-        history[lastValue].order_status = 'RS'
+            const lastValue = matchingIndexes[matchingIndexes.length - 1];
+            history[lastValue].order_status = 'RS'
+        }
+        const newHistory = await makeBookingHistory(history);
+        return resp.json({
+            message: ["Mobile EV Charging Booking Details Service fetched successfully!"],
+            data: booking,
+            service_history: newHistory,
+            status: 1,
+            code: 200,
+        });
+    } catch (err) {
+        console.log(err);
+        return resp.json({
+            message: err.message || "Something is wrong!",
+            data: [],
+            status: 1,
+            code: 200,
+        });
     }
-    const newHistory = await makeBookingHistory(history);
-    return resp.json({
-        message: ["POD Booking Details Service fetched successfully!"],
-        data: booking,
-        service_history: newHistory,
-        status: 1,
-        code: 200,
-    });
 });
 
 const makeBookingHistory = async (history) => {
@@ -800,7 +820,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
                 <p>Best regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(checkOrder.rsa_email, `Portable Charger Service Booking Cancellation (Booking ID: ${booking_id} ) `, RSAhtml);
+        emailQueue.addEmail(checkOrder.rsa_email, `Mobile EV Charging Service Booking Cancellation (Booking ID: ${booking_id} ) `, RSAhtml);
     }
     const html = `<html>
         <body>
@@ -867,7 +887,7 @@ export const userFeedbackPCBooking = asyncHandler(async (req, resp) => {
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
 
         const href = `portable_charger_booking/${booking_id}`;
-        // const title   = 'Portable Charger Feedback!';
+        // const title   = 'Mobile EV Charging Feedback!';
         // const message = `Feedback Received - Booking ID: ${booking_id}.`;
         const title = `Feedback Received- ${booking_id}`;
         const message = `You've received feedback from a customer`;
@@ -1058,7 +1078,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
                     <p>Best regards,<br/> PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(checkOrder.rsa_email, `Portable Charger Booking Rescheduled (Booking ID: ${booking_id})`, htmlDriver);
+            emailQueue.addEmail(checkOrder.rsa_email, `Mobile EV Charging Booking Rescheduled (Booking ID: ${booking_id})`, htmlDriver);
         }
         let respMsg = "Booking request received! Your booking has been successfully rescheduled. Our team will arrive at the updated time.";
 
@@ -1125,7 +1145,7 @@ export const podInvoiceDetailsOld1 = asyncHandler(async (req, resp) => {
 
     data.price_details = {};
     return resp.json({
-        message: ["POD Invoice Details fetch successfully!"],
+        message: ["Mobile EV Charging Invoice Details fetch successfully!"],
         data: data,
         vat_percetange: '5%',
         status: 1,
@@ -1325,7 +1345,7 @@ export const podInvoiceDetails = asyncHandler(async (req, resp) => {
     }
 
     return resp.json({
-        message: ["POD Invoice Details fetch successfully!"],
+        message: ["Mobile EV Charging Invoice Details fetch successfully!"],
         data: data,
         vat_percetange: '18%',
         status: 1,

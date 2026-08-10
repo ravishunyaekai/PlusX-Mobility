@@ -116,12 +116,12 @@ export const rejectBooking = asyncHandler(async (req, resp) => {
             <p>Best Regards,<br/> The PlusX Electric Team </p>
         </body>
     </html>`;
-    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `POD Service Booking rejected - ${booking_id}`, html);
+    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Charging Service Booking rejected - ${booking_id}`, html);
 
     return resp.json({ message: ['Booking has been rejected successfully!'], status: 1, code: 200 });
 });
 
-/* POD booking action helper */
+/* Charging booking action helper */
 const acceptBooking = async (req, resp) => {
     const { booking_id, rsa_id, latitude, longitude } = mergeParam(req);
 
@@ -242,7 +242,7 @@ const reachedLocation = async (req, resp) => {
         // await createNotification(title, message, 'Roadside Assistance', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
-        return resp.json({ message: ['POD Reached at Location Successfully!'], status: 1, code: 200 });
+        return resp.json({ message: ['Charging Van Reached at Location Successfully!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
@@ -472,13 +472,13 @@ const reachedOffice = async (req, resp) => {
         if(checkOrder.pod_id) {
             await updateRecord('pod_devices', { latitude, longitude}, ['pod_id'], [checkOrder.pod_id] );
         }
-        return resp.json({ message: ['POD reached the office successfully!'], status: 1, code: 200 });
+        return resp.json({ message: ['Charging Van reached the office successfully!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
 };
 
-/* POD Battery */
+/* Mobile EV Charging Battery */
 const getPodBatteryData = async (pod_id) => {
     try {
         // const { pod_id, } = req.body;

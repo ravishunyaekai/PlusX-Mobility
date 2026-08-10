@@ -896,7 +896,7 @@ const sendDescBooking = async (booking_type, booking_id,) => {
 
     switch (booking_type) {
         case 'PCB':
-            return `POD Booking - ${booking_id}`;
+            return `Mobile EV Charging Booking - ${booking_id}`;
 
         case 'CS':
             return `Pickup & Dropoff Booking - ${booking_id}`;
