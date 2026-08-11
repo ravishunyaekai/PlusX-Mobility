@@ -1028,7 +1028,7 @@ export const assignBooking = async (req, resp) => {
         const href = 'portable_charger_booking/' + booking_id;
         const heading = 'Booking Assigned!';
         const desc = `Booking Assigned : ${booking_id}`; //`Your Charging Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
-        // createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
+        // createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
         // /pushNotification(booking_data.fcm_token, heading, desc, 'RDRFCM', href);
 
         const heading1 = 'Mobile EV Charging Booking!';

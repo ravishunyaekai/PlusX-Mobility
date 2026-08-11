@@ -384,8 +384,8 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
             const href = 'portable_charger_booking/' + booking_id;
             const heading = 'Mobile EV Charging Booking!';
             const desc = `Booking Confirmed! ${booking_id}`;
-            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
-            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
 
             const htmlUser = `<html>
@@ -499,8 +499,8 @@ export const portableChargerBookingConfirm = async (req, res) => {
             const href = 'portable_charger_booking/' + booking_id;
             const heading = 'Mobile EV Charging Booking!';
             const desc = `Booking Confirmed! ${booking_id}`;
-            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
-            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', checkOrder.rider_id, href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', checkOrder.rider_id, '', href);
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
 
             const htmlUser = `<html>
