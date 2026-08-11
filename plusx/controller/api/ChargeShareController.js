@@ -398,7 +398,7 @@ export const packageList = asyncHandler(async (req, resp) => {
         SELECT
             id,
             package_name,
-            charging_capacity,
+            CAST(charging_capacity AS UNSIGNED) AS charging_capacity,
             price_per_unit,
             ROUND((charging_capacity * price_per_unit), 2) AS charging_fee,
             service_fee,

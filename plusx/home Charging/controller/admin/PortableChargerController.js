@@ -729,6 +729,7 @@ export const invoiceDetails = async (req, resp) => {
         data.package_data = {
             ...packageData,
             charging_fee: packageData.charging_fees || 0,
+            charging_capacity: Number(packageData.charging_capacity || 0),
             amount: data.price_details.amount || 0,
             discount: packageData.coupon_discount || 0,
         };
@@ -1485,7 +1486,7 @@ export const ChargingPackageList = asyncHandler(async (req, resp) => {
                 id,
                 package_id,
                 package_name,
-                charging_capacity,
+                CAST(charging_capacity AS UNSIGNED) AS charging_capacity,
                 price_per_unit,
                 service_fee,
                 status
@@ -1499,6 +1500,7 @@ export const ChargingPackageList = asyncHandler(async (req, resp) => {
             whereField: ['is_deleted'],
             whereValue: [0],
         });
+        console.log("result", result)
 
         return resp.json({
             status: 1,
