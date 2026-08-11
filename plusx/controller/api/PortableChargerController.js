@@ -474,7 +474,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     const href    = `portable_charger_booking/${booking_id}`;
     const title   = 'Mobile EV Charging Booking!';
     const message = `Booking Cancelled : ${booking_id}`;
-    await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
+    await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
  
     if(checkOrder.rsa_id ||  checkOrder.rsa_id!=null) {
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id=? AND rider_id=?`, [booking_id, rider_id]);
@@ -564,7 +564,7 @@ export const userFeedbackPCBooking = asyncHandler(async (req, resp) => {
         // const message = `Feedback Received - Booking ID: ${booking_id}.`;
         const title   = `Feedback Received- ${booking_id}`;
         const message = `You've received feedback from a customer`;
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
 
         const adminHtml = `<html>
             <body>

@@ -144,7 +144,7 @@ export const rejectBooking = asyncHandler(async (req, resp) => {
     const href = `portable_charger_booking/${booking_id}`;
     const title = 'Booking Rejected';
     const message = `Driver has rejected the mobile EV charging booking with booking id: ${booking_id}`;
-    await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+    await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
 
     const html = `<html>
         <body>
@@ -187,7 +187,7 @@ const acceptBooking = async (req, resp) => {
         const href = `portable_charger_booking/${booking_id}`;
         const title = 'Mobile EV Charging Booking!';
         const message = `Booking Accepted! ${booking_id}`;
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
         // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
@@ -245,8 +245,8 @@ const driverEnroute = async (req, resp) => {
         const href = `portable_charger_booking/${booking_id}`;
         const title = 'Mobile EV Charging Booking!';
         const message = `PlusX Electric team is on the way!`;
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        //await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        //await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
         return resp.json({ message: ['PlusX Electric team is on the way!  Please have your EV ready for charging.'], status: 1, code: 200 });
@@ -292,8 +292,8 @@ const reachedLocation = async (req, resp) => {
         const href = `portable_charger_booking/${booking_id}`;
         const title = 'Mobile EV Charging Booking!';
         const message = `The Charging Van has arrived. Please unlock your EV.`;
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
         return resp.json({ message: ['The Charging Van has arrived. Please unlock your EV.'], status: 1, code: 200 });
@@ -347,10 +347,10 @@ const chargingStart = async (req, resp) => {
         await updateRecord('pod_devices', { charging_status: 1, latitude, longitude }, ['pod_id'], [pod_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Mobile EV Charging Booking!';
+        const title = 'Portable Charging Booking!';
         const message = `The Charging Van has started charging your EV!`;
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
         return resp.json({ message: ['Charging has started. The Charging Van is now powering your EV!'], status: 1, code: 200 });
@@ -413,8 +413,8 @@ const chargingComplete = async (req, resp) => {
         const title = 'Mobile EV Charging Booking!';
         const message = `Charging complete. Please lock your EV.`;
 
-        await createNotification(title, message, 'Mobile EV Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
-        // await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
+        await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
+        // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);
 
         await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 

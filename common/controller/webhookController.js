@@ -515,7 +515,7 @@ export const portableChargerBookingConfirm = async (req, res) => {
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail("shivani@shunyaekai.tech", 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlUser);
+            emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlUser);
 
             const htmlAdmin = `<html>
                 <body>

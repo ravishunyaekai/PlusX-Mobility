@@ -865,7 +865,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
     const href    = `portable_charger_booking/${booking_id}`;
     const title   = 'Mobile EV Charging Cancel!';
     const message = `We regret to inform you that your mobile EV charging booking (ID: ${booking_id}) has been cancelled by the admin.`;
-    await createNotification(title, message, 'Mobile EV Charging', 'Rider', 'Rider',  rider_id, rider_id, href);
+    await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'Rider',  rider_id, rider_id, href);
     await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
     if(checkOrder.rsa_id) {
@@ -873,7 +873,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
         await db.execute('UPDATE rsa SET running_order = running_order - 1 WHERE rsa_id = ?', [checkOrder.rsa_id]);
 
         const message1 = `A Booking of the mobile EV charging booking has been cancelled by admin with booking id : ${booking_id}`;
-        await createNotification(title, message1, 'Mobile EV Charging', 'RSA', 'Rider', rider_id, checkOrder.rsa_id,  href);
+        await createNotification(title, message1, 'Portable Charging Booking', 'RSA', 'Rider', rider_id, checkOrder.rsa_id,  href);
         await pushNotification(checkOrder.rsa_fcm_token, title, message1, 'RSAFCM', href);
     } 
 
