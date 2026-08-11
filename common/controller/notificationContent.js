@@ -61,18 +61,18 @@ export const NOTIFICATION_CONTENT = {
   },
   //user home charger booking
   USER_POD_CONFIRM: {
-    heading: "Portable Charging Booking!",
+    heading: "Mobile EV Charging Booking!",
     desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
     href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
-    module_name: "Portable Charging Booking",
+    module_name: "Mobile EV Charging Booking",
     panel_to: "Rider",
     panel_from: "Admin",
   },
   ADMIN_POD_CONFIRM: {
-    heading: "Portable Charging Booking!",
+    heading: "Mobile EV Charging Booking!",
     desc: ({ request_id }) => `Booking Confirmed! ${request_id}`,
     href: ({ booking_id }) => `portable_charger_booking//${booking_id}`,
-    module_name: "Portable Charging Booking",
+    module_name: "Mobile EV Charging Booking",
     panel_to: "Admin",
     panel_from: "Rider",
   },

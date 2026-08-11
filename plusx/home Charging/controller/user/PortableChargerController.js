@@ -801,7 +801,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     const href = `portable_charger_booking/${booking_id}`;
     const title = 'Mobile EV Charging Booking';
     const message = `Booking Cancelled : ${booking_id}`;
-    await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+    await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider', rider_id, '', href);
 
     if (checkOrder.rsa_id || checkOrder.rsa_id != null) {
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id=? AND rider_id=?`, [booking_id, rider_id]);
@@ -809,7 +809,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
         const RSAhtml = `<html>
             <body>
                 <h4>Dear ${checkOrder.rsa_name},</h4>
-                <p>This is to inform you that a user has cancelled their booking for the Portable EV Charging Service. Please find the details below:</p>
+                <p>This is to inform you that a user has cancelled their booking for the Mobile EV Charging Service. Please find the details below:</p>
                 <p>Booking Details:</p>
                 <p>Customer Name       : ${checkOrder.user_name}</p>
                 <p>Contact No          : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -891,7 +891,7 @@ export const userFeedbackPCBooking = asyncHandler(async (req, resp) => {
         // const message = `Feedback Received - Booking ID: ${booking_id}.`;
         const title = `Feedback Received- ${booking_id}`;
         const message = `You've received feedback from a customer`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider', rider_id, '', href);
 
         const adminHtml = `<html>
             <body>
@@ -1026,8 +1026,8 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         const href = 'portable_charger_booking/' + booking_id;
         const heading = 'Mobile EV Charging Booking !';
         const desc = `Booking Rescheduled: ${booking_id}`;
-        createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', rider_id, href);
-        createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+        createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin', '', rider_id, href);
+        createNotification(heading, desc, 'Mobile EV Charging Booking', 'Admin', 'Rider', rider_id, '', href);
         pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
 
         const htmlUser = `<html>
@@ -1066,7 +1066,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
             const htmlDriver = `<html>
                 <body>
                     <h4>Dear ${checkOrder.rsa_name},</h4>
-                    <p>This is to inform you that a user has rescheduled their Portable EV Charging Service booking. Please find the updated booking details below:</p>
+                    <p>This is to inform you that a user has rescheduled their Mobile EV Charging Service booking. Please find the updated booking details below:</p>
                     
                     <p>User Name       : ${checkOrder.user_name}</p>
                     <p>User Contact    : ${checkOrder.country_code}-${checkOrder.contact_no}</p>

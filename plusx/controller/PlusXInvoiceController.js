@@ -175,10 +175,10 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
             await updateRecord('portable_charger_booking', { status : 'CNF', payment_intent_id: paymentIntentId}, ['booking_id', 'rider_id'], [request_id, rider_id] );  //, conn
 
             const href    = 'portable_charger_booking/' + request_id;
-            const heading = 'Portable Charging Booking!';
+            const heading = 'Mobile EV Charging Booking!';
             const desc    = `Booking Confirmed! ID: ${request_id}.`;
-            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin','', rider_id, href);
-            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
+            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin','', rider_id, href);
+            createNotification(heading, desc, 'Mobile EV Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
         
             const htmlUser = `<html>
@@ -192,7 +192,7 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
                     <p> Best regards,<br/>PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Portable EV Charger', htmlUser);
+            emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlUser);
 
             let dubaiTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" });
             dubaiTime     = moment(dubaiTime).format('D MMM, YYYY, h:mm A');

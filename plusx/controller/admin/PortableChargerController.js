@@ -732,10 +732,10 @@ export const assignBooking = async (req, resp) => {
         const href    = 'portable_charger_booking/' + booking_id;
         const heading = 'Booking Assigned!';
         const desc    = `Booking Assigned : ${booking_id}`; //`Your Charging Booking has been assigned to Driver by PlusX admin with booking id : ${booking_id}`;
-        // createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
+        // createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin', '', booking_data.rider_id, href);
         // /pushNotification(booking_data.fcm_token, heading, desc, 'RDRFCM', href);
 
-        const heading1 = 'Portable Charging Booking!';
+        const heading1 = 'Mobile EV Charging Booking!';
         const desc1    = `Booking Assigned : ${booking_id}`;
         createNotification(heading, desc1, 'Mobile EV Charging', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
         pushNotification(rsa.fcm_token, heading1, desc1, 'RSAFCM', href);
@@ -743,14 +743,14 @@ export const assignBooking = async (req, resp) => {
         const htmlDriver = `<html>
             <body>
                 <h4>Dear ${rsa.rsa_name},</h4>
-                <p>A Booking of the portable charging booking has been assigned to you.</p> 
+                <p>A Booking of the mobile EV charging booking has been assigned to you.</p> 
                 <p>Booking Details:</p>
                 <p>Booking ID: ${booking_id}</p>
                 <p>Date and Time of Service: ${moment(slotDateTime, 'YYYY-MM-DD HH:mm:ss').format('D MMM, YYYY, h:mm A')}</p>
                 <p> Best regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(rsa.email, 'PlusX Electric App: Booking Confirmation for Your Portable EV Charger', htmlDriver);
+        emailQueue.addEmail(rsa.email, 'PlusX Electric App: Booking Confirmation for Your Mobile EV Charging', htmlDriver);
         
        
         return resp.json({
@@ -864,23 +864,23 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
     await updateRecord('portable_charger_booking', {status : 'C'}, ['booking_id'], [booking_id]);
     const href    = `portable_charger_booking/${booking_id}`;
     const title   = 'Mobile EV Charging Cancel!';
-    const message = `We regret to inform you that your portable charging booking (ID: ${booking_id}) has been cancelled by the admin.`;
-    await createNotification(title, message, 'Portable Charging', 'Rider', 'Rider',  rider_id, rider_id, href);
+    const message = `We regret to inform you that your mobile EV charging booking (ID: ${booking_id}) has been cancelled by the admin.`;
+    await createNotification(title, message, 'Mobile EV Charging', 'Rider', 'Rider',  rider_id, rider_id, href);
     await pushNotification(checkOrder.fcm_token, title, message, 'RDRFCM', href);
 
     if(checkOrder.rsa_id) {
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id=? AND rider_id=?`, [booking_id, rider_id]);
         await db.execute('UPDATE rsa SET running_order = running_order - 1 WHERE rsa_id = ?', [checkOrder.rsa_id]);
 
-        const message1 = `A Booking of the portable charging booking has been cancelled by admin with booking id : ${booking_id}`;
-        await createNotification(title, message1, 'Portable Charging', 'RSA', 'Rider', rider_id, checkOrder.rsa_id,  href);
+        const message1 = `A Booking of the mobile EV charging booking has been cancelled by admin with booking id : ${booking_id}`;
+        await createNotification(title, message1, 'Mobile EV Charging', 'RSA', 'Rider', rider_id, checkOrder.rsa_id,  href);
         await pushNotification(checkOrder.rsa_fcm_token, title, message1, 'RSAFCM', href);
     } 
 
     const html = `<html>
         <body>
             <h4>Dear ${checkOrder.user_name},</h4>
-            <p>We would like to inform you that your recent booking for the Portable EV Charger Service with PlusX Electric has been cancelled.</p><br />
+            <p>We would like to inform you that your recent booking for the Mobile EV Charging Service with PlusX Electric has been cancelled.</p><br />
             <p>Booking Details:</p><br />
             <p>Booking ID    : ${booking_id}</p>
             <p>Date and Time : ${moment(`${checkOrder.slot_date} ${checkOrder.slot_time}`, 'YYYY-MM-DD HH:mm:ss').format('D MMM, YYYY, h:mm A')} </p>
@@ -895,7 +895,7 @@ export const adminCancelPCBooking = asyncHandler(async (req, resp) => {
     const adminHtml = `<html>
         <body>
             <h4>Dear Admin,</h4>
-            <p>This is to inform you that admin has cancelled a booking for the Portable EV Charging Service. Please see the details below for record-keeping and any necessary follow-up.</p> <br />
+            <p>This is to inform you that admin has cancelled a booking for the Mobile EV Charging Service. Please see the details below for record-keeping and any necessary follow-up.</p> <br />
             <p>Booking Details:</p><br />
             <p>User Name    : ${checkOrder.user_name}</p>
             <p>User Contact    : ${checkOrder.contact_no}</p>

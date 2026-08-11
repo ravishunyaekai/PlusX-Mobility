@@ -472,9 +472,9 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     await updateRecord('portable_charger_booking', { status : 'C' }, ['booking_id'], [booking_id]);
     await portableChargerInvoice(rider_id, booking_id); 
     const href    = `portable_charger_booking/${booking_id}`;
-    const title   = 'Portable Charging Booking!';
+    const title   = 'Mobile EV Charging Booking!';
     const message = `Booking Cancelled : ${booking_id}`;
-    await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
+    await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
  
     if(checkOrder.rsa_id ||  checkOrder.rsa_id!=null) {
         await db.execute(`DELETE FROM portable_charger_booking_assign WHERE order_id=? AND rider_id=?`, [booking_id, rider_id]);
@@ -482,7 +482,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
         const RSAhtml = `<html>
             <body>
                 <h4>Dear ${checkOrder.rsa_name},</h4>
-                <p>This is to inform you that a user has cancelled their booking for the Portable EV Charging Service. Please find the details below:</p>
+                <p>This is to inform you that a user has cancelled their booking for the Mobile EV Charging Service. Please find the details below:</p>
                 <p>Booking Details:</p>
                 <p>Customer Name       : ${checkOrder.user_name}</p>
                 <p>Contact No          : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -509,7 +509,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     const adminHtml = `<html>
         <body>
             <h4>Dear Admin,</h4>
-            <p>This is to inform you that a user has cancelled their booking for the Portable EV Charging Service. Please find the details below:</p>
+            <p>This is to inform you that a user has cancelled their booking for the Mobile EV Charging Service. Please find the details below:</p>
             <p>Booking Details:</p>
             <p>Customer Name       : ${checkOrder.user_name}</p>
             <p>Contact No          : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -564,7 +564,7 @@ export const userFeedbackPCBooking = asyncHandler(async (req, resp) => {
         // const message = `Feedback Received - Booking ID: ${booking_id}.`;
         const title   = `Feedback Received- ${booking_id}`;
         const message = `You've received feedback from a customer`;
-        await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+        await createNotification(title, message, 'Mobile EV Charging Booking', 'Admin', 'Rider', rider_id, '', href);
 
         const adminHtml = `<html>
             <body>
@@ -689,16 +689,16 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
 
         const href    = 'portable_charger_booking/' + booking_id;
-        const heading = 'Portable Charging Booking!';
+        const heading = 'Mobile EV Charging Booking!';
         const desc    = `Rescheduled Booking Confirmed! ${booking_id}`;
-        createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin','', rider_id, href);
-        createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
+        createNotification(heading, desc, 'Mobile EV Charging Booking', 'Rider', 'Admin','', rider_id, href);
+        createNotification(heading, desc, 'Mobile EV Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
         pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
     
         const htmlUser = `<html>
             <body>
                 <h4>Dear ${checkOrder.user_name},</h4>
-                <p>We would like to confirm that your booking for the Portable EV Charging Service has been successfully rescheduled. Please find the updated details below:</p>
+                <p>We would like to confirm that your booking for the Mobile EV Charging Service has been successfully rescheduled. Please find the updated details below:</p>
                 
                 <p>Booking ID: ${booking_id}</p>
                 <p>Rescheduled Date & Time : ${moment(fSlotDate, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(slot_time, 'HH:mm').format('h:mm A')}</p>
@@ -711,7 +711,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         const htmlAdmin = `<html>
             <body>
                 <h4>Dear Admin,</h4>
-                <p>This is to inform you that a user has rescheduled their Portable EV Charging Service booking. Please find the updated booking details below:</p> 
+                <p>This is to inform you that a user has rescheduled their Mobile EV Charging Service booking. Please find the updated booking details below:</p> 
                 <p>User Name       : ${checkOrder.user_name}</p>
                 <p>User Contact    : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                 <p>Booking ID      : ${booking_id}</p>
@@ -731,7 +731,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
             const htmlDriver = `<html>
                 <body>
                     <h4>Dear ${checkOrder.rsa_name},</h4>
-                    <p>This is to inform you that a user has rescheduled their Portable EV Charging Service booking. Please find the updated booking details below:</p>
+                    <p>This is to inform you that a user has rescheduled their Mobile EV Charging Service booking. Please find the updated booking details below:</p>
                     
                     <p>User Name       : ${checkOrder.user_name}</p>
                     <p>User Contact    : ${checkOrder.country_code}-${checkOrder.contact_no}</p>

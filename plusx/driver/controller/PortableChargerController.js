@@ -421,12 +421,12 @@ const chargingComplete = async (req, resp) => {
         const html = `<html>
             <body>
                 <h4>Dear ${checkOrder.rider_name}</h4>
-                <p>Thank you for choosing PlusX Electric for your Portable EV Charger service. We're pleased to inform you that the service has been successfully completed.</p>
+                <p>Thank you for choosing PlusX Electric for your Mobile EV Charging service. We're pleased to inform you that the service has been successfully completed.</p>
                 <p>We truly appreciate your trust in us and look forward to serving you again in the future.</p>
                 <p>Best Regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric: Your Portable EV Charger Service is Now Complete', html);
+        emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric: Your Mobile EV Charging Service is Now Complete', html);
         await portableChargerInvoice(checkOrder.rider_id, booking_id);
         return resp.json({ message: [`Charging complete. Don't forget to lock your EV.`], status: 1, code: 200 });
     } else {
@@ -517,7 +517,7 @@ const chargerPickedUp = async (req, resp) => {
         //     <body>
         //         <h4>Dear ${bookingData.data.rider_name}</h4>
         //         <p>We hope you're doing well!</p>
-        //         <p>Thank you for choosing PlusX Electric for your Portable EV Charger service. We're pleased to inform you that the service has been successfully completed.</p>
+        //         <p>Thank you for choosing PlusX Electric for your Mobile EV Charging service. We're pleased to inform you that the service has been successfully completed.</p>
         //         <p>We truly appreciate your trust in us and look forward to serving you again in the future.</p>
         //         <p> Regards,<br/>PlusX Electric Team </p>
         //     </body>
@@ -527,10 +527,10 @@ const chargerPickedUp = async (req, resp) => {
         //     filename: `${invoiceId}-invoice.pdf`, path: pdf.pdfPath, contentType: 'application/pdf'
         // };
 
-        // emailQueue.addEmail(bookingData.data.rider_email, 'PlusX Electric: Your Portable EV Charger Service is Now Complete', html); // , attachment
+        // emailQueue.addEmail(bookingData.data.rider_email, 'PlusX Electric: Your Mobile EV Charging Service is Now Complete', html); // , attachment
         // }
 
-        return resp.json({ message: ['Portable Charger picked-up successfully!'], status: 1, code: 200 });
+        return resp.json({ message: ['Mobile EV Charging picked-up successfully!'], status: 1, code: 200 });
     } else {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }

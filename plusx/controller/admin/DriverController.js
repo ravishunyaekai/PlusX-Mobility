@@ -154,8 +154,8 @@
                 status: del.affectedRows > 0 ? 1 : 0
             });
         } catch (err) {
-            console.error('Error deleting portable charger', err);
-            return resp.json({ status: 0, message: 'Error deleting portable charger' });
+            console.error('Error deleting Mobile EV Charging', err);
+            return resp.json({ status: 0, message: 'Error deleting Mobile EV Charging' });
         }
     };
 

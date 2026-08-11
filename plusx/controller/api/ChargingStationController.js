@@ -135,7 +135,7 @@ export const nearestChargerList = asyncHandler(async (req, resp) => {
     return resp.json({
         status  : 1 ,
         code    : 200, 
-        message : ['Nearest Portable Charger List fetch successfully!'],
+        message : ['Nearest Mobile EV Charging List fetch successfully!'],
         data    : routeResults
     });
 });
