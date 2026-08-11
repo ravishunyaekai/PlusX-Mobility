@@ -169,8 +169,8 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
     try {
         // const service_name = "Home Charging";
         // const service_type = "Home Charging";
-        const service_name = "Mobile Ev Charging";
-        const service_type = "Mobile Ev Charging";
+        const service_name = "Mobile EV Charging";
+        const service_type = "Mobile EV Charging";
 
         const riderAddress = await queryDB(`
             SELECT 
