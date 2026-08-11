@@ -1033,7 +1033,7 @@ export const assignBooking = async (req, resp) => {
 
         const heading1 = 'Mobile EV Charging Booking!';
         const desc1 = `Booking Assigned : ${booking_id}`;
-        createNotification(heading, desc1, 'Mobile EV Charging', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
+        createNotification(heading, desc1, 'Portable Charging Booking', 'RSA', 'Rider', booking_data.rider_id, rsa_id, href);
         pushNotification(rsa.fcm_token, heading1, desc1, 'RSAFCM', href);
 
         const htmlDriver = `<html>
