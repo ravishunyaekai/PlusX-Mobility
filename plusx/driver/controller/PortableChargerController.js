@@ -347,7 +347,7 @@ const chargingStart = async (req, resp) => {
         await updateRecord('pod_devices', { charging_status: 1, latitude, longitude }, ['pod_id'], [pod_id]);
 
         const href = `portable_charger_booking/${booking_id}`;
-        const title = 'Portable Charging Booking!';
+        const title = 'Mobile EV Charging Booking!';
         const message = `The Charging Van has started charging your EV!`;
         await createNotification(title, message, 'Portable Charging Booking', 'Rider', 'RSA', rsa_id, checkOrder.rider_id, href);
         // await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'RSA', rsa_id, '', href);

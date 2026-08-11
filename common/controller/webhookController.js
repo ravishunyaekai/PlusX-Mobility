@@ -435,9 +435,9 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
         return false;
     }
 };
-export const portableChargerBookingConfirm = async (req, res) => {
+export const portableChargerBookingConfirm = async (booking_id, payment_intent_id, couponCode) => {
     // const conn = await startTransaction();
-    const { booking_id, payment_intent_id, couponCode } = req.body;
+    // const { booking_id, payment_intent_id, couponCode } = req.body;
     try {
         console.log("function called", booking_id, payment_intent_id, couponCode);
         // PCB0049 pay_TK3XElf3IAL2yA
