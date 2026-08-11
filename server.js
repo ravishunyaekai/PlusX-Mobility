@@ -4,8 +4,8 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import mobilityAdminRoutes from './mobility/routes/admin.js';
 import plusxdriverRoutes from './plusx/driver/routes/driver.js';
-  
-import homeChargeradminRoute from './plusx/home Charging/routes/admin.js' 
+
+import homeChargeradminRoute from './plusx/home Charging/routes/admin.js'
 import homeChargerUserRoutes from './plusx/home Charging/routes/user.js'
 
 import mobilityApiRoutes from './mobility/routes/user.js';
@@ -24,10 +24,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 import cron from 'node-cron';
 
-const app  = express();
+const app = express();
 const PORT = process.env.PORT || 3333;
 
-import { Server } from 'socket.io'; 
+import { Server } from 'socket.io';
 import http from 'http';
 import { razorpayWebhook } from './common/controller/webhookController.js';
 import { CronjobRsaInvoice, failedRSABooking } from './plusx/cronjobController.js';
@@ -35,21 +35,23 @@ import { cronjobAddMoney, mobilitynotification, deductOutstandingAmount } from '
 
 
 import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
+// import { uploadSingleFileForBE, uploadFileToS3FolderForBEOnlyController } from './fileUpload.js';
+// import multer from 'multer';
 
 
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  const corsOptions = {
-      origin : [
+const corsOptions = {
+    origin: [
         'http://localhost:2425',
         'http://localhost:3000',
         'https://plusxmobility.shunyaekai.com',
         'https://swapping.shunyaekai.com',
-        ],
-      methods: 'GET, POST, PUT, DELETE',
-      credentials: true
-  };
+    ],
+    methods: 'GET, POST, PUT, DELETE',
+    credentials: true
+};
 
 // cron.schedule('*/6 * * * *', async () => {
 //     //await CronjobRsaInvoice();
@@ -75,8 +77,8 @@ import { payWithSavedCard } from './mobility/controller/razorpay/razorpay.js';
 // });
 
 app.use(cors(corsOptions));
-app.post("/razorpay/webhook",  bodyParser.raw({ type: "application/json" }), razorpayWebhook);
-app.post("/pay-with-saved-card",  bodyParser.raw({ type: "application/json" }), payWithSavedCard);
+app.post("/razorpay/webhook", bodyParser.raw({ type: "application/json" }), razorpayWebhook);
+app.post("/pay-with-saved-card", bodyParser.raw({ type: "application/json" }), payWithSavedCard);
 
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -90,7 +92,7 @@ app.use(cookieParser());
 // Set EJS as the templating engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-  
+
 app.use('/api', mobilityApiRoutes);
 app.use('/admin', mobilityAdminRoutes);
 app.use('/driver', plusxdriverRoutes);
@@ -103,6 +105,22 @@ app.use('/api', homeChargerUserRoutes);
 app.use('/api', commonUserRoutes);
 app.use('/admin', commonAdminRoutes);
 
+
+// // S3 upload route START
+// const uploadBEFile = multer({
+//     storage: multer.memoryStorage(),
+//     limits: {
+//         fileSize: 10 * 1024 * 1024, // 10 MB
+//     }
+// }).single('file');
+// app.post(
+//     "/api/s3/upload-be-file",
+//     uploadSingleFileForBE,
+//     uploadFileToS3FolderForBEOnlyController
+// );
+// // S3 upload route END
+
+
 app.use(errorHandler);
 
 // Socket Code Here 
@@ -110,7 +128,7 @@ app.use(errorHandler);
 const server = http.createServer(app);
 
 export const io = new Server(server, {
-    cors : corsOptions,
+    cors: corsOptions,
 });
 
 // React build
@@ -125,14 +143,14 @@ server.listen(PORT, () => {
 
 //mqqt code 
 const client = mqtt.connect(process.env.MQTT_URL, {
-    clientId  : process.env.MQTT_CILENT_ID,
-    username  : process.env.MQTT_USERNAME,
-    password  : process.env.MQTT_PASSWORD,
-    keepalive : 3600,  // auto reconnect every 5 sec
+    clientId: process.env.MQTT_CILENT_ID,
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
+    keepalive: 3600,  // auto reconnect every 5 sec
     will: {
-        topic   : 'device/status',
-        payload : 'offline',
-        retain  : true
+        topic: 'device/status',
+        payload: 'offline',
+        retain: true
     }
 });
 console.log("\n BEFORE COMPARISION:- Testing server code update: 11th August 2026 (Home Charging Package related changes and enhancements) \n");
@@ -144,7 +162,7 @@ client.on('connect', () => {
 });
 
 client.on('message', (topic, msg) => {
-  console.log(topic, msg.toString());
+    console.log(topic, msg.toString());
 });
 
 client.on('reconnect', () => console.log('Reconnecting...'));
