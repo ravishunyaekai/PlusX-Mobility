@@ -322,7 +322,7 @@ export const chargerBookingDetails = async (req, resp) => {
                 package_id: bookingResult.package_data?.package_id || "",
                 package_name: bookingResult.package_data?.package_name || "",
                 charging_capacity: parseFloat(bookingResult.package_data?.charging_capacity ?? 0).toFixed(0) || 0,
-                price_per_unit: bookingResult.package_data?.price_per_unit || 0,
+                price_per_unit: parseFloat(bookingResult.package_data?.price_per_unit || 0).toFixed(0) || 0,
                 service_fee: bookingResult.package_data?.service_fee || 0
             };
         } catch (e) {
@@ -730,6 +730,7 @@ export const invoiceDetails = async (req, resp) => {
             ...packageData,
             charging_fee: packageData.charging_fees || 0,
             charging_capacity: Number(packageData.charging_capacity || 0),
+            price_per_unit: Number(packageData.price_per_unit || 0),
             amount: data.price_details.amount || 0,
             discount: packageData.coupon_discount || 0,
         };
@@ -1487,7 +1488,7 @@ export const ChargingPackageList = asyncHandler(async (req, resp) => {
                 package_id,
                 package_name,
                 CAST(charging_capacity AS UNSIGNED) AS charging_capacity,
-                price_per_unit,
+                CAST(price_per_unit AS UNSIGNED) AS price_per_unit,
                 service_fee,
                 status
             `,

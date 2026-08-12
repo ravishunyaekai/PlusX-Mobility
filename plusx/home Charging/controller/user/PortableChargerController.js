@@ -576,7 +576,7 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
                 package_id: booking.package_data?.package_id || "",
                 package_name: booking.package_data?.package_name || "",
                 charging_capacity: Number(booking.package_data?.charging_capacity || 0),
-                price_per_unit: booking.package_data?.price_per_unit || 0,
+                price_per_unit: Number(booking.package_data?.price_per_unit || 0),
                 service_fee: booking.package_data?.service_fee || 0,
                 price: booking?.package_data?.amount,
                 discount_amt: booking?.package_data?.coupon_discount,
@@ -1333,6 +1333,7 @@ export const podInvoiceDetails = asyncHandler(async (req, resp) => {
         ...packageData,
         charging_fee: packageData.charging_fees || 0,
         charging_capacity: Number(packageData.charging_capacity || 0),
+        price_per_unit: Number(packageData.price_per_unit || 0),
         amount: data.price_details.amount || 0,
         discount: packageData.coupon_discount || 0,
     };
