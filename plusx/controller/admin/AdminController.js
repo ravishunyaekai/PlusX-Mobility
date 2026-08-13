@@ -22,21 +22,66 @@ export const getDashboardData = async (req, resp) => {
        
         // (SELECT COUNT(*) FROM ev_swipe_battery_history WHERE created_at >= "${currentDate}" ) AS total_swipe_battery
         // (SELECT COUNT(*) FROM ev_pre_sale_testing WHERE created_at >= "${currentDate}") AS total_pre_sale_testing,
-                const sql = `
-            SELECT
-                (SELECT COUNT(*) FROM riders WHERE created_at >= ?) AS total_rider,
-                (SELECT COUNT(*) FROM rsa WHERE status=1) AS total_rsa,
-                (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != 'PNR') AS total_road_assistance,
-                (SELECT COUNT(*) FROM charging_installation_service WHERE created_at >= ?) AS total_installation,
-                (SELECT COUNT(*) FROM public_charging_station_list) AS total_station,
-                (SELECT COUNT(*) FROM ev_accessories_booiking WHERE created_at >= ?) AS total_accessories_booiking,
-                (SELECT COUNT(*) FROM ev_charger_booiking WHERE created_at >= ?) AS total_charger_booiking,
-                (SELECT COUNT(*) FROM portable_charger_booking WHERE created_at >= ?) AS total_pod_booiking,
-                (SELECT COUNT(*) FROM charge_share WHERE created_at >= ?) AS total_charge_share
+        const sql = `
+        SELECT
+            (
+                SELECT COUNT(*) 
+                FROM riders 
+                WHERE created_at >= ?
+            ) AS total_rider,
+            (
+                SELECT COUNT(*) 
+                FROM rsa 
+                WHERE status=1
+            ) AS total_rsa,
+            (
+                SELECT COUNT(*) 
+                FROM road_assistance 
+                WHERE created_at >= ? 
+                AND order_status != 'PNR'
+            ) AS total_road_assistance,
+            (
+                SELECT COUNT(*) 
+                FROM charging_installation_service 
+                WHERE created_at >= ?
+            ) AS total_installation,
+            (
+                SELECT COUNT(*) 
+                FROM public_charging_station_list
+            ) AS total_station,
+            (
+                SELECT COUNT(*) 
+                FROM ev_accessories_booiking 
+                WHERE created_at >= ?
+            ) AS total_accessories_booiking,
+            (
+                SELECT COUNT(*) 
+                FROM ev_charger_booiking 
+                WHERE created_at >= ?
+            ) AS total_charger_booiking,
+            (
+                SELECT COUNT(*) 
+                FROM portable_charger_booking 
+                WHERE created_at >= ?
+            ) AS total_pod_booiking,
+            (
+                SELECT COUNT(*) 
+                FROM charge_share 
+                WHERE created_at >= ?
+            ) AS total_charge_share,
+            (
+                SELECT COUNT(*) 
+                FROM failed_portable_charger_booking 
+                WHERE created_at >= ?
+            ) AS total_ev_cancel_booking,
+            (
+                SELECT COUNT(*) 
+                FROM failed_road_assistance 
+                WHERE created_at >= ? 
+            ) AS total_cancel_road_assistance
+                `;
 
-            `;
-
-        const [counts] = await db.execute(sql, [currentDate,currentDate, currentDate, currentDate, currentDate,currentDate,currentDate ]);
+        const [counts] = await db.execute(sql, [currentDate,currentDate, currentDate, currentDate, currentDate,currentDate,currentDate,currentDate, currentDate ]);
           const adminCheck=await queryDB("SELECT access , status from users where id =? ",[req.body.userId]);
                 if(adminCheck.access===null || adminCheck.access==='' || adminCheck.status===0){
                 return resp.json({ code:401,logout:1, message:"logout successfully",status:0        })
@@ -74,7 +119,8 @@ export const getDashboardData = async (req, resp) => {
             { module : 'EV Accessories Booking',        count : counts[0].total_accessories_booiking },
             { module : 'Home Charging Bookings',                count : counts[0].total_pod_booiking },
             { module : 'Charge Share',                count : counts[0].total_charge_share },
-
+            { module : 'Mobile EV Charging Failed Bookings',                count : counts[0].total_ev_cancel_booking },
+            { module : 'Failed EV Road Assistance',     count : counts[0].total_cancel_road_assistance },
             // { module : 'Pickup & Dropoff Bookings',              count : counts[0].total_charging_service },
             
             // { module : 'EV Insurance Leads',                     count : counts[0].total_insurance },

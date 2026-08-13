@@ -83,11 +83,14 @@ export const createIntent = async (req, resp) => {
             discount = 0;
             totalAmount = grossAmount;
 
+            const booking_type_for_coupon = (booking_type == "POD-On Demand Service" || booking_type == "Mobile EV Charging") ? "Mobile EV Charging" : "EV Roadside Assistance" // same booking type used in checkCoupon
+
             if (coupon_code) {
 
                 const couponData = await checkCoupon(
                     rider_id,
-                    "Mobile EV Charging",   // same booking type used in chargerBooking
+                    // "Mobile EV Charging",   // same booking type used in chargerBooking
+                    booking_type_for_coupon,   // same booking type used in chargerBooking
                     coupon_code,
                     subtotal
                 );

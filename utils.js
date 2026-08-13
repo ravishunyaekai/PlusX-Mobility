@@ -1135,7 +1135,7 @@ export const getNotificationContent = async (module_name, payload = {}) => {
     try {
         const template = NOTIFICATION_CONTENT[module_name];
         if (!template) {
-            throw new Error(`Notification type "${type}" not found`);
+            throw new Error(`Notification type "${module_name}" not found`);
         }
 
         return {

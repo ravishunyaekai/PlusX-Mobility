@@ -133,7 +133,8 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         }
         else if(parseFloat(service_price) != bookingPrice && coupon_code) {
             const servicePrice = parseFloat(service_price) ;
-            const couponData   = await checkCoupon(rider_id, 'POD-On Demand Service', coupon_code);
+            // const couponData   = await checkCoupon(rider_id, 'POD-On Demand Service', coupon_code);
+            const couponData   = await checkCoupon(rider_id, '"Mobile EV Charging"', coupon_code);
 
             if(couponData.status == 0 ){
                 return resp.json({ message : [couponData.message], status: 0, code: 422, error: true });
