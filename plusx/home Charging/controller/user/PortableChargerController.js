@@ -10,6 +10,7 @@ import { asyncHandler, createNotification, formatDateInQuery, formatDateTimeInQu
 dotenv.config();
 import { tryCatchErrorHandler } from "../../../../middleware/errorHandler.js";
 import { io } from '../../../../server.js';
+import { portableChargerInvoice } from "../../../driver/controller/PortableChargerController.js";
 
 // import { portableChargerInvoice } from '../driver/PortableChargerController.js';
 
@@ -764,17 +765,29 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
 
     const checkOrder = await queryDB(`
         SELECT  
-            rsa.rsa_name,rsa.email as rsa_email, pcb.rsa_id, pcb.address, pcb.slot_time, pcb.user_name, DATE_FORMAT(pcb.slot_date, '%Y-%m-%d') AS slot_date, pcb.country_code, 
-            pcb.contact_no, riders.rider_email, riders.rider_name, riders.fcm_token, rsa.fcm_token as rsa_fcm_token, pcb.vehicle_data
-        FROM  
-            portable_charger_booking pcb
-        LEFT JOIN  
-            riders on riders.rider_id=pcb.rider_id 
-        LEFT JOIN 
-            rsa ON rsa.rsa_id = pcb.rsa_id 
-        WHERE 
-            pcb.booking_id =? AND pcb.rider_id = ? AND pcb.status IN ('CNF', 'A') 
-    `, [booking_id, rider_id]);
+            rsa.rsa_name,
+            rsa.email as rsa_email, 
+            pcb.rsa_id, 
+            pcb.address, 
+            pcb.slot_time, 
+            pcb.user_name, 
+            DATE_FORMAT(pcb.slot_date, '%Y-%m-%d') AS slot_date,
+            pcb.country_code, 
+            pcb.contact_no, 
+            riders.rider_email, 
+            riders.rider_name, 
+            riders.fcm_token, 
+            rsa.fcm_token as rsa_fcm_token, 
+            pcb.vehicle_data
+        FROM portable_charger_booking pcb
+        LEFT JOIN riders 
+        ON riders.rider_id=pcb.rider_id 
+        LEFT JOIN rsa 
+        ON rsa.rsa_id = pcb.rsa_id 
+        WHERE pcb.booking_id =? 
+        AND pcb.rider_id = ? 
+        AND pcb.status IN ('CNF', 'A') 
+        `, [booking_id, rider_id]);
 
     if (!checkOrder) {
         return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
@@ -798,6 +811,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
 
     await updateRecord('portable_charger_booking', { status: 'C' }, ['booking_id'], [booking_id]);
     // await portableChargerInvoice(rider_id, booking_id); 
+    await portableChargerInvoice(rider_id, booking_id);
     const href = `portable_charger_booking/${booking_id}`;
     const title = 'Mobile EV Charging Booking';
     const message = `Booking Cancelled : ${booking_id}`;
@@ -825,7 +839,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     const html = `<html>
         <body>
             <h4>Dear ${checkOrder.user_name},</h4>
-            <p>We would like to inform you that your booking for the Mobile EV charging  has been successfully cancelled. Below are the details of your cancelled booking:</p>
+            <p>We would like to inform you that your booking for the Mobile EV Charging  has been successfully cancelled. Below are the details of your cancelled booking:</p>
             <p>Booking ID    : ${booking_id}</p>
             <p>Date & Time : ${moment(checkOrder.slot_date, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(checkOrder.slot_time, 'HH:mm').format('h:mm A')}</p>
             <p>Thank you for using PlusX Electric. We look forward to serving you again soon.</p>

@@ -711,43 +711,48 @@ export const portableChargerInvoice = async (rider_id, request_id) => {
 };
 
 const makeInvoicePriceDetails = async (amount, discount, package_data) => {
+    try {
 
-    let baseAmount = Number(amount) || 0;
-    let discountPercent = Number(discount) || 0;
+        let baseAmount = Number(amount) || 0;
+        let discountPercent = Number(discount) || 0;
 
-    let discountAmt = 0;
-    let vatAmount = 0;
-    let totalPrice = 0;
+        let discountAmt = 0;
+        let vatAmount = 0;
+        let totalPrice = 0;
 
-    if (discountPercent > 0) {
+        if (discountPercent > 0) {
 
-        if (discountPercent !== 100) {
+            if (discountPercent !== 100) {
 
-            discountAmt = (baseAmount * discountPercent) / 100;
-            const afterDis = baseAmount - discountAmt;
-            vatAmount = (afterDis * 18) / 100;
-            totalPrice = afterDis + vatAmount;
+                discountAmt = (baseAmount * discountPercent) / 100;
+                const afterDis = baseAmount - discountAmt;
+                vatAmount = (afterDis * 18) / 100;
+                totalPrice = afterDis + vatAmount;
+            } else {
+                discountAmt = baseAmount;
+                vatAmount = 0;
+                totalPrice = 0;
+            }
         } else {
-            discountAmt = baseAmount;
-            vatAmount = 0;
-            totalPrice = 0;
+            vatAmount = (baseAmount * 18) / 100;
+            totalPrice = baseAmount + vatAmount;
         }
-    } else {
-        vatAmount = (baseAmount * 18) / 100;
-        totalPrice = baseAmount + vatAmount;
+        const priceDetails = {
+            amount: baseAmount,
+            discount_prcnt: discountPercent,
+
+            kw_consume: Number(package_data.charging_capacity) || 0,
+            price_per_unit: Number(package_data.price_per_unit) || 0,
+            service_fee: Number(package_data.service_fee) || 0,
+
+            discount_amt: discountAmt,
+            vat_amount: vatAmount,
+            total_price: totalPrice
+        };
+        console.log("\npriceDetails", priceDetails);
+        return priceDetails;
+    } catch (error) {
+        console.log(error);
     }
-    const priceDetails = {
-        amount: baseAmount,
-        discount_prcnt: discountPercent,
-
-        kw_consume: Number(package_data.charging_capacity) || 0,
-        price_per_unit: Number(package_data.price_per_unit) || 0,
-        service_fee: Number(package_data.service_fee) || 0,
-
-        discount_amt: discountAmt,
-        vat_amount: vatAmount,
-        total_price: totalPrice
-    };
-    return priceDetails;
 
 };

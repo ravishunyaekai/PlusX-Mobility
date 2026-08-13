@@ -391,7 +391,7 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
-                    <p>Thank you for choosing our Mobile EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Thank you for choosing our Mobile EV Charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
                     <p>Booking Details:</p>
                     <p>Booking ID: ${booking_id}</p>
                     <p>Vehicle Battery %  : ${battery_percent}   </p>
@@ -405,7 +405,7 @@ const portableChargerBookingConfirmOld = async (booking_id, payment_intent_id, c
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
-                    <p>We have received a new booking for our Mobile EV charging service. Please find the details below:</p> 
+                    <p>We have received a new booking for our Mobile EV Charging service. Please find the details below:</p> 
                     <p>Customer Name : ${checkOrder.user_name}</p>
                     <p>Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                     <p>Vehicle Battery % : ${battery_percent}   </p>
@@ -506,7 +506,7 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
-                    <p>Thank you for choosing our Mobile EV charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
+                    <p>Thank you for choosing our Mobile EV Charging  service for your EV. We are pleased to confirm that your booking has been successfully received.</p> 
                     <p>Booking Details:</p>
                     <p>Booking ID: ${booking_id}</p>
                     <p>Vehicle Battery %  : ${battery_percent}   </p>
@@ -520,7 +520,7 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
-                    <p>We have received a new booking for our Mobile EV charging service. Please find the details below:</p> 
+                    <p>We have received a new booking for our Mobile EV Charging service. Please find the details below:</p> 
                     <p>Customer Name : ${checkOrder.user_name}</p>
                     <p>Contact No.   : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                     <p>Vehicle Battery % : ${battery_percent}   </p>
