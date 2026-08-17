@@ -222,7 +222,7 @@ export const rsaHome = asyncHandler(async (req, resp) => {
         service_type: bookingType,
     };
 
-    if (bookingType === "Portable Charger") {
+    if (bookingType === "Portable Charger" || bookingType === "Mobile EV Charging") {
         const data = await queryDB(`
             SELECT
                 COALESCE(pa.running, 0) AS running_order_count,
@@ -391,7 +391,7 @@ export const rsaHome = asyncHandler(async (req, resp) => {
         result.assigned_booking = assignValet.filter(item => item.assign_status === 0);
         result.ongoing_booking = assignValet.filter(item => item.assign_status === 1);
     }
-    else if (bookingType === "Roadside Assistance") {
+    else if (bookingType === "Roadside Assistance" || bookingType === "EV Roadside Assistance") {
         const data = await queryDB(`
             SELECT
                 COALESCE(oa.running, 0) AS running_order_count,
