@@ -828,11 +828,11 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
   );
 
   return resp.json({
-        status: 1,
-        code: 200,
-        data: otp,
-        message: ["OTP sent successfully!"],
-      });
+    status: 1,
+    code: 200,
+    data: otp,
+    message: ["OTP sent successfully!"],
+  });
 
   // sendOtp(fullMobile, 35, otp)
   //   .then((result) => {
@@ -848,6 +848,27 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
   //     tryCatchErrorHandler(req.originalUrl, err, resp, "Failed to send OTP");
   //   });
 });
+
+const linkOfflineRsaToRider = async (riderId, riderMobile) => {
+  await db.execute(
+    `UPDATE rsa_offline_booking SET rider_id = ? WHERE mobile_no = ? AND rider_id IS NULL`,
+    [riderId, riderMobile]
+  );
+  await db.execute(
+    `UPDATE rsa_offline_invoice roi
+         INNER JOIN rsa_offline_booking rob ON rob.request_id = roi.request_id
+         SET roi.rider_id = ?
+         WHERE rob.mobile_no = ? AND roi.rider_id IS NULL`,
+    [riderId, riderMobile]
+  );
+  await db.execute(
+    `UPDATE rsa_offline_order_history roh
+         INNER JOIN rsa_offline_booking rob ON rob.request_id = roh.order_id
+         SET roh.rider_id = ?
+         WHERE rob.mobile_no = ? AND roh.rider_id IS NULL`,
+    [riderId, riderMobile]
+  );
+};
 
 export const register = asyncHandler(async (req, resp) => {
   const {
@@ -941,6 +962,10 @@ export const register = asyncHandler(async (req, resp) => {
     fcm_token: fcm_token,
   };
   await updateRecord("riders", updtObj, ["id"], [rider.insertId]);
+
+  // Link admin-created offline RSA bookings to this rider when mobile_no matches rider_mobile
+  await linkOfflineRsaToRider(riderId, rider_mobile);
+
   delOTP(fullMobile);
 
   const result = {
@@ -1102,27 +1127,27 @@ export const createOTP = asyncHandler(async (req, resp) => {
     html,
   );
 
-   return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+  return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 
-//   //   sendOtp(
-//   //     fullMobile,
-//   //     `Your OTP for login is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`,
-//   //   )
-//   sendOtp(fullMobile, 34, otp)
-//     .then((result) => {
-//       if (result.status === 0) return resp.json(result);
-//       return resp.json({
-//         status: 1,
-//         code: 200,
-//         data: "",
-//         message: ["OTP sent successfully!"],
-//       });
-//     })
-//     .catch((err) => {
-//       console.error("Error in otpController:", err.message);
-//       return resp.json({ status: "error", msg: "Failed to send OTP" });
-//     });
-//   //return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+  //   //   sendOtp(
+  //   //     fullMobile,
+  //   //     `Your OTP for login is ${otp}. Do not share it with anyone. Thank you for choosing PlusX Electric.`,
+  //   //   )
+  //   sendOtp(fullMobile, 34, otp)
+  //     .then((result) => {
+  //       if (result.status === 0) return resp.json(result);
+  //       return resp.json({
+  //         status: 1,
+  //         code: 200,
+  //         data: "",
+  //         message: ["OTP sent successfully!"],
+  //       });
+  //     })
+  //     .catch((err) => {
+  //       console.error("Error in otpController:", err.message);
+  //       return resp.json({ status: "error", msg: "Failed to send OTP" });
+  //     });
+  //   //return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 });
 
 export const verifyOTP = asyncHandler(async (req, resp) => {
