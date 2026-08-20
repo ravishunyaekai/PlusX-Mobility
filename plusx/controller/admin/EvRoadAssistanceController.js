@@ -1,7 +1,7 @@
-import db from "../../../config/indiadb.js";
+import db, { startTransaction, commitTransaction, rollbackTransaction } from "../../../config/indiadb.js";
 import { getPaginatedData, insertRecord, queryDB, updateRecord } from '../../../dbUtils.js';
 import validateFields from "../../../validation.js";
-import { createNotification, pushNotification,asyncHandler, formatDateTimeInQuery, mergeParam, convertTo24HourFormat, formatDateInQuery } from '../../../utils.js';
+import { createNotification, pushNotification, asyncHandler, formatDateTimeInQuery, mergeParam, convertTo24HourFormat, formatDateInQuery } from '../../../utils.js';
 import moment from 'moment';
 import emailQueue from '../../../emailQueue.js';
 import generateUniqueId from 'generate-unique-id';
@@ -9,66 +9,136 @@ import generateUniqueId from 'generate-unique-id';
 import dotenv from 'dotenv';
 dotenv.config();
 
+const RSA_OFFLINE_STATUS_MAP = {
+    'CNF': 'CNF',
+    'CONFIRMED': 'CNF',
+    'PU': 'PU',
+    'COMPLETED': 'PU',
+};
+
+// const RSA_OFFLINE_STATUS_LABEL = {
+//     CNF : 'confirmed',
+//     PU  : 'completed',
+// };
+
+const RSA_OFFLINE_BOOKING_TABLE = 'rsa_offline_booking';
+const RSA_OFFLINE_HISTORY_TABLE = 'rsa_offline_order_history';
+const RSA_OFFLINE_INVOICE_TABLE = 'rsa_offline_invoice';
+
+// Both ids are derived from the row's AUTO_INCREMENT id, so two admins saving at the
+// same moment can never be handed the same number.
+const buildOfflineRequestId = (rowId) => `RA-${String(rowId).padStart(3, '0')}`;
+const buildOfflineInvoiceId = (rowId) => `RAINV-${String(rowId).padStart(2, '0')}`;
+
+const toYesNo = (value) => ([true, 1, '1', 'true', 'yes', 'Yes', 'YES'].includes(value) ? 'Yes' : 'No');
+
+const buildVehicleData = (vehicle_make, vehicle_model) =>
+    [vehicle_make, vehicle_model].filter(Boolean).join(', ') || null;
+
+const resolveOfflineRsaDriver = async (rsa_id, driver_name, booking_completed_by, connection = null) => {
+    const completedByDriver = (driver_name || booking_completed_by || '').toString().trim() || null;
+
+    if (!rsa_id) {
+        return { rsa_id: null, driver_name: completedByDriver };
+    }
+
+    const rsa = await queryDB(
+        `SELECT rsa_id, rsa_name FROM rsa WHERE rsa_id = ? AND booking_type = ? LIMIT 1`,
+        [rsa_id, 'EV Roadside Assistance'],
+        connection
+    );
+    if (!rsa) {
+        return null;
+    }
+
+    return {
+        rsa_id: rsa.rsa_id,
+        driver_name: completedByDriver || rsa.rsa_name,
+    };
+};
+
+const RSA_OFFLINE_PROOF_FOLDER = 'rsa-offline-proof';
+
+// Look up an existing rider by mobile. Never create a rider for offline bookings.
+const findRiderIdByMobile = async (mobile, connection = null) => {
+    const rider = await queryDB(
+        `SELECT rider_id FROM riders WHERE rider_mobile = ? LIMIT 1`,
+        [mobile],
+        connection
+    );
+    return rider?.rider_id || null;
+};
+
+const parsePriceDetails = (value) => {
+    if (!value) return {};
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value) || {};
+    } catch {
+        return {};
+    }
+};
+
 /* RA Booking */
 export const bookingList = asyncHandler(async (req, resp) => {
     const { start_date, end_date, search_text = '', status, page_no, rowSelected } = req.body;
 
-    const whereFields    = ['order_status']
-    const whereValues    = ['PNR']
+    const whereFields = ['order_status']
+    const whereValues = ['PNR']
     const whereOperators = ["!="]
 
     if (start_date && end_date) {
-        
-        const startToday         = new Date(start_date);
+
+        const startToday = new Date(start_date);
         const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
             .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                    
-        const givenStartDateTime    = startFormattedDate+' 00:00:01';
+
+        const givenStartDateTime = startFormattedDate + ' 00:00:01';
         const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
-        const start                 = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-        
-        const endToday         = new Date(end_date);
+        const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
+        const endToday = new Date(end_date);
         const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
             .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-        const end = formattedEndDate+' 19:59:59';
+        const end = formattedEndDate + ' 19:59:59';
 
         whereFields.push('created_at', 'created_at');
         whereValues.push(start, end);
         whereOperators.push('>=', '<=');
     }
-    if(status) {
+    if (status) {
         whereFields.push('order_status');
         whereValues.push(status);
         whereOperators.push('=');
     }
     const result = await getPaginatedData({
-        tableName : 'road_assistance',
-        columns   : `city,request_id, rider_id, name, ROUND(road_assistance.price, 2) AS price, order_status, ${formatDateTimeInQuery(['created_at'])}, (select rsa_name from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_name`,
-        liveSearchFields : ['request_id', 'name'],
-        liveSearchTexts  : [search_text, search_text],
-        sortColumn       : 'id',
-        sortOrder        : 'DESC',
+        tableName: 'road_assistance',
+        columns: `city,request_id, rider_id, name, ROUND(road_assistance.price, 2) AS price, order_status, ${formatDateTimeInQuery(['created_at'])}, (select rsa_name from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_name`,
+        liveSearchFields: ['request_id', 'name'],
+        liveSearchTexts: [search_text, search_text],
+        sortColumn: 'id',
+        sortOrder: 'DESC',
         page_no,
-        limit         : rowSelected || 10,
-        whereField    : whereFields,
-        whereValue    : whereValues,
-        whereOperator : whereOperators
+        limit: rowSelected || 10,
+        whereField: whereFields,
+        whereValue: whereValues,
+        whereOperator: whereOperators
     });
     return resp.json({
-        status     : 1,
-        code       : 200,
-        message    : ["Booking List fetch successfully!"],
-        data       : result.data,
-        total_page : result.totalPage,
-        total      : result.total,
-    });    
+        status: 1,
+        code: 200,
+        message: ["Booking List fetch successfully!"],
+        data: result.data,
+        total_page: result.totalPage,
+        total: result.total,
+    });
 });
 
 export const bookingData = asyncHandler(async (req, resp) => {
     try {
         const { request_id } = req.body;
         if (!request_id) {
-            return resp.json({ status : 0, code : 400, message : ['Booking ID is required.'] });
+            return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
         }
         const booking = await queryDB(`
             SELECT 
@@ -79,12 +149,12 @@ export const bookingData = asyncHandler(async (req, resp) => {
                 road_assistance 
             WHERE 
                 request_id = ?
-            LIMIT 1`, 
-        [request_id]);
+            LIMIT 1`,
+            [request_id]);
         if (booking.length === 0) {
-            return resp.json({ status : 0, code : 404, message : ['Booking not found.'] });
-        } 
-        if(booking.vehicle_data == '' || booking.vehicle_data == null) {
+            return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
+        }
+        if (booking.vehicle_data == '' || booking.vehicle_data == null) {
             const vehicledata = await queryDB(`
                 SELECT                 
                     vehicle_make, vehicle_model, vehicle_specification, emirates, vehicle_code, vehicle_number
@@ -93,9 +163,9 @@ export const bookingData = asyncHandler(async (req, resp) => {
                 WHERE 
                     rider_id = ? and vehicle_id = ? 
                 LIMIT 1 `,
-            [ booking.rider_id, booking.vehicle_id ]);
-            if(vehicledata) {
-                booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model+ ", "+ vehicledata.vehicle_specification+ ", "+ vehicledata.emirates+ "-" + vehicledata.vehicle_code + "-"+ vehicledata.vehicle_number ;
+                [booking.rider_id, booking.vehicle_id]);
+            if (vehicledata) {
+                booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_specification + ", " + vehicledata.emirates + "-" + vehicledata.vehicle_code + "-" + vehicledata.vehicle_number;
             }
         }
         const [bookingHistory] = await db.execute(`
@@ -105,11 +175,11 @@ export const bookingData = asyncHandler(async (req, resp) => {
             FROM 
                 order_history 
             WHERE 
-                order_id = ?`, 
+                order_id = ?`,
             [request_id]
         );
         booking.imageUrl = `${process.env.DIR_UPLOADS}road-assistance/`;
-        
+
         const feedBack = await queryDB(`
             SELECT 
                 rating, description, created_at
@@ -117,25 +187,25 @@ export const bookingData = asyncHandler(async (req, resp) => {
                 road_assistance_feedback 
             WHERE 
                 request_id = ?
-            LIMIT 1`, 
-        [request_id]);
-        
+            LIMIT 1`,
+            [request_id]);
+
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["Booking details fetched successfully!"],
-            data : {
-                booking : booking,
-                history : bookingHistory,
+            status: 1,
+            code: 200,
+            message: ["Booking details fetched successfully!"],
+            data: {
+                booking: booking,
+                history: bookingHistory,
                 feedBack
-            }, 
+            },
         });
     } catch (error) {
         console.error('Error fetching booking details:', error);
-        return resp.json({ 
-            status  : 0, 
-            code    : 500, 
-            message : ['Error fetching booking details' ]
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: ['Error fetching booking details']
         });
     }
 });
@@ -144,62 +214,143 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
     try {
         const { request_id } = req.body;
         if (!request_id) {
-            return resp.json({ status : 0, code : 400, message : ['Booking ID is required.'] });
+            return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
         }
- 
+
+        // const booking = await queryDB(`
+        //     SELECT
+        //         b.request_id, 
+        //         b.rider_id, 
+        //         ${formatDateTimeInQuery(['b.created_at'])},
+        //         b.customer_name AS name, 
+        //         b.mobile_no AS contact_no, 
+        //         b.email_id AS email, 
+        //         b.country_code,
+        //         b.order_status, 
+        //         b.address AS pickup_address, 
+        //         b.location_link,
+        //         b.vehicle_data, 
+        //         b.battery_level, 
+        //         b.jump_start_required,
+        //         b.price, 
+        //         b.booking_price, 
+        //         b.mode_of_payment, 
+        //         b.rsa_id, 
+        //         b.proof_of_transaction,
+        //         (
+        //             SELECT h.driver_name 
+        //             FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
+        //             WHERE h.order_id = b.request_id 
+        //             ORDER BY h.id DESC 
+        //             LIMIT 1
+        //         ) AS driver_name,
+        //         r.rsa_name,
+        //         r.country_code AS driver_country_code,
+        //         r.mobile AS driver_mobile_no,
+        //         inv.invoice_id,
+        //         COALESCE(b.payment_status, inv.payment_status) AS payment_status,
+        //         COALESCE(b.transaction_id, inv.transaction_id) AS transaction_id
+        //     FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
+        //     LEFT JOIN ${RSA_OFFLINE_INVOICE_TABLE} AS inv 
+        //     ON inv.request_id = b.request_id
+        //     LEFT JOIN rsa AS r 
+        //     ON r.rsa_id = b.rsa_id
+        //     WHERE b.request_id = ?
+        //     LIMIT 1
+        // `, [request_id]);
         const booking = await queryDB(`
             SELECT
-                b.request_id, b.rider_id, ${formatDateTimeInQuery(['b.created_at'])},
-                b.customer_name AS name, b.mobile_no AS contact_no, b.email_id AS email, b.country_code,
-                b.order_status, b.address AS pickup_address, b.location_link,
-                b.vehicle_data, b.battery_level, b.jump_start_required,
-                b.price, b.booking_price, b.mode_of_payment, b.rsa_id, b.proof_of_transaction,
-                (SELECT h.driver_name FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
-                    WHERE h.order_id = b.request_id ORDER BY h.id DESC LIMIT 1) AS driver_name,
+                b.request_id, 
+                b.rider_id, 
+                ${formatDateTimeInQuery(['b.created_at'])},
+                b.customer_name AS name, 
+                b.mobile_no AS contact_no, 
+                b.email_id AS email, 
+                b.country_code,
+                b.order_status, 
+                b.address AS pickup_address, 
+                b.location_link,
+                b.vehicle_data, 
+                b.battery_level, 
+                b.jump_start_required,
+                b.price, 
+                b.booking_price, 
+                b.mode_of_payment, 
+                b.rsa_id, 
+                b.proof_of_transaction,
+
+                (
+                    SELECT h.driver_name 
+                    FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
+                    WHERE h.order_id COLLATE utf8mb4_unicode_ci =
+                        b.request_id COLLATE utf8mb4_unicode_ci
+                    ORDER BY h.id DESC 
+                    LIMIT 1
+                ) AS driver_name,
+
                 r.rsa_name,
                 r.country_code AS driver_country_code,
                 r.mobile AS driver_mobile_no,
+
                 inv.invoice_id,
-                COALESCE(b.payment_status, inv.payment_status) AS payment_status,
-                COALESCE(b.transaction_id, inv.transaction_id) AS transaction_id
+
+                COALESCE(
+                    b.payment_status,
+                    inv.payment_status
+                ) AS payment_status,
+
+                COALESCE(
+                    b.transaction_id,
+                    inv.transaction_id
+                ) AS transaction_id
+
             FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
-            LEFT JOIN ${RSA_OFFLINE_INVOICE_TABLE} AS inv ON inv.request_id = b.request_id
-            LEFT JOIN rsa AS r ON r.rsa_id = b.rsa_id
+
+            LEFT JOIN ${RSA_OFFLINE_INVOICE_TABLE} AS inv 
+                ON inv.request_id COLLATE utf8mb4_unicode_ci =
+                b.request_id COLLATE utf8mb4_unicode_ci
+
+            LEFT JOIN rsa AS r 
+                ON r.rsa_id COLLATE utf8mb4_unicode_ci =
+                b.rsa_id COLLATE utf8mb4_unicode_ci
+
             WHERE b.request_id = ?
+
             LIMIT 1
         `, [request_id]);
- 
+
+
         if (!booking) {
-            return resp.json({ status : 0, code : 404, message : ['Booking not found.'] });
+            return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
         }
- 
+
         const [history] = await db.execute(`
             SELECT order_status, driver_name, remarks, ${formatDateTimeInQuery(['created_at'])}
             FROM ${RSA_OFFLINE_HISTORY_TABLE}
             WHERE order_id = ?
             ORDER BY id ASC
         `, [request_id]);
- 
+
         // vehicle_data is stored as "Make, Model" but the edit form needs the two dropdowns separately
         const [vehicleMake = null, ...vehicleModelParts] = String(booking.vehicle_data || '')
             .split(',')
             .map((part) => part.trim())
             .filter(Boolean);
- 
-        booking.price                    = Number(booking.price || 0).toFixed(2);
-        booking.vehicle_make             = vehicleMake;
-        booking.vehicle_model            = vehicleModelParts.join(', ') || null;
-        booking.mobile_no                = booking.contact_no;
+
+        booking.price = Number(booking.price || 0).toFixed(2);
+        booking.vehicle_make = vehicleMake;
+        booking.vehicle_model = vehicleModelParts.join(', ') || null;
+        booking.mobile_no = booking.contact_no;
         booking.proof_of_transaction_url = booking.proof_of_transaction
             ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${booking.proof_of_transaction}`
             : null;
-        booking.booking_completed_by     = booking.driver_name;
- 
+        booking.booking_completed_by = booking.driver_name;
+
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ['Offline booking details fetched successfully!'],
-            data    : {
+            status: 1,
+            code: 200,
+            message: ['Offline booking details fetched successfully!'],
+            data: {
                 booking,
                 history,
                 feedBack: null,
@@ -208,20 +359,20 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
     } catch (error) {
         console.error('Error fetching offline booking details:', error);
         return resp.json({
-            status  : 0,
-            code    : 500,
-            message : ['Error fetching offline booking details'],
+            status: 0,
+            code: 500,
+            message: ['Error fetching offline booking details'],
         });
     }
 });
- 
+
 export const offlineRSABookingList = asyncHandler(async (req, resp) => {
     const { start_date, end_date, search_text = '', status, page_no, rowSelected } = req.body;
- 
-    const whereFields    = [];
-    const whereValues    = [];
+
+    const whereFields = [];
+    const whereValues = [];
     const whereOperators = [];
- 
+
     if (status) {
         const orderStatus = RSA_OFFLINE_STATUS_MAP[String(status).trim().toUpperCase()];
         if (orderStatus) {
@@ -230,52 +381,102 @@ export const offlineRSABookingList = asyncHandler(async (req, resp) => {
             whereOperators.push('=');
         }
     }
- 
+
     if (start_date && end_date) {
         // Same window as the online bookingList: start of day minus the 4-hour UTC offset,
         // and end of day (23:59:59 Gulf time = 19:59:59 UTC) so bookings on end_date are included.
         const start = moment(`${start_date} 00:00:01`, "YYYY-MM-DD HH:mm:ss").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
-        const end   = moment(end_date, "YYYY-MM-DD").format("YYYY-MM-DD") + ' 19:59:59';
- 
+        const end = moment(end_date, "YYYY-MM-DD").format("YYYY-MM-DD") + ' 19:59:59';
+
         whereFields.push('created_at', 'created_at');
         whereValues.push(start, end);
         whereOperators.push('>=', '<=');
     }
- 
+
     const result = await getPaginatedData({
-        tableName : RSA_OFFLINE_BOOKING_TABLE,
-        columns   : `request_id, rider_id, customer_name AS name, mobile_no AS contact_no, country_code, address AS pickup_address, location_link,
-            vehicle_data, battery_level, jump_start_required,
-            rsa_id,
-            (SELECT h.driver_name FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
-                WHERE h.order_id = ${RSA_OFFLINE_BOOKING_TABLE}.request_id ORDER BY h.id DESC LIMIT 1) AS driver_name,
-            (SELECT r.rsa_name FROM rsa AS r WHERE r.rsa_id = ${RSA_OFFLINE_BOOKING_TABLE}.rsa_id LIMIT 1) AS rsa_name,
-            price, order_status, payment_status, mode_of_payment, transaction_id, proof_of_transaction, ${formatDateTimeInQuery(['created_at'])},
-            (SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} AS inv WHERE inv.request_id = ${RSA_OFFLINE_BOOKING_TABLE}.request_id LIMIT 1) AS invoice_id`,
-        liveSearchFields : ['request_id', 'customer_name', 'mobile_no'],
-        liveSearchTexts  : [search_text, search_text, search_text],
-        sortColumn       : 'id',
-        sortOrder        : 'DESC',
+        tableName: RSA_OFFLINE_BOOKING_TABLE,
+        // columns: `request_id, rider_id, customer_name AS name, mobile_no AS contact_no, country_code, address AS pickup_address, location_link,
+        //     vehicle_data, battery_level, jump_start_required,
+        //     rsa_id,
+        //     (SELECT h.driver_name FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
+        //         WHERE h.order_id = ${RSA_OFFLINE_BOOKING_TABLE}.request_id ORDER BY h.id DESC LIMIT 1) AS driver_name,
+        //     (SELECT r.rsa_name FROM rsa AS r WHERE r.rsa_id = ${RSA_OFFLINE_BOOKING_TABLE}.rsa_id LIMIT 1) AS rsa_name,
+        //     price, order_status, payment_status, mode_of_payment, transaction_id, proof_of_transaction, ${formatDateTimeInQuery(['created_at'])},
+        //     (SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} AS inv WHERE inv.request_id = ${RSA_OFFLINE_BOOKING_TABLE}.request_id LIMIT 1) AS invoice_id`,
+        columns: `
+    request_id,
+    rider_id,
+    customer_name AS name,
+    mobile_no AS contact_no,
+    country_code,
+    address AS pickup_address,
+    location_link,
+    vehicle_data,
+    battery_level,
+    jump_start_required,
+    rsa_id,
+
+    (
+        SELECT h.driver_name
+        FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
+        WHERE h.order_id COLLATE utf8mb4_unicode_ci =
+              ${RSA_OFFLINE_BOOKING_TABLE}.request_id COLLATE utf8mb4_unicode_ci
+        ORDER BY h.id DESC
+        LIMIT 1
+    ) AS driver_name,
+
+    (
+        SELECT r.rsa_name
+        FROM rsa AS r
+        WHERE r.rsa_id COLLATE utf8mb4_unicode_ci =
+              ${RSA_OFFLINE_BOOKING_TABLE}.rsa_id COLLATE utf8mb4_unicode_ci
+        LIMIT 1
+    ) AS rsa_name,
+
+    price,
+    order_status,
+    payment_status,
+    mode_of_payment,
+    transaction_id,
+    proof_of_transaction,
+
+    ${formatDateTimeInQuery(['created_at'])},
+
+    (
+        SELECT invoice_id
+        FROM ${RSA_OFFLINE_INVOICE_TABLE} AS inv
+        WHERE inv.request_id COLLATE utf8mb4_unicode_ci =
+              ${RSA_OFFLINE_BOOKING_TABLE}.request_id COLLATE utf8mb4_unicode_ci
+        LIMIT 1
+    ) AS invoice_id
+`,
+
+        liveSearchFields: ['request_id', 'customer_name', 'mobile_no'],
+        liveSearchTexts: [search_text, search_text, search_text],
+        sortColumn: 'id',
+        sortOrder: 'DESC',
         page_no,
-        limit            : rowSelected || 10,
-        whereField       : whereFields,
-        whereValue       : whereValues,
-        whereOperator    : whereOperators
+        limit: rowSelected || 10,
+        whereField: whereFields,
+        whereValue: whereValues,
+        whereOperator: whereOperators
     });
- 
+
     return resp.json({
-        status     : 1,
-        code       : 200,
-        message    : ["Offline RSA booking list fetched successfully!"],
-        data       : result.data,
-        total_page : result.totalPage,
-        total      : result.total,
+        status: 1,
+        code: 200,
+        message: ["Offline RSA booking list fetched successfully!"],
+        data: result.data,
+        total_page: result.totalPage,
+        total: result.total,
     });
 });
- 
+
 export const offlineRSAVehicleList = asyncHandler(async (req, resp) => {
     const [vehicles] = await db.execute(`
-        SELECT DISTINCT TRIM(make) AS make, TRIM(model) AS model
+        SELECT 
+            DISTINCT TRIM(make) AS make, 
+            TRIM(model) AS model
         FROM vehicle_brand_list
         WHERE status = ?
           AND make IS NOT NULL
@@ -284,184 +485,576 @@ export const offlineRSAVehicleList = asyncHandler(async (req, resp) => {
           AND TRIM(model) != ''
         ORDER BY make ASC, model ASC
     `, [1]);
- 
+
     const vehicleMap = new Map();
     vehicles.forEach(({ make, model }) => {
         if (!vehicleMap.has(make)) {
             vehicleMap.set(make, {
-                value  : make,
-                label  : make,
-                models : [],
+                value: make,
+                label: make,
+                models: [],
             });
         }
- 
+
         vehicleMap.get(make).models.push({
-            value : model,
-            label : model,
+            value: model,
+            label: model,
         });
     });
- 
+
     return resp.json({
-        status  : 1,
-        code    : 200,
-        message : ['Vehicle make and model list fetched successfully!'],
-        data    : Array.from(vehicleMap.values()),
+        status: 1,
+        code: 200,
+        message: ['Vehicle make and model list fetched successfully!'],
+        data: Array.from(vehicleMap.values()),
     });
 });
- 
+
+// export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
+
+//     try {
+//         const {
+//             customer_name, mobile_no, email_id, emailId, country_code = '+971', location_link, address, price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment, transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
+//         } = mergeParam(req);
+
+//         const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
+//         const email = email_id || emailId;
+
+//         const { isValid, errors } = validateFields({
+//             ...mergeParam(req),
+//             email_id: email,
+//         }, {
+//             customer_name: ["required"],
+//             mobile_no: ["required"],
+//             email_id: ["required"],
+//             location_link: ["required"],
+//             address: ["required"],
+//             price: ["required"],
+//             booking_status: ["required"],
+//         });
+//         if (!isValid) {
+//             return resp.json({ status: 0, code: 422, message: errors });
+//         }
+
+//         const orderStatus = RSA_OFFLINE_STATUS_MAP[String(booking_status).trim().toUpperCase()];
+//         if (!orderStatus) {
+//             return resp.json({
+//                 status: 0,
+//                 code: 422,
+//                 message: ['Invalid booking status. Allowed values are Confirmed (CNF) or Completed (PU).']
+//             });
+//         }
+//         const isCompleted = orderStatus === 'PU';
+
+//         const bookingPrice = Number(price);
+//         const jumpStart = toYesNo(jump_start_required);
+//         const vehicleData = buildVehicleData(vehicle_make, vehicle_model);
+
+//         let connection;
+//         connection = await startTransaction();
+
+//         const driverInfo = await resolveOfflineRsaDriver(rsa_id, driver_name, booking_completed_by, connection);
+//         if (driverInfo === null) {
+//             await rollbackTransaction(connection);
+//             connection = null;
+//             return resp.json({
+//                 status: 0,
+//                 code: 422,
+//                 message: ['Invalid RSA driver selected.']
+//             });
+//         }
+
+//         const rider_id = await findRiderIdByMobile(mobile_no, connection);
+
+//         const temporaryRequestId = `TMP-${generateUniqueId({ length: 12 })}`;
+//         const insert = await insertRecord(RSA_OFFLINE_BOOKING_TABLE, [
+//             'request_id',
+//             'rider_id',
+//             'customer_name',
+//             'mobile_no',
+//             'email_id',
+//             'country_code',
+//             'location_link',
+//             'address',
+//             'price',
+//             'jump_start_required',
+//             'battery_level',
+//             'vehicle_data',
+//             'booking_price',
+//             'order_status',
+//             'payment_status',
+//             'mode_of_payment',
+//             'rsa_id',
+//             'transaction_id',
+//             'proof_of_transaction',
+//         ], [
+//             temporaryRequestId,
+//             rider_id,
+//             customer_name,
+//             mobile_no,
+//             email,
+//             country_code || '+91',
+//             location_link || null,
+//             address,
+//             bookingPrice,
+//             jumpStart,
+//             battery_level ?? 0,
+//             vehicleData,
+//             bookingPrice,
+//             orderStatus,
+//             payment_status || 'Pending',
+//             mode_of_payment || null,
+//             driverInfo.rsa_id,
+//             transaction_id || null,
+//             proofOfTransaction,
+//         ], connection);
+
+//         if (insert.affectedRows === 0) {
+//             await rollbackTransaction(connection);
+//             connection = null;
+//             return resp.json({
+//                 status: 0,
+//                 code: 500,
+//                 message: ['Failed to create offline booking. Please try again.']
+//             });
+//         }
+
+//         const request_id = buildOfflineRequestId(insert.insertId);
+//         await updateRecord(RSA_OFFLINE_BOOKING_TABLE, { request_id }, ['id'], [insert.insertId], connection);
+
+//         let invoice_id = null;
+//         if (isCompleted) {
+//             const temporaryInvoiceId = `TMP-${generateUniqueId({ length: 12 })}`;
+//             const invoiceInsert = await insertRecord(RSA_OFFLINE_INVOICE_TABLE, [
+//                 'invoice_id', 'request_id', 'rider_id', 'amount', 'transaction_id', 'payment_status', 'invoice_date',
+//             ], [
+//                 temporaryInvoiceId, request_id, rider_id, bookingPrice, transaction_id || null,
+//                 payment_status || 'Pending', moment().format('YYYY-MM-DD HH:mm:ss'),
+//             ], connection);
+
+//             if (invoiceInsert.affectedRows === 0) {
+//                 throw new Error('Failed to create offline RSA invoice');
+//             }
+
+//             invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
+//             await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
+//         }
+
+//         await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
+//             'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
+//         ], [
+//             request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, null,
+//         ], connection);
+
+//         await commitTransaction(connection);
+//         connection = null;
+
+//         return resp.json({
+//             status: 1,
+//             code: 200,
+//             message: ['Offline RSA booking added successfully!'],
+//             request_id,
+//             rider_id,
+//             invoice_id,
+//             order_status: orderStatus,
+//             rsa_id: driverInfo.rsa_id,
+//             driver_name: driverInfo.driver_name,
+//             proof_of_transaction: proofOfTransaction,
+//         });
+//     } catch (error) {
+//         if (connection) {
+//             await rollbackTransaction(connection);
+//         }
+//         console.error('[addOfflineRSABooking] error:', error);
+//         return resp.json({ status: 0, code: 500, message: ['Failed to add offline RSA booking.'] });
+//     }
+// });
 export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
-    const {
-        customer_name, mobile_no, email_id, emailId, country_code = '+971', location_link, address, price,
-        vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
-        transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
-    } = mergeParam(req);
- 
-    const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
-    const email              = email_id || emailId;
- 
-    const { isValid, errors } = validateFields({
-        ...mergeParam(req),
-        email_id: email,
-    }, {
-        customer_name : ["required"],
-        mobile_no     : ["required"],
-        email_id      : ["required"],
-        location_link : ["required"],
-        address       : ["required"],
-        price         : ["required"],
-        booking_status: ["required"],
-    });
-    if (!isValid) {
-        return resp.json({ status: 0, code: 422, message: errors });
-    }
- 
-    const orderStatus = RSA_OFFLINE_STATUS_MAP[String(booking_status).trim().toUpperCase()];
-    if (!orderStatus) {
-        return resp.json({ status: 0, code: 422, message: ['Invalid booking status. Allowed values are Confirmed (CNF) or Completed (PU).'] });
-    }
-    const isCompleted = orderStatus === 'PU';
- 
-    const bookingPrice = Number(price);
-    const jumpStart    = toYesNo(jump_start_required);
-    const vehicleData  = buildVehicleData(vehicle_make, vehicle_model);
- 
-    let connection;
+    let connection = null;
+
     try {
-        connection = await startTransaction();
- 
-        const driverInfo = await resolveOfflineRsaDriver(rsa_id, driver_name, booking_completed_by, connection);
-        if (driverInfo === null) {
-            await rollbackTransaction(connection);
-            connection = null;
-            return resp.json({ status: 0, code: 422, message: ['Invalid RSA driver selected.'] });
-        }
- 
-        const rider_id = await findRiderIdByMobile(mobile_no, connection);
- 
-        const temporaryRequestId = `TMP-${generateUniqueId({ length: 12 })}`;
-        const insert = await insertRecord(RSA_OFFLINE_BOOKING_TABLE, [
-            'request_id', 'rider_id', 'customer_name', 'mobile_no', 'email_id', 'country_code', 'location_link', 'address',
-            'price', 'jump_start_required', 'battery_level', 'vehicle_data', 'booking_price',
-            'order_status', 'payment_status', 'mode_of_payment', 'rsa_id', 'transaction_id', 'proof_of_transaction',
-        ], [
-            temporaryRequestId, rider_id, customer_name, mobile_no, email, country_code || '+971', location_link || null, address,
-            bookingPrice, jumpStart, battery_level ?? 0, vehicleData, bookingPrice,
-            orderStatus, payment_status || 'Pending', mode_of_payment || null, driverInfo.rsa_id, transaction_id || null, proofOfTransaction,
-        ], connection);
- 
-        if (insert.affectedRows === 0) {
-            await rollbackTransaction(connection);
-            connection = null;
-            return resp.json({ status: 0, code: 500, message: ['Failed to create offline booking. Please try again.'] });
-        }
- 
-        const request_id = buildOfflineRequestId(insert.insertId);
-        await updateRecord(RSA_OFFLINE_BOOKING_TABLE, { request_id }, ['id'], [insert.insertId], connection);
- 
-        let invoice_id = null;
-        if (isCompleted) {
-            const temporaryInvoiceId = `TMP-${generateUniqueId({ length: 12 })}`;
-            const invoiceInsert = await insertRecord(RSA_OFFLINE_INVOICE_TABLE, [
-                'invoice_id', 'request_id', 'rider_id', 'amount', 'transaction_id', 'payment_status', 'invoice_date',
-            ], [
-                temporaryInvoiceId, request_id, rider_id, bookingPrice, transaction_id || null,
-                payment_status || 'Pending', moment().format('YYYY-MM-DD HH:mm:ss'),
-            ], connection);
- 
-            if (invoiceInsert.affectedRows === 0) {
-                throw new Error('Failed to create offline RSA invoice');
+        const params = mergeParam(req);
+
+        const {
+            customer_name,
+            mobile_no,
+            email_id,
+            emailId,
+            country_code = '+91',
+            location_link,
+            address,
+            price,
+            vehicle_make,
+            vehicle_model,
+            battery_level,
+            jump_start_required,
+            payment_status,
+            mode_of_payment,
+            transaction_id,
+            booking_status,
+            driver_name = null,
+            booking_completed_by = null,
+            rsa_id = null,
+        } = params;
+
+        // ==========================================
+        // Email
+        // ==========================================
+        const email = email_id || emailId;
+
+        // ==========================================
+        // Payment Proof
+        // ==========================================
+        const proofOfTransaction =
+            req.files?.proof_of_transaction?.[0]?.filename || null;
+
+        // ==========================================
+        // Validation
+        // ==========================================
+        const { isValid, errors } = validateFields(
+            {
+                ...params,
+                email_id: email,
+            },
+            {
+                customer_name: ['required'],
+                mobile_no: ['required'],
+                email_id: ['required'],
+                location_link: ['required'],
+                address: ['required'],
+                price: ['required'],
+                booking_status: ['required'],
             }
- 
-            invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
-            await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
+        );
+
+        if (!isValid) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: errors,
+            });
         }
- 
-        await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
-            'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
-        ], [
-            request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, null,
-        ], connection);
- 
+
+        // ==========================================
+        // Validate Booking Status
+        // ==========================================
+        const normalizedBookingStatus = String(booking_status)
+            .trim()
+            .toUpperCase();
+
+        // const orderStatus =
+        const orderStatus = RSA_OFFLINE_STATUS_MAP[String(booking_status).trim().toUpperCase()];
+
+        if (!orderStatus) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: [
+                    'Invalid booking status. Allowed values are Confirmed or Completed.',
+                ],
+            });
+        }
+
+        const isCompleted = orderStatus === 'PU';
+
+        // ==========================================
+        // Validate / Prepare Data
+        // ==========================================
+        const bookingPrice = Number(price);
+
+        if (Number.isNaN(bookingPrice) || bookingPrice <= 0) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: ['Invalid booking price.'],
+            });
+        }
+
+        const jumpStart = toYesNo(jump_start_required);
+
+        const vehicleData = buildVehicleData(
+            vehicle_make,
+            vehicle_model
+        );
+
+        // ==========================================
+        // Start Transaction
+        // ==========================================
+        connection = await startTransaction();
+
+        // ==========================================
+        // Resolve RSA Driver
+        // ==========================================
+        const driverInfo = await resolveOfflineRsaDriver(
+            rsa_id,
+            driver_name,
+            booking_completed_by,
+            connection
+        );
+
+        if (!driverInfo) {
+            await rollbackTransaction(connection);
+            connection = null;
+
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: ['Invalid RSA driver selected.'],
+            });
+        }
+
+        // ==========================================
+        // Find Rider
+        // ==========================================
+        const rider_id = await findRiderIdByMobile(
+            mobile_no,
+            connection
+        );
+
+        // ==========================================
+        // Temporary Request ID
+        // ==========================================
+        const temporaryRequestId =
+            `TMP-${generateUniqueId({ length: 12 })}`;
+
+        // ==========================================
+        // Insert Booking
+        // ==========================================
+        const insert = await insertRecord(
+            RSA_OFFLINE_BOOKING_TABLE,
+            [
+                'request_id',
+                'rider_id',
+                'customer_name',
+                'mobile_no',
+                'email_id',
+                'country_code',
+                'location_link',
+                'address',
+                'price',
+                'jump_start_required',
+                'battery_level',
+                'vehicle_data',
+                'booking_price',
+                'order_status',
+                'payment_status',
+                'mode_of_payment',
+                'rsa_id',
+                'transaction_id',
+                'proof_of_transaction',
+            ],
+            [
+                temporaryRequestId,
+                rider_id,
+                customer_name,
+                mobile_no,
+                email,
+                country_code || '+91',
+                location_link || null,
+                address,
+                bookingPrice,
+                jumpStart,
+                battery_level || 0,
+                vehicleData,
+                bookingPrice,
+                orderStatus,
+                payment_status || 'Pending',
+                mode_of_payment || null,
+                driverInfo.rsa_id,
+                transaction_id || null,
+                proofOfTransaction,
+            ],
+            connection
+        );
+
+        if (!insert || insert.affectedRows === 0) {
+            throw new Error(
+                'Failed to create offline booking'
+            );
+        }
+
+        // ==========================================
+        // Generate Actual Request ID
+        // ==========================================
+        const request_id = buildOfflineRequestId(
+            insert.insertId
+        );
+
+        await updateRecord(
+            RSA_OFFLINE_BOOKING_TABLE,
+            { request_id },
+            ['id'],
+            [insert.insertId],
+            connection
+        );
+
+        // ==========================================
+        // Invoice
+        // ==========================================
+        let invoice_id = null;
+
+        if (isCompleted) {
+            const temporaryInvoiceId =
+                `TMP-${generateUniqueId({ length: 12 })}`;
+
+            const invoiceInsert = await insertRecord(
+                RSA_OFFLINE_INVOICE_TABLE,
+                [
+                    'invoice_id',
+                    'request_id',
+                    'rider_id',
+                    'amount',
+                    'transaction_id',
+                    'payment_status',
+                    'invoice_date',
+                ],
+                [
+                    temporaryInvoiceId,
+                    request_id,
+                    rider_id,
+                    bookingPrice,
+                    transaction_id || null,
+                    payment_status || 'Pending',
+                    moment().format(
+                        'YYYY-MM-DD HH:mm:ss'
+                    ),
+                ],
+                connection
+            );
+
+            if (
+                !invoiceInsert ||
+                invoiceInsert.affectedRows === 0
+            ) {
+                throw new Error(
+                    'Failed to create offline RSA invoice'
+                );
+            }
+
+            invoice_id = buildOfflineInvoiceId(
+                invoiceInsert.insertId
+            );
+
+            await updateRecord(
+                RSA_OFFLINE_INVOICE_TABLE,
+                { invoice_id },
+                ['id'],
+                [invoiceInsert.insertId],
+                connection
+            );
+        }
+
+        // ==========================================
+        // History
+        // ==========================================
+        await insertRecord(
+            RSA_OFFLINE_HISTORY_TABLE,
+            [
+                'order_id',
+                'rider_id',
+                'driver_name',
+                'rsa_id',
+                'order_status',
+                'remarks',
+            ],
+            [
+                request_id,
+                rider_id,
+                driverInfo.driver_name,
+                driverInfo.rsa_id,
+                orderStatus,
+                null,
+            ],
+            connection
+        );
+
+        // ==========================================
+        // Commit
+        // ==========================================
         await commitTransaction(connection);
         connection = null;
- 
+
         return resp.json({
-            status               : 1,
-            code                 : 200,
-            message              : ['Offline RSA booking added successfully!'],
+            status: 1,
+            code: 200,
+            message: [
+                'Offline RSA booking added successfully!',
+            ],
             request_id,
             rider_id,
             invoice_id,
-            order_status         : orderStatus,
-            rsa_id               : driverInfo.rsa_id,
-            driver_name          : driverInfo.driver_name,
-            proof_of_transaction : proofOfTransaction,
+            order_status: orderStatus,
+            rsa_id: driverInfo.rsa_id,
+            driver_name: driverInfo.driver_name,
+            proof_of_transaction: proofOfTransaction,
         });
+
     } catch (error) {
+
         if (connection) {
-            await rollbackTransaction(connection);
+            try {
+                await rollbackTransaction(connection);
+            } catch (rollbackError) {
+                console.error(
+                    '[addOfflineRSABooking] rollback error:',
+                    rollbackError
+                );
+            }
         }
-        console.error('[addOfflineRSABooking] error:', error);
-        return resp.json({ status: 0, code: 500, message: ['Failed to add offline RSA booking.'] });
+
+        console.error(
+            '[addOfflineRSABooking] error:',
+            error
+        );
+
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: [
+                error?.message ||
+                'Failed to add offline RSA booking.',
+            ],
+        });
     }
 });
- 
+
+
 export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
     const {
         request_id, customer_name, mobile_no, email_id, emailId, country_code = '+971', location_link, address, price,
         vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
         transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
     } = mergeParam(req);
- 
+
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
-    const email              = email_id || emailId;
- 
+    const email = email_id || emailId;
+
     const { isValid, errors } = validateFields({
         ...mergeParam(req),
         email_id: email,
     }, {
-        request_id    : ["required"],
-        customer_name : ["required"],
-        mobile_no     : ["required"],
-        email_id      : ["required"],
-        location_link : ["required"],
-        address       : ["required"],
-        price         : ["required"],
+        request_id: ["required"],
+        customer_name: ["required"],
+        mobile_no: ["required"],
+        email_id: ["required"],
+        location_link: ["required"],
+        address: ["required"],
+        price: ["required"],
         booking_status: ["required"],
     });
     if (!isValid) {
         return resp.json({ status: 0, code: 422, message: errors });
     }
- 
+
     const orderStatus = RSA_OFFLINE_STATUS_MAP[String(booking_status).trim().toUpperCase()];
     if (!orderStatus) {
         return resp.json({
-            status  : 0,
-            code    : 422,
-            message : ['Invalid booking status. Allowed values are Confirmed (CNF) or Completed (PU).'],
+            status: 0,
+            code: 422,
+            message: ['Invalid booking status. Allowed values are Confirmed (CNF) or Completed (PU).'],
         });
     }
- 
+
     const existing = await queryDB(
         `SELECT request_id, order_status, proof_of_transaction
          FROM ${RSA_OFFLINE_BOOKING_TABLE}
@@ -472,70 +1065,70 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
     if (!existing) {
         return resp.json({ status: 0, code: 404, message: ['Offline booking not found.'] });
     }
- 
+
     const wasCompleted = existing.order_status === 'PU';
-    const isCompleted  = orderStatus === 'PU';
+    const isCompleted = orderStatus === 'PU';
     const bookingPrice = Number(price);
-    const jumpStart    = toYesNo(jump_start_required);
-    const vehicleData  = buildVehicleData(vehicle_make, vehicle_model);
-    const savedProof   = proofOfTransaction || existing.proof_of_transaction || null;
- 
+    const jumpStart = toYesNo(jump_start_required);
+    const vehicleData = buildVehicleData(vehicle_make, vehicle_model);
+    const savedProof = proofOfTransaction || existing.proof_of_transaction || null;
+
     let connection;
     try {
         connection = await startTransaction();
- 
+
         const driverInfo = await resolveOfflineRsaDriver(rsa_id, driver_name, booking_completed_by, connection);
         if (driverInfo === null) {
             await rollbackTransaction(connection);
             connection = null;
             return resp.json({ status: 0, code: 422, message: ['Invalid RSA driver selected.'] });
         }
- 
+
         const rider_id = await findRiderIdByMobile(mobile_no, connection);
- 
+
         const update = await updateRecord(RSA_OFFLINE_BOOKING_TABLE, {
             rider_id,
             customer_name,
             mobile_no,
-            email_id              : email,
-            country_code          : country_code || '+971',
-            location_link         : location_link || null,
+            email_id: email,
+            country_code: country_code || '+971',
+            location_link: location_link || null,
             address,
-            price                 : bookingPrice,
-            jump_start_required   : jumpStart,
-            battery_level         : battery_level ?? 0,
-            vehicle_data          : vehicleData,
-            booking_price         : bookingPrice,
-            order_status          : orderStatus,
-            payment_status        : payment_status || 'Pending',
-            mode_of_payment       : mode_of_payment || null,
-            rsa_id                : driverInfo.rsa_id,
-            transaction_id        : transaction_id || null,
-            proof_of_transaction  : savedProof,
+            price: bookingPrice,
+            jump_start_required: jumpStart,
+            battery_level: battery_level ?? 0,
+            vehicle_data: vehicleData,
+            booking_price: bookingPrice,
+            order_status: orderStatus,
+            payment_status: payment_status || 'Pending',
+            mode_of_payment: mode_of_payment || null,
+            rsa_id: driverInfo.rsa_id,
+            transaction_id: transaction_id || null,
+            proof_of_transaction: savedProof,
         }, ['request_id'], [request_id], connection);
- 
+
         if (update.affectedRows === 0) {
             await rollbackTransaction(connection);
             connection = null;
             return resp.json({ status: 0, code: 500, message: ['Failed to update offline booking. Please try again.'] });
         }
- 
+
         let invoice_id = null;
         const existingInvoice = await queryDB(
             `SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} WHERE request_id = ? LIMIT 1`,
             [request_id],
             connection
         );
- 
+
         if (isCompleted) {
             if (existingInvoice?.invoice_id) {
                 invoice_id = existingInvoice.invoice_id;
                 await updateRecord(RSA_OFFLINE_INVOICE_TABLE, {
                     rider_id,
-                    amount         : bookingPrice,
-                    payment_status : payment_status || 'Pending',
-                    transaction_id : transaction_id || null,
-                    invoice_date   : moment().format('YYYY-MM-DD HH:mm:ss'),
+                    amount: bookingPrice,
+                    payment_status: payment_status || 'Pending',
+                    transaction_id: transaction_id || null,
+                    invoice_date: moment().format('YYYY-MM-DD HH:mm:ss'),
                 }, ['request_id'], [request_id], connection);
             } else {
                 const temporaryInvoiceId = `TMP-${generateUniqueId({ length: 12 })}`;
@@ -545,11 +1138,11 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                     temporaryInvoiceId, request_id, rider_id, bookingPrice, transaction_id || null,
                     payment_status || 'Pending', moment().format('YYYY-MM-DD HH:mm:ss'),
                 ], connection);
- 
+
                 if (invoiceInsert.affectedRows === 0) {
                     throw new Error('Failed to create offline RSA invoice');
                 }
- 
+
                 invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
                 await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
             }
@@ -559,7 +1152,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { rider_id }, ['request_id'], [request_id], connection);
             }
         }
- 
+
         const statusChanged = existing.order_status !== orderStatus;
         const latestHistory = await queryDB(
             `SELECT id, driver_name, rsa_id FROM ${RSA_OFFLINE_HISTORY_TABLE}
@@ -569,7 +1162,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
             [request_id],
             connection
         );
- 
+
         if (!latestHistory || statusChanged) {
             await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
                 'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
@@ -592,23 +1185,23 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 connection
             );
         }
- 
+
         await commitTransaction(connection);
         connection = null;
- 
+
         return resp.json({
-            status               : 1,
-            code                 : 200,
-            message              : ['Offline RSA booking updated successfully!'],
+            status: 1,
+            code: 200,
+            message: ['Offline RSA booking updated successfully!'],
             request_id,
             rider_id,
             invoice_id,
-            order_status         : orderStatus,
-            previous_status      : existing.order_status,
-            rsa_id               : driverInfo.rsa_id,
-            driver_name          : driverInfo.driver_name,
-            proof_of_transaction : savedProof,
-            invoice_created      : isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
+            order_status: orderStatus,
+            previous_status: existing.order_status,
+            rsa_id: driverInfo.rsa_id,
+            driver_name: driverInfo.driver_name,
+            proof_of_transaction: savedProof,
+            invoice_created: isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
         });
     } catch (error) {
         if (connection) {
@@ -621,7 +1214,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
 
 export const evRoadAssistanceCancelBooking = asyncHandler(async (req, resp) => {
     const { request_id, rider_id, reason } = req.body;
-    const { isValid, errors }    = validateFields(req.body, { request_id : ["required"], reason : ["required"] });
+    const { isValid, errors } = validateFields(req.body, { request_id: ["required"], reason: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const order = await queryDB(`
@@ -634,70 +1227,70 @@ export const evRoadAssistanceCancelBooking = asyncHandler(async (req, resp) => {
         LIMIT 1  
     `, [request_id, rider_id]);
 
-    if(!order) return resp.json({ status : 0, message: ["No booking found on this booking id."]});
+    if (!order) return resp.json({ status: 0, message: ["No booking found on this booking id."] });
 
     await db.execute(`UPDATE road_assistance SET order_status = 'C' WHERE request_id = ?`, [request_id]);
     await insertRecord('order_history', ['order_id', 'rider_id', 'cancel_by', 'order_status', 'cancel_reason'], [request_id, order.rider_id, 'Admin', 'C', reason]);
 
     const title = 'Order Cancelled!';
-    const msg   = `We regret to inform you that your roadside assistance order no : ${request_id} has been cancelled.`;
-    const href  = `road_assistance/${request_id}`;
+    const msg = `We regret to inform you that your roadside assistance order no : ${request_id} has been cancelled.`;
+    const href = `road_assistance/${request_id}`;
     createNotification(title, msg, 'Roadside Assistance', 'Rider', 'Admin', '', order.rider_id, href);
     pushNotification(order.fcm_token, title, msg, 'RDRFCM', href);
 
-    return resp.json({ status: 1, code:200, message: "Booking has been cancelled successfully!."});
+    return resp.json({ status: 1, code: 200, message: "Booking has been cancelled successfully!." });
 });
 
 /* RA Invoie */
 export const invoiceList = asyncHandler(async (req, resp) => {
-    const { page_no, search_text,start_date, end_date } = req.body;
+    const { page_no, search_text, start_date, end_date } = req.body;
 
     const whereFields = []
     const whereValues = []
     const whereOperators = []
 
     if (start_date && end_date) {
-    
-        const startToday         = new Date(start_date);
+
+        const startToday = new Date(start_date);
         const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
             .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                    
-        const givenStartDateTime    = startFormattedDate+' 00:00:01';
-        const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
-        const start                 = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-        
-        const endToday         = new Date(end_date);
+
+        const givenStartDateTime = startFormattedDate + ' 00:00:01';
+        const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+        const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
+        const endToday = new Date(end_date);
         const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
             .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-        const end = formattedEndDate+' 19:59:59';
+        const end = formattedEndDate + ' 19:59:59';
 
         whereFields.push('created_at', 'created_at');
         whereValues.push(start, end);
         whereOperators.push('>=', '<=');
     }
     const result = await getPaginatedData({
-        tableName : 'road_assistance_invoice',
-        columns   : `invoice_id, payment_status, invoice_date, currency, ROUND(amount/100, 2) AS amount,
+        tableName: 'road_assistance_invoice',
+        columns: `invoice_id, payment_status, invoice_date, currency, ROUND(amount/100, 2) AS amount,
             (select concat(name, ",", country_code, "-", contact_no) from road_assistance as rs where rs.request_id = road_assistance_invoice.request_id limit 1)
             AS riderDetails`,
-        sortColumn : 'id',
-        sortOrder  : 'DESC',
+        sortColumn: 'id',
+        sortOrder: 'DESC',
         page_no,
         limit: 10,
-        liveSearchFields : ['invoice_id'],
-        liveSearchTexts  : [search_text],
-        whereField       : whereFields,
-        whereValue       : whereValues,
-        whereOperator    : whereOperators
+        liveSearchFields: ['invoice_id'],
+        liveSearchTexts: [search_text],
+        whereField: whereFields,
+        whereValue: whereValues,
+        whereOperator: whereOperators
     });
     return resp.json({
-        status     : 1,
-        code       : 200,
-        message    : ["Invoice List fetch successfully!"],
-        data       : result.data,
-        total_page : result.totalPage,
-        total      : result.total,
-    });    
+        status: 1,
+        code: 200,
+        message: ["Invoice List fetch successfully!"],
+        data: result.data,
+        total_page: result.totalPage,
+        total: result.total,
+    });
 });
 
 export const invoiceData = async (req, resp) => {
@@ -719,79 +1312,79 @@ export const invoiceData = async (req, resp) => {
         WHERE pci.invoice_id = ?
     `, [invoice_id]);
     // data.booking_price = 90;  
-    data.kw           = 7; 
-    data.kw_dewa_amt  = data.kw * 0.44;
-    data.kw_cpo_amt   = data.kw * 0.26;
-    data.delv_charge  = (parseFloat( data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt) ); 
+    data.kw = 7;
+    data.kw_dewa_amt = data.kw * 0.44;
+    data.kw_cpo_amt = data.kw * 0.26;
+    data.delv_charge = (parseFloat(data.booking_price) - (data.kw_dewa_amt + data.kw_cpo_amt));
 
-    if(data.current_percent == 0){
-        data.booking_price = (parseFloat( data.booking_price) + parseFloat(data.additional_price) ); 
+    if (data.current_percent == 0) {
+        data.booking_price = (parseFloat(data.booking_price) + parseFloat(data.additional_price));
     }
     data.dis_price = 0;
-    if(data.discount > 0){
-        if ( data.discount != parseFloat(100) ) {  
-            const dis_price = ( parseFloat( data.booking_price) * data.discount ) /100 ;
-            const total_amt = parseFloat( data.booking_price) - dis_price;  
+    if (data.discount > 0) {
+        if (data.discount != parseFloat(100)) {
+            const dis_price = (parseFloat(data.booking_price) * data.discount) / 100;
+            const total_amt = parseFloat(data.booking_price) - dis_price;
 
-            data.dis_price  = dis_price ;
-            data.t_vat_amt  = Math.floor(( total_amt ) * 5) / 100; 
-            data.price      = total_amt + data.t_vat_amt;
+            data.dis_price = dis_price;
+            data.t_vat_amt = Math.floor((total_amt) * 5) / 100;
+            data.price = total_amt + data.t_vat_amt;
 
         } else {
-            data.t_vat_amt  = Math.floor(( parseFloat( data.booking_price) ) * 5) / 100;
-            const total_amt  = parseFloat( parseFloat( data.booking_price)) + parseFloat( data.t_vat_amt ); 
+            data.t_vat_amt = Math.floor((parseFloat(data.booking_price)) * 5) / 100;
+            const total_amt = parseFloat(parseFloat(data.booking_price)) + parseFloat(data.t_vat_amt);
 
-            const dis_price = ( total_amt * data.discount)/100;
-            data.dis_price  = dis_price;
-            data.price      = total_amt - dis_price;
+            const dis_price = (total_amt * data.discount) / 100;
+            data.dis_price = dis_price;
+            data.price = total_amt - dis_price;
         }
     } else {
-        data.t_vat_amt = ( ( parseFloat( data.booking_price) )  * 5) / 100 ;
-        data.price     = parseFloat( data.booking_price) + data.t_vat_amt;
+        data.t_vat_amt = ((parseFloat(data.booking_price)) * 5) / 100;
+        data.price = parseFloat(data.booking_price) + data.t_vat_amt;
     }
     return resp.json({
-        message : ["Ev Roadside Assistance Invoice Details fetched successfully!"],
-        data    : data,
-        status  : 1,
-        code    : 200,
+        message: ["Ev Roadside Assistance Invoice Details fetched successfully!"],
+        data: data,
+        status: 1,
+        code: 200,
     });
 };
 
 
 export const rsaAssignBooking = async (req, resp) => {
-    const {  rsa_id, booking_id  } = mergeParam(req);
-    const { isValid, errors }      = validateFields(mergeParam(req), {
-        rsa_id     : ["required"],
-        booking_id : ["required"],
+    const { rsa_id, booking_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rsa_id: ["required"],
+        booking_id: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
-    try { 
-        const booking_data = await queryDB( `SELECT rider_id, rsa_id, (select fcm_token from riders as r where r.rider_id = road_assistance.rider_id ) as fcm_token FROM road_assistance WHERE request_id = ?
-        `, [booking_id ] );
-    
+
+    try {
+        const booking_data = await queryDB(`SELECT rider_id, rsa_id, (select fcm_token from riders as r where r.rider_id = road_assistance.rider_id ) as fcm_token FROM road_assistance WHERE request_id = ?
+        `, [booking_id]);
+
         if (!booking_data) {
             return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
         }
         const rsa = await queryDB(`SELECT rsa_name, email, fcm_token FROM rsa WHERE rsa_id = ?`, [rsa_id]);
-        if(rsa_id == booking_data.rsa_id) {
+        if (rsa_id == booking_data.rsa_id) {
             return resp.json({ message: [`The booking is already assigned to Driver Name ${rsa.rsa_name}. Would you like to assign it to another driver?`], status: 0, code: 404 });
         }
-        await insertRecord('order_assign', 
+        await insertRecord('order_assign',
             ['order_id', 'rsa_id', 'rider_id', 'status'], [booking_id, rsa_id, booking_data.rider_id, 0]
         );
         await db.execute(`DELETE FROM order_assign WHERE order_id = ? AND rsa_id = ?`, [booking_id, booking_data.rsa_id]);
-        await updateRecord('road_assistance', {rsa_id: rsa_id}, ['request_id'], [booking_id]);
-       
-        const href    = 'road_assistance/' + booking_id;
+        await updateRecord('road_assistance', { rsa_id: rsa_id }, ['request_id'], [booking_id]);
+
+        const href = 'road_assistance/' + booking_id;
         const heading = 'EV Roadside Assistance';
-        const desc    = `Booking Assigned : ${booking_id}`;
+        const desc = `Booking Assigned : ${booking_id}`;
         // createNotification(heading, desc, 'Roadside Assistance', 'Rider', 'Admin', '', booking_data.rider_id, href);
         // pushNotification(booking_data.fcm_token, heading, desc, 'RDRFCM', href);
 
         const desc1 = `Booking Assigned : ${booking_id}`;
         createNotification(heading, desc1, 'Roadside Assistance', 'RSA', 'Admin', '', rsa_id, href);
-        if(rsa.fcm_token) {
+        if (rsa.fcm_token) {
             pushNotification(rsa.fcm_token, heading, desc1, 'RSAFCM', href);
         }
         const htmlDriver = `<html>
@@ -804,19 +1397,19 @@ export const rsaAssignBooking = async (req, resp) => {
             </body>
         </html>`;
         emailQueue.addEmail(rsa.email, 'PlusX Electric App: Booking Confirmation for Your EV Roadside Assistance!', htmlDriver);
-        
+
         return resp.json({
-            status  : 1, 
-            code    : 200,
-            message : ["You have successfully assigned EV Roadside Assistance booking." ]
+            status: 1,
+            code: 200,
+            message: ["You have successfully assigned EV Roadside Assistance booking."]
         });
 
-    } catch(err){
-        
+    } catch (err) {
+
         console.error("Transaction failed:", err);
-        return resp.json({status: 0, code: 500, message: ["Oops! There is something went wrong! Please Try Again"] });
+        return resp.json({ status: 0, code: 500, message: ["Oops! There is something went wrong! Please Try Again"] });
     } finally {
-        
+
     }
 };
 
@@ -825,40 +1418,40 @@ export const failedRSABookingList = async (req, resp) => {
         const { page_no, start_date, end_date, search_text = '' } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
-            page_no : ["required"]
+            page_no: ["required"]
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         const params = {
-            tableName : 'failed_road_assistance',
-            columns   : `request_id, name, ROUND(price, 2) AS price, order_status, ${formatDateTimeInQuery(['created_at'])}`,
-            sortColumn : 'id',
-            sortOrder  : 'DESC',
+            tableName: 'failed_road_assistance',
+            columns: `request_id, name, ROUND(price, 2) AS price, order_status, ${formatDateTimeInQuery(['created_at'])}`,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
             page_no,
             limit: 10,
-            liveSearchFields : ['request_id', 'name' ],
-            liveSearchTexts  : [search_text, search_text ],
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : [],          
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : []
+            liveSearchFields: ['request_id', 'name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: [],
+            whereValue: [],
+            whereOperator: [],
+            whereField: [],
+            whereValue: [],
+            whereOperator: []
         };
         if (start_date && end_date) {
-            
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                       
-            const givenStartDateTime    = startFormattedDate+' 00:00:01';
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
             const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
@@ -867,12 +1460,12 @@ export const failedRSABookingList = async (req, resp) => {
         const result = await getPaginatedData(params);
 
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Failed POD Booking List fetched successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["Failed POD Booking List fetched successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching charger booking list:', error);
@@ -885,22 +1478,22 @@ export const failedRSABookingDetails = async (req, resp) => {
         const { booking_id } = req.body;
 
         if (!booking_id) {
-            return resp.json({ status : 0, code : 400, message : ['Booking ID is required.']});
-        } 
+            return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
+        }
         const [[bookingResult]] = await db.execute(`
             SELECT 
                 request_id, rider_id, ${formatDateTimeInQuery(['created_at'])}, name, country_code, contact_no, order_status, pickup_address, pickup_latitude, pickup_longitude, parking_number, parking_floor, ROUND(price, 2) AS price, vehicle_id, vehicle_data
             FROM 
                 failed_road_assistance 
             WHERE 
-                request_id = ?`, 
+                request_id = ?`,
             [booking_id]
-        ); 
+        );
         if (bookingResult.length === 0) {
-            return resp.json({ status : 0, code : 404, message : ['Booking not found.'] });
-        } 
-        
-        if(bookingResult.vehicle_data == '' || bookingResult.vehicle_data == null) {
+            return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
+        }
+
+        if (bookingResult.vehicle_data == '' || bookingResult.vehicle_data == null) {
             const vehicledata = await queryDB(`
                 SELECT                 
                     vehicle_make, vehicle_model, vehicle_specification, emirates, vehicle_code, vehicle_number
@@ -909,24 +1502,24 @@ export const failedRSABookingDetails = async (req, resp) => {
                 WHERE 
                     rider_id = ? and vehicle_id = ? 
                 LIMIT 1 `,
-            [ bookingResult.rider_id, bookingResult.vehicle_id ]);
-            
-            if(vehicledata) {
-                bookingResult.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model+ ", "+ vehicledata.vehicle_specification+ ", "+ vehicledata.emirates+ "-" + vehicledata.vehicle_code + "-"+ vehicledata.vehicle_number ;
+                [bookingResult.rider_id, bookingResult.vehicle_id]);
+
+            if (vehicledata) {
+                bookingResult.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_specification + ", " + vehicledata.emirates + "-" + vehicledata.vehicle_code + "-" + vehicledata.vehicle_number;
             }
         }
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["failed Booking details fetched successfully!"],
-            data : bookingResult, 
+            status: 1,
+            code: 200,
+            message: ["failed Booking details fetched successfully!"],
+            data: bookingResult,
         });
     } catch (error) {
         console.error('Error fetching booking details:', error);
-        return resp.json({ 
-            status  : 0, 
-            code    : 500, 
-            message : 'Error fetching booking details' 
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: 'Error fetching booking details'
         });
     }
 };
@@ -934,49 +1527,49 @@ export const failedRSABookingDetails = async (req, resp) => {
 /* Slot */
 export const rsaSlotList = async (req, resp) => {
     try {
-        const { page_no,  search_text = '', days =''} = req.body;
+        const { page_no, search_text = '', days = '' } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
             page_no: ["required"]
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        let slot_date = moment().format("YYYY-MM-DD"); 
- 
+        let slot_date = moment().format("YYYY-MM-DD");
+
         const params = {
-            tableName  : 'road_assistance_slot',
-            columns    : `slot_id, slot_date, start_time, end_time, slot_price, status`,
-            sortColumn : `FIELD( slot_date, 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ), start_time ASC`,
-            sortOrder  : '',
+            tableName: 'road_assistance_slot',
+            columns: `slot_id, slot_date, start_time, end_time, slot_price, status`,
+            sortColumn: `FIELD( slot_date, 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ), start_time ASC`,
+            sortOrder: '',
             page_no,
-            limit            : 10,
-            liveSearchFields : ['start_time', 'end_time', 'slot_date'],
-            liveSearchTexts  : [search_text, search_text, search_text],
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : []
+            limit: 10,
+            liveSearchFields: ['start_time', 'end_time', 'slot_date'],
+            liveSearchTexts: [search_text, search_text, search_text],
+            whereField: [],
+            whereValue: [],
+            whereOperator: []
         };
         if (days) {
-            params.whereField.push('slot_date' );
+            params.whereField.push('slot_date');
             params.whereValue.push(days);
             params.whereOperator.push('=');
         }
         const result = await getPaginatedData(params);
         const formattedData = result.data.map((item) => ({
-            slot_id            : item.slot_id,
-            slot_date          : item.slot_date, //moment(item.slot_date, "DD-MM-YYYY").format('YYYY-MM-DD'),
-             
-            status             : item.status,
-            slot_booking_count : 0, //item.slot_booking_count,
-            timing             : `${item.start_time} - ${item.end_time}`,
-            slot_price         : item.slot_price,
+            slot_id: item.slot_id,
+            slot_date: item.slot_date, //moment(item.slot_date, "DD-MM-YYYY").format('YYYY-MM-DD'),
+
+            status: item.status,
+            slot_booking_count: 0, //item.slot_booking_count,
+            timing: `${item.start_time} - ${item.end_time}`,
+            slot_price: item.slot_price,
         }));
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["RSA Slot List fetched successfully!"],
-            data       : formattedData,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            code: 200,
+            message: ["RSA Slot List fetched successfully!"],
+            data: formattedData,
+            total_page: result.totalPage,
+            total: result.total,
         });
     } catch (error) {
         console.error('Error fetching slot list:', error);
@@ -986,8 +1579,8 @@ export const rsaSlotList = async (req, resp) => {
 
 export const rsaSlotDetails = async (req, resp) => {
     try {
-        const { slot_id, slot_date} = req.body;
-        const { isValid, errors } = validateFields(req.body, {slot_date: ["required"] });
+        const { slot_id, slot_date } = req.body;
+        const { isValid, errors } = validateFields(req.body, { slot_date: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         // (SELECT COUNT(id) FROM road_assistance AS pod WHERE pod.slot_time = road_assistance_slot.start_time AND pod.slot_date = road_assistance_slot.slot_date AND status NOT IN ("PU", "C", "RO")) AS slot_booking_count
@@ -998,15 +1591,15 @@ export const rsaSlotDetails = async (req, resp) => {
             FROM 
                 road_assistance_slot 
             WHERE 
-                slot_date = ?`, 
+                slot_date = ?`,
             [slot_date]
         );
         return resp.json({
-            status  : 1,
-            code    : 200,
-            message : ["RSA Slot Details fetched successfully!"],
-            data    : slotDetails,
-            
+            status: 1,
+            code: 200,
+            message: ["RSA Slot Details fetched successfully!"],
+            data: slotDetails,
+
         });
     } catch (error) {
         console.error('Error fetching slot list:', error);
@@ -1017,34 +1610,34 @@ export const rsaSlotDetails = async (req, resp) => {
 export const rsaSlotAdd = async (req, resp) => {
     try {
         const { slot_date, start_time, end_time, slot_price, status = 1 } = req.body;
-        const { isValid, errors } = validateFields(req.body, { 
-            slot_date     : ["required"], 
-            start_time    : ["required"], 
-            end_time      : ["required"],
-            slot_price      : ["required"], 
-        }); 
+        const { isValid, errors } = validateFields(req.body, {
+            slot_date: ["required"],
+            start_time: ["required"],
+            end_time: ["required"],
+            slot_price: ["required"],
+        });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        
-        if ( !Array.isArray(start_time) || !Array.isArray(end_time) || !Array.isArray(slot_price) || !Array.isArray(status)) {
+
+        if (!Array.isArray(start_time) || !Array.isArray(end_time) || !Array.isArray(slot_price) || !Array.isArray(status)) {
             return resp.json({ status: 0, code: 422, message: 'Input data must be in array format.' });
         }
-        if ( start_time.length !== end_time.length || end_time.length !== slot_price.length || slot_price.length !== status.length) {
+        if (start_time.length !== end_time.length || end_time.length !== slot_price.length || slot_price.length !== status.length) {
             return resp.json({ status: 0, code: 422, message: 'All input arrays must have the same length.' });
         }
         const values = []; const placeholders = [];
         // const fSlotDate = moment(slot_date, "DD-MM-YYYY").format("YYYY-MM-DD");
-        for (let i = 0; i < start_time.length; i++) {            
-            const slotId = `PTS${generateUniqueId({ length:6 })}`;
+        for (let i = 0; i < start_time.length; i++) {
+            const slotId = `PTS${generateUniqueId({ length: 6 })}`;
             values.push(slotId, slot_date, convertTo24HourFormat(start_time[i]), convertTo24HourFormat(end_time[i]), slot_price[i], status[i]);
             placeholders.push('(?, ?, ?, ?, ?, ?)');
         }
         const query = `INSERT INTO road_assistance_slot (slot_id, slot_date, start_time, end_time, slot_price, status) VALUES ${placeholders.join(', ')}`;
         const [insert] = await db.execute(query, values);
-        
+
         return resp.json({
-            code    : 200,
-            message : insert.affectedRows > 0 ? ['Slots added successfully!'] : ['Oops! Something went wrong. Please try again.'],
-            status  : insert.affectedRows > 0 ? 1 : 0
+            code: 200,
+            message: insert.affectedRows > 0 ? ['Slots added successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            status: insert.affectedRows > 0 ? 1 : 0
         });
     } catch (error) {
         console.error('Something went wrong:', error);
@@ -1055,25 +1648,25 @@ export const rsaSlotAdd = async (req, resp) => {
 export const rsaSlotEdit = asyncHandler(async (req, resp) => {
     const { slot_id, slot_date, start_time, end_time, slot_price, status } = req.body;
     const { isValid, errors } = validateFields(req.body, {
-        slot_id       : ["required"],
-        slot_date     : ["required"],
-        start_time    : ["required"],
-        end_time      : ["required"],
-        slot_price    : ["required"],
+        slot_id: ["required"],
+        slot_date: ["required"],
+        start_time: ["required"],
+        end_time: ["required"],
+        slot_price: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    if (!Array.isArray(slot_id) || !Array.isArray(start_time) || !Array.isArray(slot_price) || !Array.isArray(end_time) || !Array.isArray(status) ) {
+    if (!Array.isArray(slot_id) || !Array.isArray(start_time) || !Array.isArray(slot_price) || !Array.isArray(end_time) || !Array.isArray(status)) {
         return resp.json({ status: 0, code: 422, message: "Input data must be in array format." });
     }
-    if ( start_time.length !== end_time.length || end_time.length !== slot_price.length || slot_price.length !== status.length ) {
+    if (start_time.length !== end_time.length || end_time.length !== slot_price.length || slot_price.length !== status.length) {
         return resp.json({ status: 0, code: 422, message: "All input arrays must have the same length." });
     }
     // let fSlotDate = moment(slot_date, "DD-MM-YYYY").format("YYYY-MM-DD");
-    let errMsg    = [];
+    let errMsg = [];
 
     //  Fetch existing slots for the given date
-    const [existingSlots] = await db.execute("SELECT slot_id FROM road_assistance_slot WHERE slot_date = ?",[slot_date]);
+    const [existingSlots] = await db.execute("SELECT slot_id FROM road_assistance_slot WHERE slot_date = ?", [slot_date]);
     const existingSlotIds = existingSlots.map((slot) => slot.slot_id);
 
     // Determine slots to delete
@@ -1081,7 +1674,7 @@ export const rsaSlotEdit = asyncHandler(async (req, resp) => {
 
     //Delete slots that are no longer needed
     for (let id of slotsToDelete) {
-        const [deleteResult] = await db.execute("DELETE FROM road_assistance_slot WHERE slot_id = ?", [id] );
+        const [deleteResult] = await db.execute("DELETE FROM road_assistance_slot WHERE slot_id = ?", [id]);
 
         if (deleteResult.affectedRows === 0) {
             errMsg.push(`Failed to delete slot with id ${id}.`);
@@ -1090,11 +1683,11 @@ export const rsaSlotEdit = asyncHandler(async (req, resp) => {
     // Update or insert slots
     for (let i = 0; i < start_time.length; i++) {
         const updates = {
-            slot_date  : slot_date,
-            start_time : convertTo24HourFormat(start_time[i]),
-            end_time   : convertTo24HourFormat(end_time[i]),
-            status     : status[i],
-            slot_price : slot_price[i],
+            slot_date: slot_date,
+            start_time: convertTo24HourFormat(start_time[i]),
+            end_time: convertTo24HourFormat(end_time[i]),
+            status: status[i],
+            slot_price: slot_price[i],
         };
         if (slot_id[i]) {
             // Update existing slot
@@ -1136,9 +1729,9 @@ export const rsaSlotEdit = asyncHandler(async (req, resp) => {
 
 export const rsaDeleteSlot = async (req, resp) => {
     try {
-        const { slot_date } = req.body; 
-        console.log('slot_date',req.body.slot_date);
-        
+        const { slot_date } = req.body;
+        console.log('slot_date', req.body.slot_date);
+
 
         const { isValid, errors } = validateFields(req.body, {
             slot_date: ["required"]
