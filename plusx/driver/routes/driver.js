@@ -83,4 +83,7 @@ authzRsaAndAuthRoutes.forEach(({ method, path, handler }) => {
 
     router[method](path, ...middlewares, handler);
 });
+    // { method: 'get',   path: '/rsa-booking-history', handler: rsaBookingHistory },
+// router.get('/rsa-booking-history', rsaBookingHistory);
+// router.get('/rsa-home', rsaHome);
 export default router;

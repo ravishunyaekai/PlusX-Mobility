@@ -2,11 +2,12 @@
 import { asyncHandler, formatAllTimeTimings, formatOpenAndCloseTimings, getOpenAndCloseTimings, deleteFile, convertTo24HourFormat } from "../../../utils.js";
 import validateFields from "../../../validation.js";
 import { getPaginatedData, insertRecord, queryDB, updateRecord } from "../../../dbUtils.js";
-import { mergeParam }from '../../../utils.js';
 import dotenv from 'dotenv';
 import db from "../../../config/indiadb.js"
 // import { schedule } from "node-cron";
 dotenv.config();
+import { mergeParam }from '../../../utils.js';
+
 
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
  
@@ -29,7 +30,7 @@ export const AddMobilityStation = asyncHandler(async (req, resp) => {
             no_cycle           : ["required"],
             always_open        : ["required"],
             state_id           : ["required"],
-            station_id         : ["required"],
+            // station_id         : ["required"],
             operator_name      : ["required"],
             operator_contact   : ["required"],
             operator_email     : ["required"],
@@ -319,7 +320,7 @@ export const mobilityStaionListforselectBox= asyncHandler(async(req,resp)=>{
 })
 
 export const stationlistforlockAssign = asyncHandler(async(req, resp) => {
-
+ 
     try {
         const params = mergeParam(req);
         const { latitude, longitude } = params;
@@ -346,24 +347,39 @@ export const stationlistforlockAssign = asyncHandler(async(req, resp) => {
             WHERE distance <= 50
             ORDER BY distance ASC
         `, [latitude, longitude, latitude]);
-
+ 
         return resp.json({
             status  : 1,
             code    : 200,
             message : ["Filtered stations where cycles are not fully added"],
             data    : stationList,
         });
-
+ 
     } catch(error) {
-
+ 
         console.log("ERROR", error);
-
+ 
         return resp.json({
             status: 0,
             code: 500,
             message: [error.message]
         });
     }
+});
+
+export const stationlistforlockAssignOld= asyncHandler(async(req,resp)=>{
+      
+    const [stationList] = await db.execute(`
+        SELECT station_id, station_name
+        FROM mobility_station_list
+        ORDER BY station_name ASC `
+    );
+    return resp.json({
+        status  : 1,
+        code    : 200,
+        message :  ["Filtered stations where cycles are not fully added"],
+        data    : stationList,
+    });      
 });
 
 export const deletemobilityStation = asyncHandler(async (req, resp) => {

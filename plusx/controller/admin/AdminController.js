@@ -12,40 +12,53 @@ import { io } from '../../../server.js';
 
 export const getDashboardData = async (req, resp) => {
     try {
-        const today = new Date();
-        const formattedDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString()
-            .padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-        
-        const givenDateTime    = formattedDate+' 00:00:01'; // Replace with your datetime string
-        const modifiedDateTime = moment(givenDateTime).subtract(4, 'hours'); // Subtract 4 hours
-        const currentDate      = modifiedDateTime.format('YYYY-MM-DD HH:mm:ss');
-       
-        // (SELECT COUNT(*) FROM ev_swipe_battery_history WHERE created_at >= "${currentDate}" ) AS total_swipe_battery
-        // (SELECT COUNT(*) FROM ev_pre_sale_testing WHERE created_at >= "${currentDate}") AS total_pre_sale_testing,
-                const sql = `
-            SELECT
-                (SELECT COUNT(*) FROM riders WHERE created_at >= ?) AS total_rider,
-                (SELECT COUNT(*) FROM rsa WHERE status=1) AS total_rsa,
-                (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != 'PNR') AS total_road_assistance,
-                (SELECT COUNT(*) FROM charging_installation_service WHERE created_at >= ?) AS total_installation,
-                (SELECT COUNT(*) FROM public_charging_station_list) AS total_station,
-                (SELECT COUNT(*) FROM ev_accessories_booiking WHERE created_at >= ?) AS total_accessories_booiking,
-                (SELECT COUNT(*) FROM ev_charger_booiking WHERE created_at >= ?) AS total_charger_booiking,
-                (SELECT COUNT(*) FROM portable_charger_booking WHERE created_at >= ?) AS total_pod_booiking,
-                (SELECT COUNT(*) FROM charge_share WHERE created_at >= ?) AS total_charge_share
+        const { userId } = req.body;
+         
+        const adminCheck = await queryDB(`SELECT access, status FROM users WHERE id = ? LIMIT 1`, [ userId ] );
 
-            `;
+        if ( !adminCheck || adminCheck.access === '' || adminCheck.status === 0 ) {
+            return resp.json({ code: 401, logout: 1, message: 'logout successfully', status: 0 });
+        }
+        const currentDate = moment().startOf('day') .subtract(4, 'hours') .format('YYYY-MM-DD HH:mm:ss');
+        console.log(currentDate);
+        const countSql = ` SELECT
+            (SELECT COUNT(*) FROM riders WHERE created_at >= ?) AS total_rider,
+            (SELECT COUNT(*) FROM rsa WHERE status = 1) AS total_rsa,
+            (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != 'PNR') AS total_road_assistance,
 
-        const [counts] = await db.execute(sql, [currentDate,currentDate, currentDate, currentDate, currentDate,currentDate,currentDate ]);
-          const adminCheck=await queryDB("SELECT access , status from users where id =? ",[req.body.userId]);
-                if(adminCheck.access===null || adminCheck.access==='' || adminCheck.status===0){
-                return resp.json({ code:401,logout:1, message:"logout successfully",status:0        })
-                }
+            (SELECT COUNT(*) FROM charging_installation_service WHERE created_at >= ?) AS total_installation,
+            (SELECT COUNT(*) FROM public_charging_station_list) AS total_station,
+            (SELECT COUNT(*) FROM ev_accessories_booiking WHERE created_at >= ?) AS total_accessories_booking,
+            (SELECT COUNT(*) FROM ev_charger_booiking WHERE created_at >= ?) AS total_charger_booking,
+            (SELECT COUNT(*) FROM portable_charger_booking WHERE created_at >= ?) AS total_pod_booking,
+            (SELECT COUNT(*) FROM charge_share WHERE created_at >= ?) AS total_charge_share,
 
-        const [rsaRecords] = await db.execute(`SELECT id, rsa_id, rsa_name, email, country_code, mobile, status, latitude AS lat, longitude AS lng FROM rsa where latitude != '' and status In(1, 2)`);
-        // const [podRecords] = await db.execute(`SELECT id, pod_id, device_id, pod_name, status, charging_status, latitude AS lat, longitude AS lng FROM pod_devices where latitude != ''`);
+            (SELECT COUNT(*) FROM failed_portable_charger_booking WHERE created_at >= ?) AS total_ev_cancel_booking,
 
-        const location = rsaRecords.map((rsa, i) => ({
+            (SELECT COUNT(*) FROM failed_road_assistance WHERE created_at >= ?) AS total_cancel_road_assistance
+        `;
+        const [ [ [ counts ] ], [rsaRecords] ] = await Promise.all([
+            db.execute(countSql, [
+                currentDate, // riders
+                currentDate, // road assistance
+                currentDate, // installation
+                currentDate, // accessories
+                currentDate, // charger
+                currentDate, // portable charger
+                currentDate, // charge share
+                currentDate, // failed portable
+                currentDate, // failed road assistance
+            ]),
+            db.execute(`
+                SELECT 
+                    id, rsa_id, rsa_name, email, country_code, mobile, status, latitude AS lat, longitude AS lng
+                FROM rsa
+                WHERE latitude != '' AND latitude IS NOT NULL AND longitude != ''
+                AND longitude IS NOT NULL AND status IN (1, 2)
+            `)
+        ]);
+        console.log(counts);
+        const location = rsaRecords.map(rsa => ({
             key         : rsa.rsa_id,
             rsaId       : rsa.rsa_id,
             rsaName     : rsa.rsa_name,
@@ -53,58 +66,31 @@ export const getDashboardData = async (req, resp) => {
             countryCode : rsa.country_code,
             mobile      : rsa.mobile,
             status      : rsa.status,
-            location    : { lat: parseFloat(rsa.lat), lng: parseFloat(rsa.lng) },
+            location    : {
+                lat : Number(rsa.lat),
+                lng : Number(rsa.lng)
+            }
         }));
-
-        // const podLocation = podRecords.map((pod, i) => ({
-        //     podId           : pod.pod_id,
-        //     deviceId        : pod.device_id,
-        //     podName         : pod.pod_name,
-        //     status          : pod.status,
-        //     charging_status : pod.charging_status,
-        //     location        : { lat: parseFloat(pod.lat), lng: parseFloat(pod.lng) },
-        // }));
-
-        const count_arr = [ 
-            { module : 'App Sign Up',                            count : counts[0].total_rider },
-            { module : 'No. of Regs. Drivers',                   count : counts[0].total_rsa },
-            { module : 'Charger Installation Bookings',          count : counts[0].total_installation },
-            { module : 'EV Road Assistance',                     count : counts[0].total_road_assistance },
-            { module : 'EV Chargers Booking',           count : counts[0].total_charger_booiking },
-            { module : 'EV Accessories Booking',        count : counts[0].total_accessories_booiking },
-            { module : 'Home Charging Bookings',                count : counts[0].total_pod_booiking },
-            { module : 'Charge Share',                count : counts[0].total_charge_share },
-
-            // { module : 'Pickup & Dropoff Bookings',              count : counts[0].total_charging_service },
-            
-            // { module : 'EV Insurance Leads',                     count : counts[0].total_insurance },
-            
-            // { module : 'Total Public Chargers',                  count : counts[0].total_station }, 
-            // { module : 'Today POD Failed Bookings',              count : counts[0].total_charger_booking_failed }, 
-            // { module : 'Today Pickup & Dropoff Failed Bookings', count : counts[0].total_charging_service_failed },
-            // { module : 'Today Road Side Failed Bookings',        count : counts[0].total_rsa_failed },
-            // { module : 'Pre-Sale Testing Bookings',           count : counts[0].total_pre_sale_testing },
-            // { module : 'EV Battery Swipe Station',            count: counts[0].total_swipe_battery },
-
-            // 
-            // { module: 'EV Buy & Sell', count: counts[0].total_vehicle_sell },
-            // { module: 'Total Electric Bikes Leasing', count: counts[0].total_bike_rental }, 
-            // { module: 'Total Electric Cars Leasing', count: counts[0].total_car_rental },
-            // { module: 'Total EV Guide', count: counts[0].total_vehicle }, 
-            // { module: 'Total EV Rider Clubs', count: counts[0].total_clubs },
-            // { module: 'Total EV Discussion Board', count: counts[0].total_disscussion },
-            // { module: 'Total EV Insurance', count: counts[0].total_insurance }, 
-            // { module: 'Total EV Specialized Shop', count: counts[0].total_service_shops },
-            // { module: 'Total Active Offer', count: counts[0].total_offer },  
-            // { module: 'Total Register your Interest', count: counts[0].total_pod }
+        const count_arr = [
+            { module: 'Mobile EV Charging Bookings',        count : counts.total_ev_charging_booking || 0 }, 
+            { module: 'App Sign Up',                        count : counts.total_rider || 0 }, 
+            { module: 'No. of Regs. Drivers',               count : counts.total_rsa || 0 }, 
+            { module: 'Charger Installation Bookings',      count : counts.total_installation || 0 }, 
+            { module: 'EV Road Assistance',                 count : counts.total_road_assistance || 0 }, 
+            { module: 'EV Chargers Booking',                count : counts.total_charger_booking || 0 }, 
+            { module: 'EV Accessories Booking',             count : counts.total_accessories_booking || 0 }, 
+            { module: 'Home Charging Bookings',             count : counts.total_pod_booking || 0 }, 
+            { module: 'Charge Share',                       count : counts.total_charge_share || 0 }, 
+            { module: 'Mobile EV Charging Failed Bookings', count : counts.total_ev_cancel_booking || 0 }, 
+            { module: 'Failed EV Road Assistance',          count : counts.total_cancel_road_assistance || 0 }
         ];
-        // io.emit('notification-list', {msCount : 1});
-        // return resp.json({code : 200, data : {count_arr, location, podLocation}});
-            
-        return resp.json({code : 200, data : {count_arr, location}});
+        io.emit('notification-list', { msCount: 1 });
+ 
+        return resp.json({ code : 200, data : { count_arr, location } });
+
     } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        resp.status(500).json({ message: 'Error fetching dashboard data' });
+        console.log('Error fetching dashboard data:', error);
+        return resp.status(500).json({ message: 'Error fetching dashboard data' });
     }
 };
 

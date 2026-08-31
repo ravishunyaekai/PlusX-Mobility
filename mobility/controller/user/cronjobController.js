@@ -7,7 +7,6 @@ import { verifyPaymentByOrderId } from "../razorpay/razorpay.js";
 import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
 import emailQueue from "../../../emailQueue.js";
 
-
 export const cronjobAddMoney =async(req,resp)=>{
 
     try{
@@ -187,12 +186,12 @@ export const mobilitynotification = async () => {
                 href
             );
         createNotification(heading, desc, 'mobility_ongoing', 'Rider', 'Admin','',rider_id, href);
-  console.log(
-  `${booking_id} sent notification at ${new Date().toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour12: true
-  })}`
-);
+            console.log(
+          `${booking_id} sent notification at ${new Date().toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour12: true
+          })}`
+        );
      
  
         }      //return resp.json({ message: "Notifications sent successfully" });
@@ -204,73 +203,53 @@ export const mobilitynotification = async () => {
 };
 
 
-// deductOutstandingAmount
-
 export const deductOutstandingAmount = async () => {
  
     try {
  
         const [riders] = await db.execute(`
-            SELECT 
-                r.rider_id, 
-                r.rider_email, 
-                r.rider_name, 
-                r.amount, 
-                r.out_standing_cost, 
-                cb.created_at, 
-                cb.booking_id, 
-                cb.cycle_id,
+             SELECT 
+                r.rider_id, r.rider_email, r.rider_name, r.amount, r.out_standing_cost, cb.created_at, cb.booking_id, cb.cycle_id,
                 cb.time_taken
             FROM riders r
             INNER JOIN (
-                SELECT 
-                    rider_id, 
-                    MAX(created_at) AS latest_booking
+                SELECT rider_id, MAX(created_at) AS latest_booking
                 FROM cycle_booking
                 WHERE status = 'CMP'
                 GROUP BY rider_id
             ) latest
-            ON latest.rider_id = r.rider_id
-            LEFT JOIN country c 
-            ON c.country_id = r.country_id
+                ON latest.rider_id = r.rider_id
+            LEFT JOIN country c ON c.country_id = r.country_id
             INNER JOIN cycle_booking cb
-            ON cb.rider_id = latest.rider_id 
-            AND cb.created_at = latest.latest_booking 
-            WHERE r.out_standing_cost > 0 
-            AND cb.created_at <= NOW() - INTERVAL 2 MINUTE            
+                ON cb.rider_id = latest.rider_id AND cb.created_at = latest.latest_booking
+ 
+            WHERE r.out_standing_cost > 0 AND cb.created_at <= NOW() - INTERVAL 24 HOUR
             ORDER BY cb.created_at DESC
-        `);  // AND r.amount >= r.out_standing_cost
-         console.log("----------------",riders.length == 0)
+        `);
+        
         if (riders.length == 0)  return false; 
  
         for (const rider of riders) {
  
             const outstanding = parseFloat(rider.out_standing_cost || 0);
             const wallet      = parseFloat(rider.amount || 0);
-            
-            // let remainingAmount      = (outstanding > wallet) ? wallet - outstanding : 0;
-            // let remainingOutstanding = (outstanding > wallet) ? 0 : outstanding - wallet;
+ 
             const remainingAmount = wallet - outstanding;
  
             const updatesFields = {
                 amount            : remainingAmount,
                 out_standing_cost : 0
             }
-        
-            // const updatesFields = {
-            //     amount            : remainingAmount,
-            //     out_standing_cost : remainingOutstanding
-            // }
             const update = await updateRecord('riders', updatesFields, ['rider_id'], [rider.rider_id]);
             await insertRecord('transaction_history', 
                 [
                     'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
                     "prev_balance", "status"
                 ], [
-                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, wallet, "CNF" 
+                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, 
+                    wallet, "CNF" 
                 ]
             ); 
-            
             const mail_template =NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
              emailQueue.addEmail(
                 rider.rider_email,
@@ -287,7 +266,6 @@ export const deductOutstandingAmount = async () => {
             );
         }
         
- 
     } catch (error) {
  
         console.log('deductOutstandingAmount Error:', error);

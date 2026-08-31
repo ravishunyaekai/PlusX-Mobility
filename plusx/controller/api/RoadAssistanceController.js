@@ -109,7 +109,8 @@ export const addRoadAssistance = asyncHandler(async (req, resp) => {
             
             const servicePrice = parseFloat(service_price).toFixed(2) ;
           
-            const couponData   = await checkCoupon(rider_id, 'Roadside Assistance', coupon_code, parseFloat(booking_price));
+            // const couponData   = await checkCoupon(rider_id, 'Roadside Assistance', coupon_code, parseFloat(booking_price));
+            const couponData   = await checkCoupon(rider_id, 'EV Roadside Assistance', coupon_code, parseFloat(booking_price));
             
            
             if(couponData.status == 0 ){

@@ -45,18 +45,18 @@ authzRoutes.forEach(({ method, path, handler }) => {
 const authzAndAuthRoutes = [
     
    /* Portable charger */
-    { method: 'get',  path: '/portable-charger-list',            handler: chargerList },
-    { method: 'post', path: '/portable-charger-booking',         handler: chargerBooking },
+    { method: 'get',  path: '/portable-charger-list',               handler: chargerList },
+    { method: 'post', path: '/portable-charger-booking',            handler: chargerBooking },
     { method: 'post', path: '/create-portable-charger-invoice',     handler: portableChargerInvoice },
-    { method: 'get',  path: '/portable-charger-booking-list',    handler: chargerBookingList },
-    { method: 'get',  path: '/portable-charger-booking-detail',  handler: chargerBookingDetail },
-    { method: 'get',  path: '/portable-charger-slot-list',       handler: getPcSlotList },
-    { method: 'get',  path: '/portable-charger-subscription',    handler: getPcSubscriptionList },
-    { method: 'get',  path: '/portable-charger-cancel',          handler: userCancelPCBooking }, 
+    { method: 'get',  path: '/portable-charger-booking-list',       handler: chargerBookingList },
+    { method: 'get',  path: '/portable-charger-booking-detail',     handler: chargerBookingDetail },
+    { method: 'get',  path: '/portable-charger-slot-list',          handler: getPcSlotList },
+    { method: 'get',  path: '/portable-charger-subscription',       handler: getPcSubscriptionList },
+    { method: 'get',  path: '/portable-charger-cancel',             handler: userCancelPCBooking }, 
     { method: 'post', path: '/reschedule-portable-charger-booking', handler: reScheduleBooking },
-    { method: 'post', path: '/feedback-portable-charger-booking', handler: userFeedbackPCBooking },
+    { method: 'post', path: '/feedback-portable-charger-booking',   handler: userFeedbackPCBooking },
     { method: 'get',  path: '/portable-charger-slot-date-list',     handler: getPcSlotDateList },
-     { method: 'get',  path: '/portable-charger-invoice',            handler: podInvoiceDetails },
+     { method: 'get',  path: '/portable-charger-invoice',           handler: podInvoiceDetails },
 
 ];
 
@@ -77,5 +77,9 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
+// router.post('/portable-charger-booking', chargerBooking);
+// router.get('/portable-charger-booking-detail', chargerBookingDetail);
+    //  { method: 'get',  path: '/portable-charger-invoice',            handler: podInvoiceDetails },
+// router.get('/portable-charger-invoice', podInvoiceDetails);
 
 export default router;

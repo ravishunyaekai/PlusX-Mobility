@@ -1,16 +1,16 @@
 import moment from "moment";
 import db from "../../config/indiadb.js";
-import { queryDB, updateRecord, insertRecord } from "../../dbUtils.js";
+import { queryDB, updateRecord,insertRecord } from "../../dbUtils.js";
 import { tryCatchErrorHandler } from "../../middleware/errorHandler.js";
-import { asyncHandler, sendOtp, checkNumber, delOTP, formatDateInQuery, formatDateTimeInQuery, generateOTP, generateRandomPassword, getOTP, mergeParam, storeOTP, createNotification } from "../../utils.js"; //formatNumber,
+import { asyncHandler, sendOtp, checkNumber, delOTP, formatDateInQuery, formatDateTimeInQuery, generateOTP, generateRandomPassword, getOTP, mergeParam, storeOTP, formatNumber, createNotification } from "../../utils.js";
 import validateFields from "../../validation.js";
-import crypto from "crypto";
+import crypto from 'crypto';
 import dotenv from "dotenv";
 dotenv.config();
 import bcrypt from "bcryptjs";
+// import generateUniqueId from 'generate-unique-id';
 import { io } from "../../server.js";
 import { newcreateCustomer } from "../../mobility/controller/razorpay/razorpay.js";
-import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 
@@ -39,6 +39,9 @@ export const notificationList = asyncHandler(async (req, resp) => {
     
     return resp.json({status:1, code: 200, message: "Notification list fetch successfully", data: notifications, total_page: total_page, totalRows: totalRows.total});
 });
+
+
+// old version code
 
 export const forgotPassword = asyncHandler(async (req, resp) => {
     const { email } = mergeParam(req);
@@ -75,6 +78,7 @@ export const forgotPassword = asyncHandler(async (req, resp) => {
         // resp.status(500).json({ status: 0, code: 500, message: "Failed to send email." });
     }
 });
+
 
 export const logout = asyncHandler(async (req, resp) => {
     const {rider_id} = mergeParam(req);
@@ -118,6 +122,9 @@ export const updatePassword = asyncHandler(async (req, resp) => {
         message: update.affectedRows > 0 ? ['Password changed successfully'] : ['Failed to updated password. Please Try Again']
     });
 });
+
+/* Rider Info */
+
 
 export const updateProfile = asyncHandler(async (req, resp) => {
     
@@ -180,6 +187,7 @@ export const updateProfile = asyncHandler(async (req, resp) => {
     
 });
  
+
 export const deleteImg = asyncHandler(async (req, resp) => {
     const {rider_id} = mergeParam(req);
     if (!rider_id) return resp.json({ status: 0, code: 422, message: ["Rider Id is required"] });
@@ -213,30 +221,50 @@ export const deleteAccount = asyncHandler(async (req, resp) => {
     const connection = await db.getConnection();
     try {
         await connection.beginTransaction();
-        
-        const [[rider]] = await connection.execute(`
-            SELECT 
-                profile_img, rider_name, last_name, rider_email, country_code, rider_mobile, state, city_id,country_id, country_id, student_id, id_image, password, latitude, longitude, university,added_from, account_type 
-            FROM riders 
-            WHERE rider_id = ?`, [rider_id]
+        const [[ongoingBooking]] = await connection.execute(
+            `SELECT booking_id FROM cycle_booking 
+             WHERE rider_id = ? 
+             AND status = 'ON'
+             LIMIT 1`,
+            [rider_id]
         );
+        if (ongoingBooking) {
+            await connection.rollback();
+            return resp.json({
+                status: 0,
+                code: 400,
+                message: ['Cannot delete account. Ride is still ongoing.']
+            });
+        }
+        
+        const [[rider]] = await connection.execute(`SELECT profile_img, rider_name,last_name, rider_email, country_code, rider_mobile, state,city_id,country_id,
+             country_id, student_id,id_image,password ,latitude,longitude,university,added_from,account_type FROM riders WHERE rider_id = ?`, [rider_id]);
         if(!rider) { await connection.commit(); return resp.json({status:0, message: 'Rider not found.'});}
        
-        const sql = `INSERT INTO deleted_riders 
-            (rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state, city_id, country_id, student_id, id_image, password, latitude, longitude, university, profile_img, added_from, account_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
-        const rider_data = [
-            rider_id, rider.rider_name, rider.last_name, rider.rider_email, rider.country_code,rider.rider_mobile, rider.state, rider.city_id, rider.country_id, rider.student_id, rider.id_image, rider.password, rider.latitude, rider.longitude, rider.university, rider.profile_img, rider.added_from, rider.account_type 
-        ];
-        const deleted_riders= await connection.execute(sql, rider_data);
+        // if(rider.profile_img) deleteFile('rider_profile', rider.profile_img);
 
-        if(!deleted_riders) { 
-            await connection.commit(); return resp.json({status:0, message: 'Rider not found! '});
-        }
-        const deleteQueries = [
-            'DELETE FROM riders WHERE rider_id = ?',   
-        ];
+       
+            const sql = `INSERT INTO deleted_riders (rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state, city_id, country_id, 
+                        student_id, id_image, password, latitude, longitude, university, profile_img, added_from, account_type) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            const rider_data=[rider_id,rider.rider_name,rider.last_name,rider.rider_email,rider.country_code,rider.rider_mobile,rider.state,rider.city_id,
+                rider.country_id,rider.student_id,rider.id_image,rider.password,rider.latitude,rider.longitude,rider.university,rider.profile_img,rider.added_from,rider.account_type
+                 ];
+                
+
+          const deleted_riders= await connection.execute(sql, rider_data);
+
+       
+
+        if(!deleted_riders) { await connection.commit(); return resp.json({status:0, message: 'Rider not found! '});}
+        
+     
+       
+
+         const deleteQueries = [
+            'DELETE FROM riders                                WHERE rider_id   = ?',
+           
+                ];
         let totalDeleted = 0;
 
         for (const query of deleteQueries) {
@@ -258,172 +286,103 @@ export const deleteAccount = asyncHandler(async (req, resp) => {
     }
 });
 
+
+
 export const responseContent = asyncHandler(async (req, resp) => {
-  const normalize = (val) =>
-    !val || val === "null" || val === "" ? null : val;
+    const  normalize = val => (!val || val === 'null' || val === '') ? null : val;
 
-  let { module_name, response_type, sub_module } = mergeParam(req);
+    let { module_name, response_type, sub_module } = mergeParam(req);
 
-  module_name = normalize(module_name);
-  sub_module = normalize(sub_module);
-  response_type = normalize(response_type);
+    module_name   = normalize(module_name);
+    sub_module    = normalize(sub_module);
+    response_type = normalize(response_type);
 
-  const { isValid, errors } = validateFields(mergeParam(req), {
-    module_name: ["required"],
-  });
-  if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-
-  // Mobility Refund Content
-  if (module_name === "mobility-refund") {
-    let query = `
-        SELECT content, sub_module
-        FROM response_content
-        WHERE module_name = ?
-          AND status = 1
-    `;
-
-    const queryParams = [module_name];
-
-    if (response_type) {
-      query += ` AND response_type = ?`;
-      queryParams.push(response_type);
-    }
-
-    if (sub_module) {
-      const subModules = Array.isArray(sub_module)
-        ? sub_module
-        : sub_module.split(",").map((s) => s.trim());
-
-      query += ` AND sub_module IN (${subModules.map(() => "?").join(",")})`;
-      queryParams.push(...subModules);
-    }
-
+    const { isValid, errors } = validateFields(mergeParam(req), { module_name : ["required"] });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+ 
+    let query = `select content, sub_module from response_content  where module_name=? and status=1  `;
+    let queryParams = [module_name];
+    
+    if (response_type != null && sub_module != null) { 
+        let subModules = Array.isArray(sub_module)? sub_module : sub_module.split(',').map(s => s.trim());
+        query += ` and sub_module IN (${subModules.map(() => '?').join(', ')})  AND response_type = ? `;
+        queryParams.push(...subModules)
+        queryParams.push(response_type);
+    }    
     const [responseContent] = await db.execute(query, queryParams);
+    
+    if (!responseContent || responseContent.length === 0) return resp.json({ resp: 0, code: 400, msg: 'content not found!' });
 
-    if (!responseContent.length) {
-      return resp.json({
-        status: 0,
-        code: 400,
-        message: ["Content not found!"],
-      });
+    if (response_type !== null && sub_module !== null) {
+
+        const contentMap = {};
+        for (const row of responseContent) {
+            if (row.sub_module) {
+                contentMap[row.sub_module] = row.content;
+            }
+        }
+        return resp.json({ message: ["single response content fetch successfully"], status: 1, code: 200, data: contentMap });
     }
-
-    const contentMap = {};
-
-    responseContent.forEach((item) => {
-      contentMap[item.sub_module] = item.content;
-    });
-
-    return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Response data fetch successfully"],
-      data: contentMap,
-    });
-  }
-
-  let query = `select content, sub_module from response_content  where module_name=? and status=1  `;
-  let queryParams = [module_name];
-
-  if (response_type != null && sub_module != null) {
-    let subModules = Array.isArray(sub_module)
-      ? sub_module
-      : sub_module.split(",").map((s) => s.trim());
-    query += ` and sub_module IN (${subModules.map(() => "?").join(", ")})  AND response_type = ? `;
-    queryParams.push(...subModules);
-    queryParams.push(response_type);
-  }
-  const [responseContent] = await db.execute(query, queryParams);
-
-  if (!responseContent || responseContent.length === 0)
-    return resp.json({ resp: 0, code: 400, msg: "content not found!" });
-
-  if (response_type !== null && sub_module !== null) {
-    const contentMap = {};
-    for (const row of responseContent) {
-      if (row.sub_module) {
-        contentMap[row.sub_module] = row.content;
-      }
-    }
-    return resp.json({
-      message: ["single response content fetch successfully"],
-      status: 1,
-      code: 200,
-      data: contentMap,
-    });
-  }
-  const columnMap = {
-    "portable-charger": "portable_price",
-    "pick-drop": "pick_drop_price",
-    // 'road-assistance'  : 'roadside_assistance_price'
-  };
-  const column = columnMap[module_name];
-  let selectQuery = `
+    const columnMap = {
+        'portable-charger' : 'portable_price',
+        'pick-drop'        : 'pick_drop_price',
+        // 'road-assistance'  : 'roadside_assistance_price'
+    };
+    const column = columnMap[module_name];
+    let selectQuery = `
         SELECT heading, image ${column ? `, (SELECT ${column} FROM booking_price) AS price` : ``}
         FROM response_module
         WHERE name = ? AND status = 1
         LIMIT 1
-    `;
-  const [[contentdata]] = await db.execute(selectQuery, [module_name]);
-  if (!contentdata)
-    return resp.json({ resp: 0, code: 400, msg: "content not found!" });
+    `; 
+    const [[contentdata]] = await db.execute(selectQuery,[module_name]);
+    if (!contentdata) return resp.json({ resp: 0, code: 400, msg: 'content not found!' });
 
-  let { heading, image, price } = contentdata;
-  let contentArray = responseContent.map((row) => {
-    return row.content;
-  });
+    let { heading, image, price} = contentdata;
+    let contentArray = responseContent.map(row => { return row.content; });
 
-  let priceErrMsg = "";
-  if (module_name == "road-assistance") {
-    const currDate = moment().tz("Asia/Kolkata").format("dddd");
-    const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-
-    const priceQry = `
+    let priceErrMsg = '';
+    if(module_name == 'road-assistance') {
+        const currDate = moment().tz('Asia/Kolkata').format('dddd');
+        const currTime = moment().tz('Asia/Kolkata').format('HH:mm:ss');
+        
+        const priceQry  = `
             SELECT slot_price 
             FROM road_assistance_slot 
             WHERE status = 1 AND slot_date = ? AND ? BETWEEN start_time AND end_time ORDER BY start_time ASC  
             LIMIT 1`;
-    const priceData = await queryDB(priceQry, [currDate, currTime]);
-    price = priceData?.slot_price || 0;
-    const slotContent = await queryDB(
-      ` SELECT content FROM  response_content WHERE  module_name = ? AND response_type = ? Order by id desc LIMIT 1 `,
-      [`${module_name}-price`, "error"],
-    );
+        const priceData = await queryDB(priceQry, [ currDate, currTime]);
+        price           = priceData?.slot_price || 0;
+        const slotContent = await queryDB(` SELECT content FROM  response_content WHERE  module_name = ? AND response_type = ? Order by id desc LIMIT 1 `, [ `${module_name}-price`, 'error' ]);
 
-    priceErrMsg = slotContent?.content || "";
-  }
-  // Added By Ravi 2 query
-  let zeroBatteryContent = "";
-  if (module_name == "portable-charger") {
-    const zeroBatteryContentObj = await queryDB(
-      `SELECT content FROM response_content WHERE response_type = ? AND sub_module = ? Order by id desc LIMIT 1`,
-      ["info", `zero-battery`],
-    );
-    zeroBatteryContent = zeroBatteryContentObj?.content || "";
-  }
-  let data = {
-    content: contentArray,
-    image: image || null,
-    heading: heading || null,
-    price: price || 0,
-    slotErrMsg: priceErrMsg,
-    zeroPercentModal: zeroBatteryContent,
-  };
-  return resp.json({
-    message: ["Response data fetch successfully"],
-    status: 1,
-    code: 200,
-    data,
-  });
+        priceErrMsg = slotContent?.content || '';
+    }
+    // Added By Ravi 2 query 
+    let zeroBatteryContent = ""
+    if(module_name == 'portable-charger') {
+        const zeroBatteryContentObj = await queryDB(`SELECT content FROM response_content WHERE response_type = ? AND sub_module = ? Order by id desc LIMIT 1`, [ 'info', `zero-battery` ]);
+        zeroBatteryContent = zeroBatteryContentObj?.content || "";
+    }
+    let data = { 
+        content    : contentArray, 
+        image      : image || null, 
+        heading    : heading ||null, 
+        price      : price || 0,
+        slotErrMsg : priceErrMsg ,
+        zeroPercentModal : zeroBatteryContent,
+        
+    };
+    return resp.json({ message: ["Response data fetch successfully"], status: 1, code: 200, data });
 });
 
+
 export const stateCountry = asyncHandler(async (req, resp) => {
-    const {requirement,country_id,state_id}=mergeParam(req);
-    let validationRules = {requirement   : ["required"],};
+        const {requirement,country_id,state_id}=mergeParam(req);
+            let validationRules = {requirement   : ["required"],};
     
     const { isValid, errors } = validateFields(mergeParam(req), validationRules);
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    let list;
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        let list;
 
     switch (requirement) {  
         case 'country':
@@ -482,8 +441,6 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     const otp = generateOTP(4);
     storeOTP(fullMobile, otp);
     
-    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
-
     const html = `<html>
         <body>
             <h4>Hello ${first_name} ${last_name},</h4>
@@ -497,12 +454,10 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
         </body>
     </html>`;
     emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
-
-    sendOtp(
-        fullMobile,
-        35,
-        otp
-    )
+    
+    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
+    
+    sendOtp( fullMobile, 35, otp)
     .then(result => {
         if (result.status === 0) return resp.json(result);
         return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
@@ -538,8 +493,6 @@ export const register = asyncHandler(async (req, resp) => {
 
     const fullMobile = `${country_code}${rider_mobile}`.replace("+", "");
     const cachedOtp  = getOTP(fullMobile);
-
-    console.log("-----------",!cachedOtp || cachedOtp !== otp, cachedOtp)
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] }); 
     
     const rider = await insertRecord('riders', [
@@ -580,12 +533,9 @@ export const register = asyncHandler(async (req, resp) => {
 export const login = asyncHandler(async (req, resp) => {
     const { mobile, password ,fcm_token , country_code } = mergeParam(req);
 
-  const { isValid, errors } = validateFields(mergeParam(req), {
-    mobile: ["required"],
-    password: ["required"],
-    fcm_token: ["required"],
-    country_code: ["required"],
-  });
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        mobile: ["required"], password: ["required"], fcm_token: ["required"], country_code: ["required"],
+    });
 
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
@@ -630,7 +580,7 @@ export const createOTP = asyncHandler(async (req, resp) => {
     if(res.status == 0) return resp.json({ status:0, code:422, message: res.msg });
     
     const riderData = await queryDB(`
-        SELECT rider_name, last_name, rider_email 
+        SELECT rider_name, last_name, rider_email  
         FROM riders 
         WHERE rider_mobile = ? AND country_code = ?`, [mobile, country_code]
     );
@@ -655,11 +605,8 @@ export const createOTP = asyncHandler(async (req, resp) => {
     emailQueue.addEmail(riderData.rider_email, `Your OTP for Signin - PlusX Electric`, html);
 
     // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
-    sendOtp(
-        fullMobile,
-        34,
-        otp
-    )
+
+    sendOtp(fullMobile,34,otp)
     .then(result => {
         if (result.status === 0) return resp.json(result);
         return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
@@ -670,6 +617,8 @@ export const createOTP = asyncHandler(async (req, resp) => {
     });
     //return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 });
+
+
 
 export const verifyOTP = asyncHandler(async (req, resp) => {
     const { mobile, country_code, fcm_token, otp, device_name ='' } = mergeParam(req);
@@ -720,336 +669,104 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
     return resp.json({message: [ "Login successful!" ], status: 1, code: 200, is_login: 1, result: respResult});
 });
 
+
 export const countryList = asyncHandler(async (req, resp) => {
     const [list] = await db.execute(`SELECT name, iso_code, dial_code FROM country ORDER BY name ASC`);
     return resp.json({status: 1, code: 200, message: 'Country List', data: list});
 });
 
-export const getRiderData = asyncHandler(async (req, resp) => {
-  const { rider_id } = mergeParam(req);
-  if (!rider_id)
+export const getRiderData = asyncHandler(async(req, resp) => {
+    const {rider_id} = mergeParam(req);
+    if (!rider_id) return resp.json({ status: 0, code: 422, message: ["Rider Id is required"] });
+    
+    const rider = await queryDB(`SELECT  cn.min_wallet_price,r.* ,st.name as state , ct.name city , cn.name as country, ${formatDateTimeInQuery(['r.created_at', 'r.updated_at'])}, ${formatDateInQuery(['date_of_birth'])} FROM
+     riders r
+     LEFT JOIN states st on st.state_id=r.state_id
+     LEFT JOIN cities ct on ct.city_id=r.city_id 
+     LEFT join country cn on cn.country_id=r.country_id
+     WHERE rider_id=? `, [rider_id]);
+    rider.image_url = `${process.env.DIR_UPLOADS}profile-image/`;
+      rider.min_wallet_price = parseFloat(rider.min_wallet_price);
+        rider.out_standing_cost = parseFloat(rider.out_standing_cost);
+        rider.amount = parseFloat(rider.amount);
+
+
+
+
     return resp.json({
-      status: 0,
-      code: 422,
-      message: ["Rider Id is required"],
+        status  : 1, 
+        code    : 200, 
+        message : ['Rider Data fetch successfully!'], 
+        data    : rider, 
     });
-
-  const rider = await queryDB(
-    `
-        SELECT
-            cn.min_wallet_price, r.* ,
-             (
-                SELECT booking_id
-                FROM cycle_booking
-                WHERE rider_id = r.rider_id
-                ORDER BY id DESC
-                LIMIT 1
-            ) AS booking_id,
-            st.name as state, ct.name city, cn.name as country, 
-            ${formatDateTimeInQuery(["r.created_at", "r.updated_at"])}, 
-            ${formatDateInQuery(["date_of_birth"])} 
-        FROM
-        riders r
-        LEFT JOIN states st on st.state_id=r.state_id
-        LEFT JOIN cities ct on ct.city_id=r.city_id 
-        LEFT join country cn on cn.country_id=r.country_id
-        WHERE rider_id = ? `,
-    [rider_id],
-  );
-  const refundRequest = await queryDB(
-    `SELECT id, status FROM refund_requests WHERE rider_id = ?
-    ORDER BY id DESC LIMIT 1`,
-    [rider_id],
-  );
-
-  rider.image_url = `${process.env.DIR_UPLOADS}profile-image/`;
-  rider.min_wallet_price = parseFloat(rider.min_wallet_price);
-  rider.out_standing_cost = parseFloat(rider.out_standing_cost);
-  rider.amount = parseFloat(rider.amount);
-  //   const deductionAmount = Number(((rider.amount * 2) / 100).toFixed(2));
-  //   const refundAmount = Number((rider.amount - deductionAmount).toFixed(2));
-
-  //   let isRefundRaised = false;
-
-  //   if (refundRequest && ["pending"].includes(refundRequest.status)) {
-  //     isRefundRaised = true;
-  //   }
-  //   // Refund details only when outstanding is clear
-  //   rider.refund_amount =
-  //     rider.amount > 0 && rider.out_standing_cost <= 0 ? refundAmount : 0;
-  //   rider.deduction_amount =
-  //     rider.amount > 0 && rider.out_standing_cost <= 0 ? deductionAmount : 0;
-  //   rider.is_refund_requested = isRefundRaised ? 1 : 0;
-  const securityDeposit = Number(rider.security_deposit || 0);
-  const outstandingAmount = Number(rider.out_standing_cost || 0);
-
-  // Amount remaining after outstanding deduction
-  const refundableAmount = Math.max(
-    0,
-    Number((securityDeposit - outstandingAmount).toFixed(2)),
-  );
-
-  // 3% processing fee
-  const deductionAmount = Number((refundableAmount * 0.03).toFixed(2));
-
-  // Final refund amount
-  const refundAmount = Math.max(
-    0,
-    Number((refundableAmount - deductionAmount).toFixed(2)),
-  );
-
-  const isRefundRaised = refundRequest && refundRequest.status === "pending";
-
-  // Refund details
-  rider.security_deposit = securityDeposit;
-  rider.refundable_amount = refundableAmount;
-  rider.deduction_amount = refundAmount >= 60 ? deductionAmount : 0;
-  rider.refund_amount = refundAmount >= 60 ? refundAmount : 0;
-  rider.is_refund_eligible = refundAmount >= 60 ? 1 : 0;
-  rider.is_refund_requested = isRefundRaised ? 1 : 0;
-
-  const [responseContent] = await db.execute(
-    `
-        SELECT content 
-        FROM response_content 
-        WHERE module_name = ? 
-        AND sub_module
-        AND status = 1 
-        LIMIT 1
-         `,
-    ["mobility-refund", "raise-refund-request"],
-  );
-
-  const purchaseHistoryCount = await queryDB(
-    `SELECT COUNT(*) as total FROM purchase_history `,
-  );
-
-  const chargeShareCount = await queryDB(
-    `
-        SELECT COUNT(*) as total FROM charge_share WHERE rider_id = ? AND charger_status = 1`,
-    [rider_id],
-  );
-
-  rider.purchase_history_count = purchaseHistoryCount?.total || 0;
-  rider.charge_share_count = chargeShareCount?.total || 0;
-  return resp.json({
-    status: 1,
-    code: 200,
-    message: ["Rider Data fetch successfully!"],
-    data: rider,
-    content: responseContent?.[0]?.content || "",
-  });
 });
 
 export const home = asyncHandler(async (req, resp) => {
-  const { rider_id } = mergeParam(req);
-  if (!rider_id)
-    return resp.json({
-      status: 0,
-      code: 422,
-      message: ["Rider Id is required"],
-    });
-
-  const riderQuery = `
-        SELECT 
-            cn.min_wallet_price, 
-            r.out_standing_cost, 
-            r.security_deposit, 
-            r.rider_id, 
-            r.rider_name, 
-            r.amount as wallet_amount,
-            (
-                SELECT COUNT(*) 
-                FROM notifications AS n 
-                WHERE n.panel_to = 'Rider' 
-                AND n.receive_id = r.rider_id 
-                AND status = '0'
-            ) AS notification_count
+    const {rider_id} = mergeParam(req);
+    if (!rider_id) return resp.json({ status: 0, code: 422, message: ["Rider Id is required"] });
+    
+    const riderQuery = `SELECT cn.min_wallet_price, r.out_standing_cost , r.rider_id, r.rider_name, r.amount as wallet_amount,
+        (SELECT COUNT(*) FROM notifications AS n WHERE n.panel_to = 'Rider' AND n.receive_id = r.rider_id AND status = '0') AS notification_count
         FROM riders r 
-        JOIN country cn 
-        on cn.country_id = r.country_id
+        JOIN country cn on cn.country_id=r.country_id
         WHERE r.rider_id =?
     `;
-  const riderData = await queryDB(riderQuery, [rider_id]);
+    const riderData = await queryDB(riderQuery, [rider_id]);
 
-  if (!riderData) {
-    return resp.status(404).json({ message: "Rider not found", status: 0 });
-  }
+    if (!riderData) {
+        return resp.status(404).json({ message: "Rider not found", status: 0 });
+    }
 
-  //   const deductionAmount = Number(
-  //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
-  //   );
-  //   const refundAmount = Number(
-  //     (riderData.wallet_amount - deductionAmount).toFixed(2),
-  //   );
-  const securityDeposit = Number(riderData.security_deposit || 0);
-  const outstandingAmount = Number(riderData.out_standing_cost || 0);
+    const result = {
+        rider_id           : riderData.rider_id,
+        rider_name         : riderData.rider_name,
+        notification_count : parseFloat(riderData.notification_count),
+        wallet_amount:parseFloat(riderData.wallet_amount),
+        out_standing_cost:parseFloat(riderData.out_standing_cost),
+        min_wallet_price:parseFloat(riderData.min_wallet_price)
+    };
+    const orderData = await queryDB(
+        `SELECT request_id, (SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) FROM rsa WHERE rsa_id = road_assistance.rsa_id) AS rsaDetails, created_at 
+        FROM road_assistance WHERE rider_id = ? AND order_status NOT IN ('PNR', 'CNF', 'A', 'PU', 'C', 'RO', 'CC') ORDER BY id DESC LIMIT 1
+    `, [rider_id]);
+    // console.log("orderData",orderData)
+    
+    // if (orderData) orderData.eta_time = '12 Min.';
+    
+    // const pickDropData = await queryDB(
+    //     `SELECT request_id, (SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) FROM rsa WHERE rsa_id = charging_service.rsa_id) AS rsaDetails, created_at 
+    //     FROM charging_service WHERE rider_id = ? AND order_status NOT IN ('CNF', 'A', 'WC', 'C', 'PNR', 'DO') ORDER BY id DESC LIMIT 1
+    // `, [rider_id]);
+    
+    // if (pickDropData) pickDropData.eta_time = '11 Min.';
+    
+    const podBookingData = await queryDB(
+        `SELECT booking_id AS request_id, (SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) FROM rsa WHERE rsa_id = portable_charger_booking.rsa_id) AS rsaDetails, created_at 
+        FROM portable_charger_booking WHERE rider_id = ? AND status NOT IN ('PNR', 'CNF', 'A', 'PU', 'C', 'RO', 'CC') ORDER BY id DESC LIMIT 1
+    `, [rider_id]);
+    //  created_at >= NOW() - INTERVAL 30 MINUTE
 
-  // Amount left after deducting outstanding
-  const refundableAmount = Math.max(
-    0,
-    Number((securityDeposit - outstandingAmount).toFixed(2)),
-  );
+    // if (podBookingData) podBookingData.eta_time = '11 Min.';
+    
+    const priceQry  = `SELECT roadside_assistance_price,portable_price FROM booking_price LIMIT 1`;
+    const priceData = await queryDB(priceQry, []);
 
-  // 3% processing fee
-  const deductionAmount = Number((refundableAmount * 0.03).toFixed(2));
-
-  // Final refund amount
-  const refundAmount = Math.max(
-    0,
-    Number((refundableAmount - deductionAmount).toFixed(2)),
-  );
-  const [response] = await db.execute(
-    `
-        SELECT content 
-        FROM response_content 
-        WHERE module_name = ? 
-        AND sub_module
-        AND status = 1 
-        LIMIT 1
-         `,
-    ["mobility-refund", "raise-refund-request"],
-  );
-
-  const purchaseHistoryCount = await queryDB(
-    `SELECT COUNT(*) as total FROM purchase_history `,
-  );
-
-  const chargeShareCount = await queryDB(
-    `
-        SELECT COUNT(*) as total 
-        FROM charge_share 
-        WHERE rider_id = ? 
-        AND charger_status = 1`,
-    [rider_id],
-  );
-
-  const refundRequest = await queryDB(
-    `SELECT 
-        id, 
-        status,
-        requested_amount
-    FROM refund_requests 
-    WHERE rider_id = ?
-    ORDER BY id DESC 
-    LIMIT 1`,
-    [rider_id],
-  );
-  let isRefundRaised = false;
-
-  if (refundRequest && ["pending"].includes(refundRequest.status)) {
-    isRefundRaised = true;
-  }
-  const isRefundEligible = refundableAmount > 0 && refundAmount >= 60;
-  const result = {
-    rider_id: riderData.rider_id,
-    rider_name: riderData.rider_name,
-    notification_count: parseFloat(riderData.notification_count),
-    wallet_amount: parseFloat(riderData.wallet_amount),
-    out_standing_cost: parseFloat(riderData.out_standing_cost),
-    min_wallet_price: parseFloat(riderData.min_wallet_price),
-    purchase_history_count: purchaseHistoryCount?.total || 0,
-    charge_share_count: chargeShareCount?.total || 0,
-    // refund_amount:
-    //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
-    //     ? refundAmount
-    //     : 0,
-    // deduction_amount:
-    //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
-    //     ? deductionAmount
-    //     : 0,
-    security_deposit: securityDeposit,
-    refundable_amount: refundableAmount,
-    refund_amount: refundAmount >= 60 ? refundAmount : 0,
-    deduction_amount: refundAmount >= 60 ? deductionAmount : 0,
-    is_refund_eligible: isRefundEligible ? 1 : 0,
-    is_refund_requested: isRefundRaised ? 1 : 0,
-    content: response?.[0]?.content || "",
-  };
-  const orderData = await queryDB(
-    `SELECT 
-        request_id, 
-        (
-            SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) 
-            FROM rsa 
-            WHERE rsa_id = road_assistance.rsa_id
-        ) AS rsaDetails, 
-        created_at 
-    FROM road_assistance 
-    WHERE rider_id = ? 
-    AND order_status NOT IN ('PNR', 'CNF', 'A', 'PU', 'C', 'RO', 'CC') 
-    ORDER BY id DESC 
-    LIMIT 1
-    `,
-    [rider_id],
-  );
-
-  const podBookingData = await queryDB(
-    `SELECT 
-        booking_id AS request_id, 
-        (
-            SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) 
-            FROM rsa 
-            WHERE rsa_id = portable_charger_booking.rsa_id
-        ) AS rsaDetails, 
-        created_at 
-    FROM portable_charger_booking 
-    WHERE rider_id = ? 
-    AND status NOT IN ('PNR', 'CNF', 'A', 'PU', 'C', 'RO', 'CC') 
-    ORDER BY id DESC 
-    LIMIT 1
-    `,
-    [rider_id],
-  );
-
-  const priceQry = `
-    SELECT 
-        roadside_assistance_price,
-        portable_price 
-    FROM booking_price 
-    LIMIT 1`;
-  const priceData = await queryDB(priceQry, []);
-  const [responseContent] = await db.execute(
-    `
-        SELECT content 
-        FROM response_content 
-        WHERE module_name = ? 
-        AND status = 1
-    `,
-    ["mobility-wallet"],
-  );
-
-  let contentArray = responseContent.map((row) => row.content);
-  let walletMessage = "";
-
-  const walletAmount = Number(riderData.wallet_amount || 0);
-  const minWalletBalance = Number(riderData.min_wallet_price || 0);
-
-  if (walletAmount < 0) {
-    const debtAmount = Math.abs(walletAmount);
-    const requiredAmount = debtAmount + minWalletBalance;
-
-    walletMessage =
-      `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
-      `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
-  } else if (walletAmount < minWalletBalance) {
-    walletMessage = contentArray[0] || "";
-  }
-
-  return resp.json({
-    message: ["Rider Home Data fetched successfully!"],
-    rider_data: result,
-    order_data: orderData || null,
-    pick_drop_order: null,
-    pod_booking: podBookingData || null,
-    roadside_assistance_price: priceData.roadside_assistance_price,
-    portable_price: priceData.portable_price,
-    pick_drop_price: 0,
-    content: walletMessage,
-    status: 1,
-    code: 200,
-  });
+    return resp.json({
+        message                   : ["Rider Home Data fetched successfully!"],
+        rider_data                : result,
+        order_data                : orderData || null,
+        pick_drop_order           :  null,
+        pod_booking               : podBookingData || null,
+        roadside_assistance_price : priceData.roadside_assistance_price,
+        // portable_price            : priceData.portable_price,
+        // pick_drop_price           : priceData.pick_drop_price,
+        portable_price            : priceData.portable_price,  //min_wallet_price
+        pick_drop_price           : 0,
+        status                    : 1,
+        code                      : 200
+    });
 });
+
 
 export const redeemCoupon = asyncHandler(async (req, resp) => {
     const {rider_id, amount, booking_type, coupon_code } = mergeParam(req);
@@ -1070,8 +787,9 @@ export const redeemCoupon = asyncHandler(async (req, resp) => {
             (SELECT count(id) FROM coupon_usage AS cu WHERE cu.coupan_code = coupon.coupan_code AND user_id = ?) as use_count
         FROM coupon
         WHERE coupan_code = ?
-        LIMIT 1 `, [ rider_id, coupon_code ]
-    );
+        LIMIT 1
+    `, [rider_id, coupon_code]); 
+
     if (moment(coupon.end_date).isBefore(moment(), 'day') || coupon.status < 1){
         return resp.json({ status: 0, code: 422, message: ["The coupon you entered has expired."]} );
 
@@ -1102,6 +820,7 @@ export const redeemCoupon = asyncHandler(async (req, resp) => {
     const disAmount   = data.dis_price; //(totalAmount * coupon.coupan_percentage)/100;
     const finalAmount = data.total_amt; //totalAmount - disAmount;
 
+
     return resp.json({
         bookingAmount     :  parseFloat(amount).toFixed(2), //formatNumber(amount),
         vat_amt           : parseFloat(t_vat_amt).toFixed(2),//formatNumber(t_vat_amt),
@@ -1116,14 +835,16 @@ export const redeemCoupon = asyncHandler(async (req, resp) => {
     });
 });
 
+
 export const uploadSImage = asyncHandler(async (req, resp) => {
-    
-    let profile_image = '';
-    if(req.files && req.files['image']) { 
-        const files   = req.files;
-        profile_image = files ? files['image'][0].filename : '';
-    }
-    resp.json({message:"done"})
-})
+    console.log(req.files)
+        let profile_image = '';
+        if(req.files && req.files['image']) { 
+            const files   = req.files;
+            profile_image = files ? files['image'][0].filename : '';
+        }
+
+        resp.json({message:"done"})
+    })
 
     

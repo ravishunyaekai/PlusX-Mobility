@@ -1,6 +1,6 @@
 import db from "../../config/indiadb.js";
 import validateFields from "../../validation.js";
-import { mergeParam, formatNumber } from '../../utils.js';
+import { mergeParam, formatNumber, checkCoupon } from '../../utils.js';
 import moment from "moment";
 import Stripe from "stripe";
 import dotenv from 'dotenv';
@@ -13,9 +13,10 @@ import { createCustomer } from "../../mobility/controller/razorpay/razorpay.js";
 
 export const createIntent = async (req, resp) => {
     try {
+        console.log("createIntent called with params:", mergeParam(req));
 
-    const {rider_id, rider_name, rider_email, package_id = "", amount = "", currency='', booking_id='', building_name='', street_name='', unit_no='', area='', emirate='', booking_type='', coupon_code='' } = mergeParam(req);
-     const bookingType = booking_type.toUpperCase();
+        const { rider_id, rider_name, rider_email, package_id = "", amount = "", currency = '', booking_id = '', building_name = '', street_name = '', unit_no = '', area = '', emirate = '', booking_type = '', coupon_code = '' } = mergeParam(req);
+        const bookingType = booking_type.toUpperCase();
 
         const validationRules = {
             rider_id: ["required"],
@@ -25,148 +26,203 @@ export const createIntent = async (req, resp) => {
             booking_type: ["required"]
         };
 
-    if (bookingType === "HEV") {
-        validationRules.package_id = ["required"];
-    } else {
-        validationRules.amount = ["required"];
-    }
-    const { isValid, errors } = validateFields(
-     mergeParam(req),
-     validationRules
-    );
-    // if(amount<1)     return resp.json({ status: 0, code: 422, message: ["amount can be less than 1 INR"] });
-    //  switch(booking_type){
-    //     case "PCB"
-        
-    //     case 
-    //  }
+        if (bookingType === "HEV") {
+            validationRules.package_id = ["required"];
+        } else {
+            validationRules.amount = ["required"];
+        }
+        const { isValid, errors } = validateFields(
+            mergeParam(req),
+            validationRules
+        );
+        // if(amount<1)     return resp.json({ status: 0, code: 422, message: ["amount can be less than 1 INR"] });
+        //  switch(booking_type){
+        //     case "PCB"
+
+        //     case 
+        //  }
 
 
-    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
         let chargingCost = 0;
         let serviceFee = 0;
         let discount = 0;
         let gst = 0;
         let totalAmount = 0;
         let packageDetails = {};
-    if (bookingType === "HEV") {
+        if (bookingType === "HEV") {
 
-     const packageData = await queryDB(
-            `SELECT * FROM home_ev_charging_packages WHERE package_id = ? AND status = 1 AND is_deleted = 0
-             LIMIT 1`,
-            [package_id]
-    );
-    if (!packageData) {
-            return resp.json({
-                status: 0,
-                code: 404,
-                message: ["Charging package not found."]
-            });
-    }
-    chargingCost = Number(packageData.charging_capacity) * Number(packageData.price_per_unit);
-    serviceFee = Number(packageData.service_fee);
-    if (coupon_code) {
-                // TODO Coupon Validation
-                discount = 0;
-    }    
-    const subtotal = chargingCost + serviceFee - discount;
-    gst = Number((subtotal * 0.18).toFixed(2));
-    totalAmount = Number((subtotal + gst).toFixed(2));
+            const packageData = await queryDB(
+                `SELECT * 
+                FROM home_ev_charging_packages 
+                WHERE package_id = ? AND status = 1 AND is_deleted = 0
+                LIMIT 1`,
+                [package_id]
+            );
+            if (!packageData) {
+                return resp.json({
+                    status: 0,
+                    code: 404,
+                    message: ["Charging package not found."]
+                });
+            }
 
-    packageDetails = {
+            chargingCost =
+                Number(packageData.charging_capacity || 0) *
+                Number(packageData.price_per_unit || 0);
+
+            serviceFee = Number(packageData.service_fee || 0);
+
+            const subtotal = chargingCost + serviceFee;
+
+            const gstPercentage = 18;
+            gst = Number((subtotal * gstPercentage / 100).toFixed(2));
+
+            const grossAmount = Number((subtotal + gst).toFixed(2));
+
+            discount = 0;
+            totalAmount = grossAmount;
+
+            const booking_type_for_coupon = (booking_type == "POD-On Demand Service" || booking_type == "Mobile EV Charging") ? "Mobile EV Charging" : "EV Roadside Assistance" // same booking type used in checkCoupon
+
+            if (coupon_code) {
+
+                const couponData = await checkCoupon(
+                    rider_id,
+                    // "Mobile EV Charging",   // same booking type used in chargerBooking
+                    booking_type_for_coupon,   // same booking type used in chargerBooking
+                    coupon_code,
+                    subtotal
+                );
+
+                if (couponData.status == 0) {
+                    return resp.json({
+                        status: 0,
+                        code: couponData.code || 422,
+                        message: [couponData.message]
+                    });
+                }
+
+                totalAmount = Number(couponData.service_price);
+                discount = Number(couponData.dis_price || 0);
+
+                // If your coupon API returns GST after discount
+                gst = Number(couponData.vat_amt || gst);
+            }
+
+            packageDetails = {
                 package_id: packageData.package_id,
                 package_name: packageData.package_name,
                 charging_capacity: packageData.charging_capacity,
-                price_per_unit: packageData.price_per_unit
-    };
+                price_per_unit: packageData.price_per_unit,
+                
+                charging_cost: chargingCost,
+                service_fee: serviceFee,
+                discount,
+                gst,
+                total_amount: totalAmount,
 
-    }else {
-      totalAmount = Number(amount);
-      if (totalAmount <= 0) {
+                charging_fees: chargingCost,
+                service_fee: serviceFee,
+
+                subtotal,
+
+                gst_percentage: gstPercentage,
+                gst_amount: gst,
+
+                gross_amount: grossAmount,
+
+                coupon_code,
+                coupon_discount: discount,
+
+                total_amount: totalAmount,
+                payable_amount: totalAmount
+            };
+            console.log(`Charging Cost: ${chargingCost}, Service Fee: ${serviceFee}, Discount: ${discount}, GST: ${gst}, Total Amount: ${totalAmount}`);
+
+        } else {
+            totalAmount = Number(amount);
+            if (totalAmount <= 0) {
                 return resp.json({
                     status: 0,
                     code: 422,
                     message: ["Invalid amount."]
                 });
             }
-     }
-      if (totalAmount < 1) {
+        }
+        if (totalAmount < 1) {
             return resp.json({
                 status: 0,
                 code: 422,
                 message: ["Amount should be greater than 1 INR."]
             });
-    }
-      const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET});
-     
-    //   const paybleAmount=parseFloat((amount * 100).toFixed(2));
-    //   console.log("type",typeof(paybleAmount))
+        }
+        const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET
+        });
+
+        //   const paybleAmount=parseFloat((amount * 100).toFixed(2));
+        //   console.log("type",typeof(paybleAmount))
 
         const options = {
             amount: parseFloat((totalAmount * 100).toFixed(2)),   // e.g., 50000 paise = ₹500
             currency: "INR",
-           receipt: `receipt_${booking_id}_${Date.now()}`,
+            receipt: `receipt_${booking_id}_${Date.now()}`,
             payment_capture: 1, // auto-capture payment
             notes: {
-    rider_id: rider_id.toString(),
-    rider_name: rider_name,
-    rider_email: rider_email,
-    booking_id: booking_id.toString(),
-    booking_type: booking_type.toUpperCase(),
-    package_id: package_id.toString(),
-    coupon_code:coupon_code.toString(),
-    
-        }
+                rider_id: rider_id.toString(),
+                rider_name: rider_name,
+                rider_email: rider_email,
+                booking_id: booking_id.toString(),
+                booking_type: booking_type.toUpperCase(),
+                package_id: package_id.toString(),
+                coupon_code: coupon_code.toString(),
+
+            }
         };
-        
-let  data={};
-        const order = await razorpay.orders.create(options);
-      console.log("order",order)
-        switch(booking_type){
-            case  "PCB":
-          
-            await updateRecord('portable_charger_booking', {  'order_id' : order.id}, ['booking_id', 'rider_id'], [booking_id, rider_id] ); //, conn
-            
-            break;
-            case  "RSA":
-            await updateRecord('road_assistance', {  'order_id' : order.id}, ['request_id', 'rider_id'], [booking_id, rider_id] ); //, conn
-         
-            break;
-            case "HEV":
-            await updateRecord("home_ev_charging_packages",{ order_id: order.id}, ["package_id"],
-            [package_id]);
 
-            break;
-            default :
-            return false;
+        let data = {};
+        const order = await razorpay.orders.create(options);
+        console.log("order", order)
+        switch (booking_type) {
+            case "PCB":
+
+                await updateRecord('portable_charger_booking', { 'order_id': order.id }, ['booking_id', 'rider_id'], [booking_id, rider_id]); //, conn
+
+                break;
+            case "RSA":
+                await updateRecord('road_assistance', { 'order_id': order.id }, ['request_id', 'rider_id'], [booking_id, rider_id]); //, conn
+
+                break;
+            case "HEV":
+                console.log("HEV booking type detected");
+                await updateRecord("home_ev_charging_packages", { order_id: order.id }, ["package_id"],
+                    [package_id]);
+
+                break;
+            default:
+                return false;
         }
 
-        const  customer_id=await createCustomer(rider_id);
+        const customer_id = await createCustomer(rider_id);
 
-        resp.json({ status: 1,
-        code:200,
-        message : ["Payment Intent Created successfully!"],
-        order_id: order.id,
-        customer_id,
-        key_id:process.env.RAZORPAY_KEY_ID,
-        payment_summary: bookingType === "HEV"
-                ? {
-                    ...packageDetails,
-                    charging_cost: chargingCost,
-                    service_fee: serviceFee,
-                    discount,
-                    gst,
-                    total_amount: totalAmount
-                }
+        resp.json({
+            status: 1,
+            code: 200,
+            message: ["Payment Intent Created successfully!"],
+            order_id: order.id,
+            customer_id,
+            key_id: process.env.RAZORPAY_KEY_ID,
+            payment_summary: bookingType === "HEV"
+                ? packageDetails
                 : {
                     total_amount: totalAmount
                 }
 
         });
 
-        
+
     } catch (error) {
         console.error(error);
         resp.json({ status: 0, message: "Order creation failed" });
@@ -174,91 +230,91 @@ let  data={};
 };
 
 export const oldcreateIntent = async (req, resp) => {
-    
-    const {rider_id, rider_name, rider_email, amount, currency, booking_id, building_name, street_name='', unit_no, area, emirate, booking_type, coupon_code='' } = mergeParam(req);
+
+    const { rider_id, rider_name, rider_email, amount, currency, booking_id, building_name, street_name = '', unit_no, area, emirate, booking_type, coupon_code = '' } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id    : ["required"],
-        rider_name  : ["required"],
-        rider_email : ["required"],
-        amount      : ["required"],
-        currency    : ["required"],
+        rider_id: ["required"],
+        rider_name: ["required"],
+        rider_email: ["required"],
+        amount: ["required"],
+        currency: ["required"],
 
         // 12 March ko add hua hai
-        booking_id    : ["required"],
-        building_name : ["required"],
-        unit_no       : ["required"],
-        area          : ["required"],
-        emirate       : ["required"],
-        booking_type  : ["required"],
+        booking_id: ["required"],
+        building_name: ["required"],
+        unit_no: ["required"],
+        area: ["required"],
+        emirate: ["required"],
+        booking_type: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     try {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-        const user   = await findCustomerByEmail(rider_email);
+        const user = await findCustomerByEmail(rider_email);
         let customerId;
-        if(user.success){
+        if (user.success) {
             customerId = user.customer_id;
         } else {
             const customer = await stripe.customers.create({
-                name    : rider_name,
-                address : {
-                    line1       : `${building_name} ${street_name}`, //"D55-PBU - Dubai Production City",
-                    postal_code : unit_no,                       // D55-PBU
-                    city        : area,                     //Dubai Production City
-                    state       : emirate,                 //Dubai
-                    country     : "United Arab Emirates",
+                name: rider_name,
+                address: {
+                    line1: `${building_name} ${street_name}`, //"D55-PBU - Dubai Production City",
+                    postal_code: unit_no,                       // D55-PBU
+                    city: area,                     //Dubai Production City
+                    state: emirate,                 //Dubai
+                    country: "United Arab Emirates",
                 },
-                email       : rider_email,
+                email: rider_email,
                 // description : `This booking Id : ${booking_id} for POD Booking.`
             });
             customerId = customer.id;
         }
-        
+
         const ephemeralKey = await stripe.ephemeralKeys.create(
-            { customer  : customerId },
-            {apiVersion : '2024-04-10'}
+            { customer: customerId },
+            { apiVersion: '2024-04-10' }
         );
-        const bookingDesc   = await sendDescBooking(booking_type, booking_id);
+        const bookingDesc = await sendDescBooking(booking_type, booking_id);
         const paymentIntent = await stripe.paymentIntents.create({
-            amount                    : amount < 200 ? 200 : Math.floor(amount),
-            currency                  : currency,
-            customer                  : customerId,
-            automatic_payment_methods : {
-                enabled : false,
+            amount: amount < 200 ? 200 : Math.floor(amount),
+            currency: currency,
+            customer: customerId,
+            automatic_payment_methods: {
+                enabled: false,
             },
-            payment_method_types   : ["card"],
-            use_stripe_sdk         : true,
-            setup_future_usage     : 'off_session',
-            payment_method_options : {
-                card : {
-                    request_three_d_secure : 'any',
+            payment_method_types: ["card"],
+            use_stripe_sdk: true,
+            setup_future_usage: 'off_session',
+            payment_method_options: {
+                card: {
+                    request_three_d_secure: 'any',
                 },
             },
             description: bookingDesc,
-            metadata : {
-                booking_type : booking_type,
-                booking_id   : booking_id,
-                user_id      : rider_id,
-                coupon_code  : coupon_code,
+            metadata: {
+                booking_type: booking_type,
+                booking_id: booking_id,
+                user_id: rider_id,
+                coupon_code: coupon_code,
             },
         });
         const returnData = {
-            paymentIntentId     : paymentIntent.id,
-            paymentIntentSecret : paymentIntent.client_secret,
-            ephemeralKey        : ephemeralKey.secret,
-            customer            : customerId,
-            publishableKey      : process.env.STRIPE_PUBLISER_KEY,
+            paymentIntentId: paymentIntent.id,
+            paymentIntentSecret: paymentIntent.client_secret,
+            ephemeralKey: ephemeralKey.secret,
+            customer: customerId,
+            publishableKey: process.env.STRIPE_PUBLISER_KEY,
         };
         // await updateBoking( booking_type, booking_id, rider_id, paymentIntent.id ); 
         setTimeout(async () => {
-            await getPaymentIntentData( paymentIntent.id ); 
+            await getPaymentIntentData(paymentIntent.id);
         }, 4 * 60 * 1000);
         return resp.json({
-            message : ["Payment Intent Created successfully!"],
-            data    : returnData,
-            status  : 1,
-            code    : 200,
+            message: ["Payment Intent Created successfully!"],
+            data: returnData,
+            status: 1,
+            code: 200,
         });
     } catch (err) {
         console.error('Error creating payment intent:', err);
@@ -268,7 +324,7 @@ export const oldcreateIntent = async (req, resp) => {
 
 export const createAutoDebit = async (customerId, paymentMethodId, totalAmount) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-  
+
     try {
         const paymentIntent = await stripe.paymentIntents.create({
             amount: totalAmount < 200 ? 200 : Math.floor(totalAmount),
@@ -278,7 +334,7 @@ export const createAutoDebit = async (customerId, paymentMethodId, totalAmount) 
             off_session: true,
             confirm: true,
         });
-  
+
         return {
             message: "Payment completed successfully!",
             status: 1,
@@ -288,10 +344,10 @@ export const createAutoDebit = async (customerId, paymentMethodId, totalAmount) 
     } catch (err) {
         console.error('Error Create Auto debit:', err);
         return {
-            message : ["Error processing payment"],
-            error   : err.message,
-            status  : 0,
-            code    : 500,
+            message: ["Error processing payment"],
+            error: err.message,
+            status: 0,
+            code: 500,
         };
         // tryCatchErrorHandler(err, resp, 'Oops! There is something went wrong! While create Auto debit');
     }
@@ -304,33 +360,33 @@ export const addCardToCustomer = async (req, resp) => {
     try {
         const user = await findCustomerByEmail(rider_email);
         let customerId;
-        
-        if(user.success){
+
+        if (user.success) {
             customerId = user.customer_id;
         } else {
             const customer = await stripe.customers.create({
-                name  : rider_name,
-                email : rider_email,
+                name: rider_name,
+                email: rider_email,
             });
             customerId = customer.id;
         }
         const setupIntent = await stripe.setupIntents.create({
-            customer             : customerId,
-            payment_method_types : ['card'],
+            customer: customerId,
+            payment_method_types: ['card'],
         });
         const ephemeralKey = await stripe.ephemeralKeys.create(
-            { customer   : customerId },
-            { apiVersion : '2024-04-10' }
+            { customer: customerId },
+            { apiVersion: '2024-04-10' }
         );
-        return resp.json({ 
-            status                  : 1, 
-            code                    : 200, 
-            message                 : ['Setup intent created successfully!'],
-            setup_payment_intent_id : setupIntent.id,
-            client_secret           : setupIntent.client_secret,
-            ephemeralKey            : ephemeralKey.secret,
-            customer                : customerId,
-            publishableKey          : process.env.STRIPE_PUBLISER_KEY,
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ['Setup intent created successfully!'],
+            setup_payment_intent_id: setupIntent.id,
+            client_secret: setupIntent.client_secret,
+            ephemeralKey: ephemeralKey.secret,
+            customer: customerId,
+            publishableKey: process.env.STRIPE_PUBLISER_KEY,
         });
     } catch (error) {
         console.error('Error adding card to customer:', error);
@@ -339,19 +395,19 @@ export const addCardToCustomer = async (req, resp) => {
 };
 
 export const customerCardsList = async (req, resp) => {
-    const stripe          = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { rider_email } = mergeParam(req);
     try {
         const user = await findCustomerByEmail(rider_email);
-        if(!user.success) return resp.json({status: 1, code:422, message: 'No card found, Please add a card.'});
-        
-        const customerId       = user.customer_id;
-        const cardDetailsList  = [];
+        if (!user.success) return resp.json({ status: 1, code: 422, message: 'No card found, Please add a card.' });
+
+        const customerId = user.customer_id;
+        const cardDetailsList = [];
         const seenFingerprints = new Set();
-        
+
         const customerCards = await stripe.paymentMethods.list({
-            customer : customerId,
-            type     : 'card',
+            customer: customerId,
+            type: 'card',
         });
         // customerCards.data.forEach(method => {
         //     const cardDetails = {
@@ -371,23 +427,23 @@ export const customerCardsList = async (req, resp) => {
                 seenFingerprints.add(fingerprint);
 
                 cardDetailsList.push({
-                    paymentMethodId : method.id,
-                    name            : method.billing_details.name || user.name,
-                    last4           : method.card.last4,
-                    exp_month       : method.card.exp_month,
-                    exp_year        : method.card.exp_year,
-                    brand           : method.card.brand
+                    paymentMethodId: method.id,
+                    name: method.billing_details.name || user.name,
+                    last4: method.card.last4,
+                    exp_month: method.card.exp_month,
+                    exp_year: method.card.exp_year,
+                    brand: method.card.brand
                 });
             }
         });
         return resp.json({
-            status       : 1,
-            code         : 200,
-            message      : ["Card list fetch successfully"],
-            total        : customerCards.data.length, 
-            card_details : cardDetailsList,
+            status: 1,
+            code: 200,
+            message: ["Card list fetch successfully"],
+            total: customerCards.data.length,
+            card_details: cardDetailsList,
         });
-    } catch(error) {
+    } catch (error) {
         console.error('Error adding card to customer:', error);
         tryCatchErrorHandler(error, resp);
     }
@@ -396,18 +452,18 @@ export const customerCardsList = async (req, resp) => {
 
 export const removeCard = async (req, resp) => {
     // console.log('ravvi',  mergeParam(req))  
-    const stripe                = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { payment_method_id } = mergeParam(req);
-    if (!payment_method_id) return resp.json({ status: 0, code: 422, message: ['Payment Method ID is required.']});
-    
+    if (!payment_method_id) return resp.json({ status: 0, code: 422, message: ['Payment Method ID is required.'] });
+
     try {
         const detachedPaymentMethod = await stripe.paymentMethods.detach(payment_method_id);
 
         return resp.json({
-            status          : 1,
-            code            : 200,
-            message         : ['Payment Method removed successfully.'],
-            paymentMethodId : detachedPaymentMethod.id,
+            status: 1,
+            code: 200,
+            message: ['Payment Method removed successfully.'],
+            paymentMethodId: detachedPaymentMethod.id,
         });
     } catch (error) {
         console.error('Error detaching card:', error);
@@ -417,25 +473,25 @@ export const removeCard = async (req, resp) => {
 
 export const autoPay = async (req, resp) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const {customer_id, payment_method_id, amount } = mergeParam(req);
+    const { customer_id, payment_method_id, amount } = mergeParam(req);
 
     try {
         const paymentIntent = await stripe.paymentIntents.create({
-            amount         : amount,
-            currency       : 'aed',
-            customer       : customer_id,
-            payment_method : payment_method_id,
-            off_session    : true,
-            confirm        : true,
+            amount: amount,
+            currency: 'aed',
+            customer: customer_id,
+            payment_method: payment_method_id,
+            off_session: true,
+            confirm: true,
         });
-    
+
         return resp.json({
             message: "Payment from saved card completed successfully!",
             status: 1,
             code: 200,
             paymentIntent,
         });
-    } catch(err) { 
+    } catch (err) {
         console.error('Error processing off-session payment:', err);
         tryCatchErrorHandler(err, resp);
     }
@@ -444,16 +500,16 @@ export const autoPay = async (req, resp) => {
 
 
 export const createPortableChargerSubscription = async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id } = mergeParam(req);
-    const { isValid, errors } = validateFields(mergeParam(req), {rider_id: ["required"] });
+    const { rider_id, request_id, payment_intent_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), { rider_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     const currDate = moment().format('YYYY-MM-DD');
     const endDate = moment().add(30, 'days').format('YYYY-MM-DD');
-    const count = await queryDB(`SELECT COUNT(*) as count FROM portable_charger_subscriptions WHERE rider_id=? AND total_booking < 10 AND expiry_date > ?`,[rider_id, currDate]);
-    if(count > 0) return resp.json({status:1, code:200, message: ["You have alredy Subscription plan"]});
-    
-    const subscriptionId = `PCS-${generateUniqueId({length:12})}`;
-    
+    const count = await queryDB(`SELECT COUNT(*) as count FROM portable_charger_subscriptions WHERE rider_id=? AND total_booking < 10 AND expiry_date > ?`, [rider_id, currDate]);
+    if (count > 0) return resp.json({ status: 1, code: 200, message: ["You have alredy Subscription plan"] });
+
+    const subscriptionId = `PCS-${generateUniqueId({ length: 12 })}`;
+
     const createObj = {
         subscription_id: subscriptionId,
         rider_id: rider_id,
@@ -465,26 +521,26 @@ export const createPortableChargerSubscription = async (req, resp) => {
         payment_date: moment().format('YYYY-MM-DD HH:mm:ss'),
     }
 
-    if(payment_intent_id && payment_intent_id.trim() != '' ){
+    if (payment_intent_id && payment_intent_id.trim() != '') {
         const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
         const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
         const cardData = {
-            brand:     charge.payment_method_details.card.brand,
-            country:   charge.payment_method_details.card.country,
+            brand: charge.payment_method_details.card.brand,
+            country: charge.payment_method_details.card.country,
             exp_month: charge.payment_method_details.card.exp_month,
-            exp_year:  charge.payment_method_details.card.exp_year,
+            exp_year: charge.payment_method_details.card.exp_year,
             last_four: charge.payment_method_details.card.last4,
         };
 
-        createObj.amount = charge.amount;  
-        createObj.payment_intent_id = charge.payment_intent;  
-        createObj.payment_method_id = charge.payment_method;  
-        createObj.payment_cust_id = charge.customer;  
-        createObj.charge_id = charge.id;  
-        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;  
-        createObj.payment_type = charge.payment_method_details.type;  
-        createObj.payment_status = charge.status;  
-        createObj.currency = charge.currency;  
+        createObj.amount = charge.amount;
+        createObj.payment_intent_id = charge.payment_intent;
+        createObj.payment_method_id = charge.payment_method;
+        createObj.payment_cust_id = charge.customer;
+        createObj.charge_id = charge.id;
+        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;
+        createObj.payment_type = charge.payment_method_details.type;
+        createObj.payment_status = charge.status;
+        createObj.currency = charge.currency;
         createObj.invoice_date = moment(charge.created).format('YYYY-MM-DD HH:mm:ss');
         createObj.receipt_url = charge.receipt_url;
         createObj.card_data = cardData;
@@ -532,28 +588,28 @@ export const createPortableChargerSubscription = async (req, resp) => {
     </html>`;
 
     emailQueue.addEmail(data.rider_email, 'PlusX Electric App: Charging Subscription Confirmation', html);
-    
-    return resp.json({status:1, code:200, message: ["Your PlusX subscription is active! Start booking chargers for your EV now."]});
+
+    return resp.json({ status: 1, code: 200, message: ["Your PlusX subscription is active! Start booking chargers for your EV now."] });
 };
 
 /* Helper function to retrieve Stripe customer ID using the provided email */
 export const findCustomerByEmail = async (email) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    if (!email) return { status: 0, message: ['Email is required.']};
-    
+    if (!email) return { status: 0, message: ['Email is required.'] };
+
     try {
         const customers = await stripe.customers.list({ email });
         if (customers.data.length > 0) {
             return {
-                success      : true,
-                customer_id  : customers.data[0].id,
-                name         : customers.data[0].name
+                success: true,
+                customer_id: customers.data[0].id,
+                name: customers.data[0].name
             };
         } else {
-            return {success: false, message: 'No customer found with this email'};
+            return { success: false, message: 'No customer found with this email' };
         }
     } catch (error) {
-        return {success: false, message: error.message};
+        return { success: false, message: error.message };
     }
 };
 
@@ -561,7 +617,7 @@ export const findCustomerByEmail = async (email) => {
 export const getTotalAmountFromService = async (booking_id, booking_type) => {
     let invoiceId, total_amount;
 
-    if(booking_type === 'PCB'){
+    if (booking_type === 'PCB') {
 
         // (select created_at from portable_charger_history AS bh where bh.booking_id = pcb.booking_id and order_status = 'CS' limit 1) AS charging_start,
         // (select created_at from portable_charger_history AS bh where bh.booking_id = pcb.booking_id and order_status = 'CC' limit 1) AS charging_end
@@ -578,11 +634,11 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         `, [booking_id]);
 
         if (!data) return { success: false, message: 'No data found for the invoice.' };
-        
+
         // const startChargingLevels = data.start_charging_level ? data.start_charging_level.split(',').map(Number) : [0];
         // const endChargingLevels   = data.end_charging_level ? data.end_charging_level.split(',').map(Number) : [0];
         // if (startChargingLevels.length !== endChargingLevels.length) return resp.json({ error: 'Mismatch in charging level data.' });
-        
+
         // const chargingLevelSum = startChargingLevels.reduce((sum, startLevel, index) => {
         //     const endLevel = endChargingLevels[index];
         //     return sum + Math.max(startLevel - endLevel, 0);
@@ -597,17 +653,17 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         //     let hrsConsumed   = ( momentDate2.diff(momentDate1, 'minutes') ) / 60 ;
         //         killoWatt     = hrsConsumed * 7;
         // }
-        data.kw           = 25;
-        data.kw_dewa_amt  = data.kw * 0.44;   // AED : 11
-        data.kw_cpo_amt   = data.kw * 0.26;   // AED : 6.5
-        data.delv_charge  = 30;
-        data.t_vat_amt    = 0.00; //Math.floor((data.kw_dewa_amt + data.kw_cpo_amt + data.delv_charge) * 5) / 100;
-        data.total_amt    = 0.00; //data.kw_dewa_amt + data.kw_cpo_amt + data.t_vat_amt;
+        data.kw = 25;
+        data.kw_dewa_amt = data.kw * 0.44;   // AED : 11
+        data.kw_cpo_amt = data.kw * 0.26;   // AED : 6.5
+        data.delv_charge = 30;
+        data.t_vat_amt = 0.00; //Math.floor((data.kw_dewa_amt + data.kw_cpo_amt + data.delv_charge) * 5) / 100;
+        data.total_amt = 0.00; //data.kw_dewa_amt + data.kw_cpo_amt + data.t_vat_amt;
 
         total_amount = (data.total_amt) ? Math.round(data.total_amt) : 0.00;
 
-        return {success: true, total_amount, data, message: 'Pod Amount fetched successfully'};
-    } else if(booking_type === 'CS') {
+        return { success: true, total_amount, data, message: 'Pod Amount fetched successfully' };
+    } else if (booking_type === 'CS') {
         invoiceId = booking_id.replace('CS', 'INVCS');
 
         const data = await queryDB(`
@@ -625,10 +681,10 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         if (!data) return { success: false, message: 'No data found for the invoice.' };
 
         total_amount = (data.amount) ? data.amount : 0.00;
-        return {success: true, total_amount, message: 'PickDrop Amount fetched successfully'};
+        return { success: true, total_amount, message: 'PickDrop Amount fetched successfully' };
 
-    } else if(booking_type === 'RSA'){
- 
+    } else if (booking_type === 'RSA') {
+
         const data = await queryDB(`
             SELECT 
                 rsa.name AS rider_name,
@@ -641,197 +697,197 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         `, [booking_id]);
 
         if (!data) return { success: false, message: 'No data found for the invoice.' };
-        
-        data.kw           = 25;
-        data.kw_dewa_amt  = data.kw * 0.44;   // AED : 11
-        data.kw_cpo_amt   = data.kw * 0.26;   // AED : 6.5
-        data.delv_charge  = 90;
-        data.t_vat_amt    = 0.00;
-        data.total_amt    = 0.00;
+
+        data.kw = 25;
+        data.kw_dewa_amt = data.kw * 0.44;   // AED : 11
+        data.kw_cpo_amt = data.kw * 0.26;   // AED : 6.5
+        data.delv_charge = 90;
+        data.t_vat_amt = 0.00;
+        data.total_amt = 0.00;
 
         total_amount = (data.total_amt) ? Math.round(data.total_amt) : 0.00;
 
-        return {success: true, total_amount, data, message: 'Pod Amount fetched successfully'};
+        return { success: true, total_amount, data, message: 'Pod Amount fetched successfully' };
     } else {
-        return {success: false, total_amount,  message: 'Invalid Booking Id'}; 
+        return { success: false, total_amount, message: 'Invalid Booking Id' };
     }
 }
 
 // This function for IOS device made by Ravv 27 March 2025
 export const getPaymentSession = async (req, resp) => {
-    
-    const { rider_id, rider_name, rider_email, amount, currency, booking_id, building_name, street_name='', unit_no, area, emirate, booking_type, coupon_code='' } = mergeParam(req);
+
+    const { rider_id, rider_name, rider_email, amount, currency, booking_id, building_name, street_name = '', unit_no, area, emirate, booking_type, coupon_code = '' } = mergeParam(req);
 
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id      : ["required"],
-        rider_name    : ["required"],
-        rider_email   : ["required"],
-        amount        : ["required"],
-        currency      : ["required"],
-        booking_id    : ["required"],
-        building_name : ["required"],
-        unit_no       : ["required"],
-        area          : ["required"],
-        emirate       : ["required"],
-        booking_type  : ["required"],
+        rider_id: ["required"],
+        rider_name: ["required"],
+        rider_email: ["required"],
+        amount: ["required"],
+        currency: ["required"],
+        booking_id: ["required"],
+        building_name: ["required"],
+        unit_no: ["required"],
+        area: ["required"],
+        emirate: ["required"],
+        booking_type: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     try {
         let customerId;
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-        const user   = await findCustomerByEmail(rider_email);
-        
-        if(user.success) {
+        const user = await findCustomerByEmail(rider_email);
+
+        if (user.success) {
             customerId = user.customer_id;
 
         } else {
             const customer = await stripe.customers.create({
-                name    : rider_name,
-                address : {
-                    line1       : `${building_name} ${street_name}`, //"D55-PBU - Dubai Production City",
-                    postal_code : unit_no,                       // D55-PBU
-                    city        : area,                     //Dubai Production City
-                    state       : emirate,                 //Dubai
-                    country     : "United Arab Emirates",
+                name: rider_name,
+                address: {
+                    line1: `${building_name} ${street_name}`, //"D55-PBU - Dubai Production City",
+                    postal_code: unit_no,                       // D55-PBU
+                    city: area,                     //Dubai Production City
+                    state: emirate,                 //Dubai
+                    country: "United Arab Emirates",
                 },
-                email       : rider_email,
+                email: rider_email,
                 // description : `This booking Id : ${booking_id} for POD Booking.`
             });
             customerId = customer.id;
         }
         const bookingDesc = await sendDescBooking(booking_type, booking_id);
         const session = await stripe.checkout.sessions.create({
-            payment_method_types : ["card"],
-            line_items : [
+            payment_method_types: ["card"],
+            line_items: [
                 {
-                    price_data : {
-                        currency     : currency,
-                        product_data : { name : bookingDesc },
-                        unit_amount  : amount < 200 ? 200 : Math.floor(amount), // $50.00
+                    price_data: {
+                        currency: currency,
+                        product_data: { name: bookingDesc },
+                        unit_amount: amount < 200 ? 200 : Math.floor(amount), // $50.00
                     },
-                    quantity : 1,
+                    quantity: 1,
                 },
             ],
             payment_method_options: {
-                card : {
-                  request_three_d_secure : "any", // Force OTP for every transaction
+                card: {
+                    request_three_d_secure: "any", // Force OTP for every transaction
                 },
             },
-            customer   : customerId, // Existing customer ID
+            customer: customerId, // Existing customer ID
             // expires_at : Math.floor(Date.now() / 1000) + 1 * 60, // 5 minutes from now
-            payment_intent_data : {
-                setup_future_usage : "on_session", // Forces 3D Secure authentication   off_session
-                metadata : {
-                    booking_type : booking_type,
-                    booking_id   : booking_id,
-                    user_id      : rider_id,
-                    coupon_code  : coupon_code,
+            payment_intent_data: {
+                setup_future_usage: "on_session", // Forces 3D Secure authentication   off_session
+                metadata: {
+                    booking_type: booking_type,
+                    booking_id: booking_id,
+                    user_id: rider_id,
+                    coupon_code: coupon_code,
                 },
-                description    : bookingDesc,
+                description: bookingDesc,
                 // capture_method : 'manual',
             },
-            saved_payment_method_options : {
-                payment_method_save :  "enabled"
+            saved_payment_method_options: {
+                payment_method_save: "enabled"
             },
-            mode        : "payment",
-            success_url : `${req.protocol}://${req.get('host')}/payment-success`,  
-            cancel_url  : `${req.protocol}://${req.get('host')}/payment-cancel`,
+            mode: "payment",
+            success_url: `${req.protocol}://${req.get('host')}/payment-success`,
+            cancel_url: `${req.protocol}://${req.get('host')}/payment-cancel`,
 
-            metadata : {
-                booking_type : booking_type,
-                booking_id   : booking_id,
-                user_id      : rider_id,
-                coupon_code  : coupon_code,
+            metadata: {
+                booking_type: booking_type,
+                booking_id: booking_id,
+                user_id: rider_id,
+                coupon_code: coupon_code,
             }
         });
         // await updateBoking( booking_type, booking_id, rider_id, session.id ); 
         setTimeout(async () => {
-            await getPaymentSessionData( session.id ); 
+            await getPaymentSessionData(session.id);
         }, 5 * 60 * 1000);
-        return resp.json({ 
-            message    : ['Paymnet session'], 
-            status     : 1, 
-            code       : 200,  
-            url        : session.url, 
-            session_id : session.id 
+        return resp.json({
+            message: ['Paymnet session'],
+            status: 1,
+            code: 200,
+            url: session.url,
+            session_id: session.id
         });
     } catch (error) {
-        console.log( error );
+        console.log(error);
         tryCatchErrorHandler(error, resp, 'Oops! There is something went wrong! While create payment session');
     }
-} 
+}
 
 export const savedcardPayment = async (req, resp) => {  //pooja@shunyaekai.tech
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    
-    const { rider_id, rider_email, payment_method_id, amount, currency, booking_id,  booking_type, coupon_code='' } = mergeParam(req);
+
+    const { rider_id, rider_email, payment_method_id, amount, currency, booking_id, booking_type, coupon_code = '' } = mergeParam(req);
     // { rider_id, rider_name, rider_email, amount, currency, booking_id,  booking_type, coupon_code='' }
 
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id          : ["required"],
-        rider_email       : ["required"],
-        payment_method_id : ["required"],
-        amount            : ["required"],
-        currency          : ["required"],
-        booking_id        : ["required"],
-        booking_type      : ["required"],
+        rider_id: ["required"],
+        rider_email: ["required"],
+        payment_method_id: ["required"],
+        amount: ["required"],
+        currency: ["required"],
+        booking_id: ["required"],
+        booking_type: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     try {
         // console.log(amount)
         const user = await findCustomerByEmail(rider_email);
-        if(!user.success) return resp.json({ status : 1, code : 422, message : 'No card found, Please add a card.'});
-        
-        const customerId    = user.customer_id;
+        if (!user.success) return resp.json({ status: 1, code: 422, message: 'No card found, Please add a card.' });
+
+        const customerId = user.customer_id;
         const paymentIntent = await stripe.paymentIntents.create({
-            amount         : amount,
-            currency       : currency,
-            customer       : customerId,
-            payment_method : payment_method_id,
-            off_session    : true,
-            confirm        : true,
+            amount: amount,
+            currency: currency,
+            customer: customerId,
+            payment_method: payment_method_id,
+            off_session: true,
+            confirm: true,
         });
-        if(coupon_code){
-            const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [ coupon_code ]); 
-    
-            let coupan_percentage = coupon.coupan_percentage ;
+        if (coupon_code) {
+            const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [coupon_code]);
+
+            let coupan_percentage = coupon.coupan_percentage;
             await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [coupon_code, rider_id, booking_id, coupan_percentage]);
         }
-        if(booking_type ==  'PCB'){
-            await updateRecord('portable_charger_booking', { payment_intent_id : paymentIntent.id}, ['booking_id', 'rider_id'], [booking_id, rider_id] );
+        if (booking_type == 'PCB') {
+            await updateRecord('portable_charger_booking', { payment_intent_id: paymentIntent.id }, ['booking_id', 'rider_id'], [booking_id, rider_id]);
 
-        } else if(booking_type ==  'CS'){
-            await updateRecord('charging_service', { payment_intent_id : paymentIntent.id }, ['request_id', 'rider_id'], [booking_id, rider_id] );
+        } else if (booking_type == 'CS') {
+            await updateRecord('charging_service', { payment_intent_id: paymentIntent.id }, ['request_id', 'rider_id'], [booking_id, rider_id]);
 
-        } else if(booking_type ==  'RSA') { 
-            await updateRecord('road_assistance', { payment_intent_id : paymentIntent.id }, ['request_id', 'rider_id'], [booking_id, rider_id] );
+        } else if (booking_type == 'RSA') {
+            await updateRecord('road_assistance', { payment_intent_id: paymentIntent.id }, ['request_id', 'rider_id'], [booking_id, rider_id]);
         }
         return resp.json({
-            message           : "Payment from saved card completed successfully!",
-            status            : 1,
-            code              : 200,
-            payment_intent_id : paymentIntent.id,
+            message: "Payment from saved card completed successfully!",
+            status: 1,
+            code: 200,
+            payment_intent_id: paymentIntent.id,
             // payment_method_id : paymentIntent.payment_method, 
             // customer_id       : paymentIntent.customer
         });
-    } catch(err) {
+    } catch (err) {
         console.error('Error processing off-session payment:', err);
         tryCatchErrorHandler(err, resp, 'Oops! There is something went wrong! While saved card payment');
     }
 };
 
-const updateBoking = async (booking_type, booking_id, rider_id, payment_intent_id ) => {
-    const whereArr = [booking_id, rider_id] ;
+const updateBoking = async (booking_type, booking_id, rider_id, payment_intent_id) => {
+    const whereArr = [booking_id, rider_id];
 
     switch (booking_type) {
         case 'PCB':
-            await updateRecord('portable_charger_booking', {payment_intent_id}, ['booking_id', 'rider_id'], whereArr);
+            await updateRecord('portable_charger_booking', { payment_intent_id }, ['booking_id', 'rider_id'], whereArr);
             break;
         case 'CS':
-            await updateRecord('charging_service', {payment_intent_id}, ['request_id', 'rider_id'], whereArr );
+            await updateRecord('charging_service', { payment_intent_id }, ['request_id', 'rider_id'], whereArr);
             break;
         case 'RSA':
-            await updateRecord('road_assistance', {payment_intent_id}, ['request_id', 'rider_id'], whereArr );
+            await updateRecord('road_assistance', { payment_intent_id }, ['request_id', 'rider_id'], whereArr);
             break;
         default:
             console.log('Unknown booking type');
@@ -839,11 +895,11 @@ const updateBoking = async (booking_type, booking_id, rider_id, payment_intent_i
     }
     return true;
 };
-const sendDescBooking = async (booking_type, booking_id,  ) => {
-    
+const sendDescBooking = async (booking_type, booking_id,) => {
+
     switch (booking_type) {
         case 'PCB':
-            return `POD Booking - ${booking_id}`;
+            return `Mobile EV Charging Booking - ${booking_id}`;
 
         case 'CS':
             return `Pickup & Dropoff Booking - ${booking_id}`;
@@ -858,36 +914,36 @@ const sendDescBooking = async (booking_type, booking_id,  ) => {
     return true;
 };
 const getPaymentSessionData = async (session_id) => {
-   
+
     try {
-        const stripe  = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
         const session = await stripe.checkout.sessions.retrieve(session_id);
-        
+
         if (session.status === 'open') {
             await stripe.checkout.sessions.expire(session_id);
             console.log('Session expired successfully');
-            return  true;
-        }  
-        return  true;
+            return true;
+        }
+        return true;
     } catch (error) {
-        return { error : error.message };
+        return { error: error.message };
     }
 }
 const getPaymentIntentData = async (payment_intent_id) => {
-   
+
     try {
-        const stripe        = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
         const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
-        const paymentStatus = ['requires_payment_method', 'requires_confirmation', 'requires_action'] ;
-        
-        if ( paymentStatus.includes(paymentIntent.status) ) {
+        const paymentStatus = ['requires_payment_method', 'requires_confirmation', 'requires_action'];
+
+        if (paymentStatus.includes(paymentIntent.status)) {
             await stripe.paymentIntents.cancel(payment_intent_id);
             console.log('Session expired successfully');
-            return  true;
-        }  
-        return  true;
+            return true;
+        }
+        return true;
     } catch (error) {
-        return { error : error.message };
+        return { error: error.message };
     }
 }
 export const removeAllCards = async (rider_email) => {
@@ -895,26 +951,26 @@ export const removeAllCards = async (rider_email) => {
     if (!rider_email) {
         return { success: false, message: 'Rider email is required.' };
     }
- 
+
     try {
         const user = await findCustomerByEmail(rider_email);
         if (!user.success) {
             return { success: false, message: 'Customer not found.' };
         }
- 
+
         const customerId = user.customer_id;
         const allMethods = await stripe.paymentMethods.list({
             customer: customerId,
             type: 'card',
         });
- 
+
         if (allMethods.data.length === 0) {
             console.log("No cards found to remove")
             return { success: true, message: 'No cards found to remove.', removed: [] };
         }
- 
+
         const detachedIds = [];
- 
+
         for (const pm of allMethods.data) {
             if (pm.customer) {
                 const detached = await stripe.paymentMethods.detach(pm.id);
@@ -934,18 +990,18 @@ export const removeAllCards = async (rider_email) => {
 };
 
 export const getPaymentDetails = async (paymentId) => {
-  try {
-    const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
-    const payment = await razorpay.payments.fetch(paymentId);
+    try {
+        const razorpay = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+        const payment = await razorpay.payments.fetch(paymentId);
 
-    console.log("Full Payment Object:", payment);
+        console.log("Full Payment Object:", payment);
 
-    return payment;
-  } catch (error) {
-    console.error("Error fetching payment:", error);
-    throw error;
-  }
+        return payment;
+    } catch (error) {
+        console.error("Error fetching payment:", error);
+        throw error;
+    }
 };

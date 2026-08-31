@@ -33,7 +33,7 @@ export const chargerList = asyncHandler(async (req, resp) => {
     return resp.json({
         status     : 1,
         code       : 200,
-        message    : ["Portable Charger List fetch successfully!"],
+        message    : ["Mobile EV Charging List fetch successfully!"],
         data       : result.data,
         slot_data  : slotData,
         total_page : result.totalPage,
@@ -68,13 +68,263 @@ export const getPcSlotList = asyncHandler(async (req, resp) => {
         is_booking : 0, 
         status     : 1, 
         code       : 200, 
-        alert2     : "The slots for the selected date are fully booked. Please select another date to book the POD for your EV.",
+        alert2     : "The slots for the selected date are fully booked. Please select another date to book the Charging for your EV.",
         alert         : "",
         booking_price : 1
     });
 });
 
+
 export const chargerBooking = asyncHandler(async (req, resp) => {
+
+    const {
+        rider_id, user_name, country_code, contact_no, address, latitude, longitude, parking_number = '', parking_floor = '', vehicle_id, slot_date, slot_time, slot_id, service_price = 0, address_id, device_name = '', coupon_code = '',
+        battery_percent = 0, package_id
+    } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id     : ["required"],
+        user_name    : ["required"],
+        country_code : ["required"],
+        contact_no   : ["required"],
+        address      : ["required"],
+        latitude     : ["required"],
+        longitude    : ["required"],
+        vehicle_id   : ["required"],
+        slot_date    : ["required"],
+        slot_time    : ["required"],
+        slot_id      : ["required"],
+        address_id   : ["required"],
+        package_id   : ["required"],
+    });
+
+    if (!isValid) {
+        return resp.json({ status: 0, code: 422, message: errors });
+    }
+
+    let connection;
+
+    try {
+
+        const service_name = "Mobile EV Charging";
+        const service_type = "Mobile EV Charging";
+
+        const riderAddress = await queryDB(`
+            SELECT 
+                state, city, pincode, landmark,
+                (
+                    SELECT address_alert
+                    FROM portable_charger_booking
+                    WHERE rider_id = ? AND address = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) AS address_alert,
+
+                (
+                    SELECT CONCAT_WS( '', vehicle_make, ", ", vehicle_model, ", ", vehicle_number )
+                    FROM riders_vehicles
+                    WHERE rider_id = ? AND vehicle_id = ?
+                ) AS vehicle_data
+
+            FROM rider_address
+            WHERE rider_id = ? AND address_id = ?
+            ORDER BY id DESC `, [ rider_id, address, rider_id, vehicle_id, rider_id, address_id ]
+        );
+
+        if (!riderAddress) {
+            return resp.json({ message: ["Address Id not valid!"], status: 0, code: 422, error: true });
+        }
+        if (!riderAddress.vehicle_data) {
+            return resp.json({ message: ["Vehicle Id not valid!"], status: 0, code: 422, error: true });
+        }
+
+        const packageData = await queryDB(`
+            SELECT
+                package_id, package_name, charging_capacity, price_per_unit, service_fee
+            FROM home_ev_charging_packages
+            WHERE package_id = ? `, [package_id]
+        );
+        if (!packageData) {
+            return resp.json({ message: ["Package Id not valid!"], status: 0, code: 422, error: true });
+        }
+ 
+        const chargingFees = Number(packageData.charging_capacity || 0) * Number(packageData.price_per_unit || 0);
+        const serviceFees = Number(packageData.service_fee || 0);
+
+        // Before GST
+        const subTotal = chargingFees + serviceFees;
+
+        // GST
+        const gstPercentage = 18;
+        const gstAmount     = Number( ( subTotal * gstPercentage / 100 ).toFixed(2) );
+
+        // Amount before coupon
+        const grossAmount = Number( ( subTotal + gstAmount ).toFixed(2) );
+
+        let couponDiscount = 0;
+        let finalAmount    = grossAmount;
+ 
+        if (coupon_code) {
+
+            const couponData = await checkCoupon( rider_id, "Mobile EV Charging", coupon_code, subTotal );
+
+            if (couponData.status == 0) {
+
+                return resp.json({ message: [couponData.message], status: 0, code: 422, error: true });
+            }
+            finalAmount    = Number(couponData.service_price);
+            couponDiscount = Number( ( grossAmount - finalAmount ).toFixed(2) );
+        }
+
+        const bookingPrice  = finalAmount;
+        const clientPrice   = Number(service_price).toFixed(2);
+        const expectedPrice = Number(bookingPrice).toFixed(2);
+
+        if ( clientPrice !== expectedPrice && coupon_code === '' ) {
+
+            return resp.json({
+                message: ['coupon_code is required'], status: 0, code: 422, error: true, bookingPrice, service_price
+            });
+        }
+        if ( clientPrice !== expectedPrice && coupon_code ) {
+
+            const couponData = await checkCoupon( rider_id, 'Mobile EV Charging', coupon_code, subTotal );
+
+            if (couponData.status == 0) {
+
+                return resp.json({ message: [couponData.message], status: 0, code: 422, error: true });
+            }
+            if (clientPrice !== expectedPrice) {
+
+                return resp.json({ status: 0, code: 422, error: true,
+                    message: ["Booking price is not valid!"], expected_price: expectedPrice
+                });
+            }
+        }
+        const addressAlert = riderAddress.address_alert || '';
+        const area         = riderAddress.landmark;
+        const vehicle_data = riderAddress.vehicle_data;
+ 
+        const fSlotDateTime = moment( slot_date + ' ' + slot_time, 'YYYY-MM-DD HH:mm:ss' ).format('YYYY-MM-DD HH:mm:ss');
+        const currDateTime  = moment().format('YYYY-MM-DD HH:mm:ss');
+
+        if (fSlotDateTime < currDateTime) {
+
+            return resp.json({ status: 0, code: 422, message: [ "Invalid slot, Please select another slot" ] });
+        }
+        const fSlotDate = moment( slot_date, 'YYYY-MM-DD' ).format('YYYY-MM-DD');
+        
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        const [slotLimitRows] = await connection.execute(`
+                SELECT id, booking_limit
+                FROM portable_charger_slot
+                WHERE slot_date = ? AND start_time = ?
+                LIMIT 1
+                FOR UPDATE `, [ fSlotDate, slot_time ]
+            );
+
+        if (slotLimitRows.length === 0) {
+
+            await connection.rollback();
+            return resp.json({ message: [ "The slot you have selected is invalid!" ], status: 0, code: 422, error: true });
+        }
+        const bookingLimit = Number( slotLimitRows[0].booking_limit );
+ 
+        const [bookingRows] = await connection.execute(`
+            SELECT COUNT(*) AS booking_count
+            FROM portable_charger_booking
+            WHERE slot_time = ? AND slot_date = ? AND status NOT IN ('C')
+            `, [ slot_time, fSlotDate ]
+        );
+        const bookingCount = Number( bookingRows[0].booking_count || 0 );
+ 
+        if (bookingCount >= bookingLimit) {
+
+            await connection.rollback();
+
+            return resp.json({
+                message: [ "The slot you selected has already been booked. Please select another slot" ],
+                status: 0, code: 422, error: true
+            });
+        }
+        const packageDetails = {
+
+            ...packageData,
+
+            // Package Charges
+            charging_fees: chargingFees,
+            service_fee: serviceFees,
+
+            // Payment Details
+            subtotal: subTotal,
+            gst_percentage: gstPercentage,
+            gst_amount: gstAmount,
+            gross_amount: grossAmount,
+
+            // Coupon
+            coupon_code: coupon_code || "",
+            coupon_discount: couponDiscount,
+
+            // Final
+            total_amount: finalAmount,
+            payable_amount: finalAmount
+        };
+
+        const [insert] = await connection.execute(`
+            INSERT INTO portable_charger_booking (
+                booking_id, rider_id, vehicle_id, service_name, service_price, service_type, service_feature,
+                user_name, country_code, contact_no, slot, slot_date, slot_time, address, latitude, longitude,
+                status, address_alert, parking_number, parking_floor, address_id, device_name, area,
+                vehicle_data, current_percent, state, city, pincode, package_data
+            )
+            VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+        `, [
+            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "",
+            user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude,
+            'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area,
+            vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails
+        ]);
+        if (insert.affectedRows === 0) {
+
+            await connection.rollback();
+
+            return resp.json({ status: 0, code: 200, message: [ "Oops! Something went wrong. Please try again." ] });
+        } 
+        const booking_id = 'PCB' + String(insert.insertId).padStart(4, '0');
+
+        await connection.execute(
+            `UPDATE portable_charger_booking SET booking_id = ? WHERE id = ? `, [ booking_id, insert.insertId ]
+        );
+        await connection.commit();
+ 
+        return resp.json({
+            status: 1, code: 200, booking_id: booking_id, service_price: service_price,
+            message: [ "Booking Request Received!." ]
+        });
+    } catch (err) {
+
+        if (connection) {
+
+            try {
+                await connection.rollback();
+            } catch (rollbackError) {
+                console.log( "Rollback failed:", rollbackError );
+            }
+        }
+        console.log( "Transaction failed:", err );
+ 
+        tryCatchErrorHandler( req.originalUrl, err, resp );
+
+    } finally {        
+        if (connection) {
+            connection.release();
+        }
+    }
+});
+
+export const chargerBookingOld = asyncHandler(async (req, resp) => {
 
     const { rider_id, user_name, country_code, contact_no, address, latitude, longitude, parking_number= '',
         parking_floor='', vehicle_id, slot_date, slot_time, slot_id, service_name, service_type, service_feature, service_price= 0, address_id, device_name ='', coupon_code=''
@@ -133,7 +383,8 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
         }
         else if(parseFloat(service_price) != bookingPrice && coupon_code) {
             const servicePrice = parseFloat(service_price) ;
-            const couponData   = await checkCoupon(rider_id, 'POD-On Demand Service', coupon_code);
+            // const couponData   = await checkCoupon(rider_id, 'POD-On Demand Service', coupon_code);
+            const couponData   = await checkCoupon(rider_id, '"Mobile EV Charging"', coupon_code);
 
             if(couponData.status == 0 ){
                 return resp.json({ message : [couponData.message], status: 0, code: 422, error: true });
@@ -276,7 +527,7 @@ export const chargerBookingList = asyncHandler(async (req, resp) => {
         inProcessBookingList = inProcessrow;
     }
     return resp.json({
-        message    : ["Portable Charger Booking List fetched successfully!"],
+        message    : ["Mobile EV Charging Booking List fetched successfully!"],
         data       : bookingList,
         total_page : totalPage,
         inProcessBookingList,
@@ -335,7 +586,7 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
         history[lastValue].order_status = 'RS'
     }
     return resp.json({
-        message         : ["POD Booking Details Service fetched successfully!"],
+        message         : ["Charging Booking Details Service fetched successfully!"],
         data            : booking,
         service_history : history,
         status          : 1,
@@ -472,7 +723,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     await updateRecord('portable_charger_booking', { status : 'C' }, ['booking_id'], [booking_id]);
     await portableChargerInvoice(rider_id, booking_id); 
     const href    = `portable_charger_booking/${booking_id}`;
-    const title   = 'Portable Charging Booking!';
+    const title   = 'Mobile EV Charging Booking!';
     const message = `Booking Cancelled : ${booking_id}`;
     await createNotification(title, message, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
  
@@ -482,7 +733,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
         const RSAhtml = `<html>
             <body>
                 <h4>Dear ${checkOrder.rsa_name},</h4>
-                <p>This is to inform you that a user has cancelled their booking for the Portable EV Charging Service. Please find the details below:</p>
+                <p>This is to inform you that a user has cancelled their booking for the Mobile EV Charging Service. Please find the details below:</p>
                 <p>Booking Details:</p>
                 <p>Customer Name       : ${checkOrder.user_name}</p>
                 <p>Contact No          : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -493,12 +744,12 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
                 <p>Best regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(checkOrder.rsa_email, `Portable Charger Service Booking Cancellation (Booking ID: ${booking_id} ) `, RSAhtml);
+        emailQueue.addEmail(checkOrder.rsa_email, `Mobile EV Charging Service Booking Cancellation (Booking ID: ${booking_id} ) `, RSAhtml);
      }
     const html = `<html>
         <body>
             <h4>Dear ${checkOrder.user_name},</h4>
-            <p>We would like to inform you that your booking for the portable charger has been successfully cancelled. Below are the details of your cancelled booking:</p>
+            <p>We would like to inform you that your booking for the mobile EV charging has been successfully cancelled. Below are the details of your cancelled booking:</p>
             <p>Booking ID    : ${booking_id}</p>
             <p>Date and Time : ${moment(checkOrder.slot_date, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(checkOrder.slot_time, 'HH:mm').format('h:mm A')}</p>
             <p>Thank you for using PlusX Electric. We look forward to serving you again soon.</p>
@@ -509,7 +760,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
     const adminHtml = `<html>
         <body>
             <h4>Dear Admin,</h4>
-            <p>This is to inform you that a user has cancelled their booking for the Portable EV Charging Service. Please find the details below:</p>
+            <p>This is to inform you that a user has cancelled their booking for the Mobile EV Charging Service. Please find the details below:</p>
             <p>Booking Details:</p>
             <p>Customer Name       : ${checkOrder.user_name}</p>
             <p>Contact No          : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -520,7 +771,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
             <p>Best regards,<br/>PlusX Electric Team </p>
         </body>
     </html>`;
-    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Portable Charger Service Booking Cancellation ( Booking ID : ${booking_id} )`, adminHtml); 
+    emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging Service Booking Cancellation ( Booking ID : ${booking_id} )`, adminHtml); 
     io.emit('notification-list', {msCount : 1});
     return resp.json({ message: ['Your booking has been successfully cancelled.'], status: 1, code: 200 });
 });
@@ -560,7 +811,7 @@ export const userFeedbackPCBooking = asyncHandler(async (req, resp) => {
         if(insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
         
         const href    = `portable_charger_booking/${booking_id}`;
-        // const title   = 'Portable Charger Feedback!';
+        // const title   = 'Mobile EV Charging Feedback!';
         // const message = `Feedback Received - Booking ID: ${booking_id}.`;
         const title   = `Feedback Received- ${booking_id}`;
         const message = `You've received feedback from a customer`;
@@ -689,7 +940,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
 
         const href    = 'portable_charger_booking/' + booking_id;
-        const heading = 'Portable Charging Booking!';
+        const heading = 'Mobile EV Charging Booking!';
         const desc    = `Rescheduled Booking Confirmed! ${booking_id}`;
         createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin','', rider_id, href);
         createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
@@ -698,7 +949,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         const htmlUser = `<html>
             <body>
                 <h4>Dear ${checkOrder.user_name},</h4>
-                <p>We would like to confirm that your booking for the Portable EV Charging Service has been successfully rescheduled. Please find the updated details below:</p>
+                <p>We would like to confirm that your booking for the Mobile EV Charging Service has been successfully rescheduled. Please find the updated details below:</p>
                 
                 <p>Booking ID: ${booking_id}</p>
                 <p>Rescheduled Date & Time : ${moment(fSlotDate, 'YYYY MM DD').format('D MMM, YYYY,')} ${moment(slot_time, 'HH:mm').format('h:mm A')}</p>
@@ -711,7 +962,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
         const htmlAdmin = `<html>
             <body>
                 <h4>Dear Admin,</h4>
-                <p>This is to inform you that a user has rescheduled their Portable EV Charging Service booking. Please find the updated booking details below:</p> 
+                <p>This is to inform you that a user has rescheduled their Mobile EV Charging Service booking. Please find the updated booking details below:</p> 
                 <p>User Name       : ${checkOrder.user_name}</p>
                 <p>User Contact    : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
                 <p>Booking ID      : ${booking_id}</p>
@@ -722,7 +973,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
                 <p>Best regards,<br/>PlusX Electric Team </p>
             </body>
         </html>`;
-        emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Home EV Charging  Booking Rescheduled (Booking ID : ${booking_id} )`, htmlAdmin);
+        emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking Rescheduled (Booking ID : ${booking_id} )`, htmlAdmin);
         
         if(checkOrder.rsa_id ){
  
@@ -731,7 +982,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
             const htmlDriver = `<html>
                 <body>
                     <h4>Dear ${checkOrder.rsa_name},</h4>
-                    <p>This is to inform you that a user has rescheduled their Portable EV Charging Service booking. Please find the updated booking details below:</p>
+                    <p>This is to inform you that a user has rescheduled their Mobile EV Charging Service booking. Please find the updated booking details below:</p>
                     
                     <p>User Name       : ${checkOrder.user_name}</p>
                     <p>User Contact    : ${checkOrder.country_code}-${checkOrder.contact_no}</p>
@@ -743,7 +994,7 @@ export const reScheduleBooking = asyncHandler(async (req, resp) => {
                     <p>Best regards,<br/> PlusX Electric Team </p>
                 </body>
             </html>`;
-            emailQueue.addEmail(checkOrder.rsa_email, `Portable Charger Booking Rescheduled (Booking ID: ${booking_id})`, htmlDriver);
+            emailQueue.addEmail(checkOrder.rsa_email, `Mobile EV Charging Booking Rescheduled (Booking ID: ${booking_id})`, htmlDriver);
         }
         let respMsg = "Booking request received! Your booking has been successfully rescheduled. Our team will arrive at the updated time.";
 

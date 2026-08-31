@@ -97,7 +97,7 @@ export const stationDetail = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     let gallery   = [];
     const station = await queryDB(`SELECT *, ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM public_charging_station_list WHERE station_id = ?`, [station_id]); 
-    if (!station) return resp.status(404).json({status: 0, code: 404, message: 'Station not found.'});
+    if (!station) return resp.json({status: 0, code: 404, message: 'Station not found.'});
     
     station.schedule = getOpenAndCloseTimings(station);
 
@@ -117,10 +117,10 @@ export const stationDetail = asyncHandler(async (req, resp) => {
     const days        = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' ];
     
     const result = { chargingFor, chargerType, days };
-    if(station_id){
-        const stationData = await queryDB(`SELECT *, ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM public_charging_station_list WHERE station_id = ?`, [station_id]); 
-        result.stationData = stationData; 
-    }
+    // if(station_id){
+    //     const stationData = await queryDB(`SELECT *, ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM public_charging_station_list WHERE station_id = ?`, [station_id]); 
+    //     result.stationData = stationData; 
+    // }
    
     return resp.json({
         status       : 1,

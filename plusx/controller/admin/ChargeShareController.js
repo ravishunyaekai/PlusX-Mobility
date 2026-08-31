@@ -117,16 +117,10 @@ export const editChargShare = async (req, resp) => {
         }
         // console.log("charger_image",charger_image)
 //  return resp.json({status:0, message: "Failed to edit Charge share! Please try again after some time."});
-console.log("charger_id =>", charger_id);
  const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`,  [charger_id]
 );
-if (!user_details) {
-    return resp.json({
-        status: 0,
-        code: 400,
-        message: ["Unable to approve. Associated rider account has been deleted."]
-    });
-}        
+     
+        
         // const { isValid, errors } = validateFields(mergeParam(req), { 
         //     // rider_id         : ["required"], 
         //     // mobile           : ["required"], 
@@ -215,7 +209,7 @@ await db.execute(sql, [
                     const href    = 'charge_share_accept/' + charger_id;
             const heading = `${charger_name}`;
             const desc    = 'Your listing has been approved!';
-            await   pushNotification(user_details.fcm_token, heading, desc, 'RDRFCM', href);
+          await   pushNotification(user_details.fcm_token, heading, desc, 'RDRFCM', href);
  
              
             await createNotification(heading, desc, 'charge_share_accept', 'Rider', 'Admin','', user_details.rider_id, href);
@@ -244,13 +238,7 @@ export const rejectChargShare = async (req, resp) => {
     const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`,  [charger_id]
 );
      
-if (!user_details) {
-    return resp.json({
-        status: 0,
-        code: 400,
-        message: ["Associated rider account has been deleted."]
-    });
-}
+      
     
      await updateRecord('charge_share', {charger_status:0}, ['charger_id'], [charger_id]);
                 

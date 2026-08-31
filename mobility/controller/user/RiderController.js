@@ -89,8 +89,6 @@ export const bookingList = asyncHandler(async (req, resp) => {
     const sortOrder = (sort_by === 'desc') ? 'DESC' : 'ASC';
     query += ` ORDER BY id ${sortOrder} LIMIT ${start}, ${limit}`;
 
-    console.log(query)
-    console.log(queryParams)
     const [bookings] = await db.execute(query, queryParams);
 
     return resp.json({

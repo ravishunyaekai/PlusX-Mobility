@@ -24,13 +24,13 @@ export const donwloadPodBookingList = async (req, resp) => {
                 CASE
                     WHEN status = 'CNF' THEN 'Booking Confirmed'
                     WHEN status = 'A'   THEN 'Assigned'
-                    WHEN status = 'RL'  THEN 'POD Reached at Location'
+                    WHEN status = 'RL'  THEN 'Charging Van Reached at Location'
                     WHEN status = 'CS'  THEN 'Charging Started'
                     WHEN status = 'CC'  THEN 'Charging Completed'
                     WHEN status = 'PU'  THEN 'Picked Up'
                     WHEN status = 'C'   THEN 'Cancel'
                     WHEN status = 'ER'  THEN 'Enroute'
-                    WHEN status = 'RO'  THEN 'POD Reached at Office'
+                    WHEN status = 'RO'  THEN 'Charging Van Reached at Office'
                 END AS status
             FROM
                 portable_charger_booking  

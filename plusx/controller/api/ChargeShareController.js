@@ -396,16 +396,13 @@ export const packageList = asyncHandler(async (req, resp) => {
 
     const [packages] = await db.execute(`
         SELECT
-            id,
-            package_name,
-            charging_capacity,
-            price_per_unit,
+            id, package_id, package_name,
+            CAST(charging_capacity AS UNSIGNED) AS charging_capacity,
+            CAST(price_per_unit AS UNSIGNED) AS price_per_unit,
             ROUND((charging_capacity * price_per_unit), 2) AS charging_fee,
-            service_fee,
-            description
+            service_fee, description
         FROM home_ev_charging_packages
-        WHERE status = 1
-        AND is_deleted = 0
+        WHERE status = 1 AND is_deleted = 0
         ORDER BY charging_capacity ASC;
     `);
 

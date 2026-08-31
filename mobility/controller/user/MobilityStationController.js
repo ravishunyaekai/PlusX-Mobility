@@ -56,9 +56,9 @@ export const cycleStationDetails = asyncHandler(async (req, resp) => {
     const {rider_id, station_id, latitude, longitude } = mergeParam(req);
 
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id   : ["required"], 
-        station_id : ["required"], 
-        latitude   : ["required"], 
+        rider_id   : ["required"],
+        station_id : ["required"],
+        latitude   : ["required"],
         longitude  : ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
@@ -232,7 +232,7 @@ export const nearestChargerList = asyncHandler(async (req, resp) => {
     return resp.json({
         status  : 1 ,
         code    : 200, 
-        message : ['Nearest Portable Charger List fetch successfully!'],
+        message : ['Nearest Mobile EV Charging List fetch successfully!'],
         data    : routeResults
     });
 });

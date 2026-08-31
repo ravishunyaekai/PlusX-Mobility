@@ -5,7 +5,7 @@ export const apiAuthorization = (req, resp, next) => {
   
   const apiKey = req.headers['authorization'] || req.query.Authorization || req.body.Authorization;
   const token = process.env.API_AUTH_KEY;
-  // console.log("Original URL:", req.originalUrl);
+  console.log("Original URL:", req.originalUrl);
 
   if (!token){
     return resp.status(400).json({message: "Authorization key is misssing", code:400, status:0, data: {}});
