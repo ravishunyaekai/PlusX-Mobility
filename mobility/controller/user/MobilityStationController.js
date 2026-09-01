@@ -159,7 +159,7 @@ export const nearByStaion = asyncHandler(async (req, resp) => {
             mobility_station_list msl   
         LEFT JOIN  cycle_list cl ON cl.station_id = msl.station_id 
         GROUP BY msl.station_name, msl.latitude, msl.longitude
-        HAVING  cycle_count > 0 
+        HAVING  cycle_count > 0 AND distance <= 10
         ORDER BY distance ASC `, [ latitude, longitude, latitude]
     );
     return resp.json({

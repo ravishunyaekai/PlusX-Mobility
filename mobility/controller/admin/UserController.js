@@ -256,24 +256,84 @@ export const deletedRiderList = async (req, resp) => {
     }
 };
 
-export const cycleBookingDetails = asyncHandler(async(req,resp)=>{
-    let { booking_id } = req.body;
-    if (!booking_id) return resp.status(200).json({ status : 0, code : 400, message : ['booking ID is required'] });
-    
-    let cycle_booking = await queryDB(`
+export const cycleBookingDetailsOld = asyncHandler(async (req, resp) => {
+  let { booking_id } = req.body;
+  if (!booking_id)
+    return resp
+      .status(200)
+      .json({ status: 0, code: 400, message: ["booking ID is required"] });
+
+  let cycle_booking = await queryDB(
+    `
         SELECT 
-            cycle_id, booking_id, lock_number, hand_over_station as handover_station, handover_type, cycle_type,
-            ${formatDateInQuery(['created_at'])}, pickup_station, dropoff_station, account_type, user_name, user_email, price, status, contact_no, country_code, city, per_min_cost, time_taken, university,
+            cycle_id, booking_id, lock_number, hand_over_station as handover_station, handover_type, cycle_type,(
+                SELECT rating
+                FROM cycle_booking_feedback cbf
+                WHERE cbf.booking_id = cycle_booking.booking_id
+                LIMIT 1
+            ) AS rating,(
+                SELECT feedback_text
+                FROM cycle_booking_feedback cbf
+                WHERE cbf.booking_id = cycle_booking.booking_id
+                LIMIT 1
+            ) AS feedback_text,
+            ${formatDateInQuery(["created_at"])}, pickup_station, dropoff_station, account_type, user_name, user_email, price, status, contact_no, country_code, city, per_min_cost, time_taken, university,
             start_lat, start_long, ROUND(distance, 2) as distance,
             DATE_FORMAT(pick_time, '%h:%i %p') AS pick_time, 
             DATE_FORMAT(drop_time, '%h:%i %p') AS drop_time
         FROM cycle_booking
-        WHERE booking_id = ?`, [ booking_id ]
-    );
-    if(!cycle_booking) return resp.json({ status : 0, code : 400, message : ['Booking does not found'] });
-    
-    const data = { cycle_booking, currency : "INR" } 
-    return resp.json({ status : 1, code : 200, data })
+        WHERE booking_id = ?`,
+    [booking_id],
+  );
+  if (!cycle_booking)
+    return resp.json({
+      status: 0,
+      code: 400,
+      message: ["Booking does not found"],
+    });
+
+  const data = { cycle_booking, currency: "INR" };
+  return resp.json({ status: 1, code: 200, data });
+});
+
+export const cycleBookingDetails = asyncHandler(async (req, resp) => {
+  let { booking_id } = req.body;
+  if (!booking_id)
+    return resp
+      .status(200)
+      .json({ status: 0, code: 400, message: ["booking ID is required"] });
+
+  let cycle_booking = await queryDB(
+    `
+        SELECT 
+            cycle_id, booking_id, lock_number, hand_over_station as handover_station, handover_type, cycle_type,(
+                SELECT rating
+                FROM cycle_booking_feedback cbf
+                WHERE cbf.booking_id = cycle_booking.booking_id
+                LIMIT 1
+            ) AS rating,(
+                SELECT feedback_text
+                FROM cycle_booking_feedback cbf
+                WHERE cbf.booking_id = cycle_booking.booking_id
+                LIMIT 1
+            ) AS feedback_text,
+            ${formatDateInQuery(["created_at"])}, pickup_station, dropoff_station, account_type, user_name, user_email, price, status, contact_no, country_code, city, per_min_cost, time_taken, university,
+            start_lat, start_long, ROUND(distance, 2) as distance,
+            DATE_FORMAT(pick_time, '%h:%i %p') AS pick_time, 
+            DATE_FORMAT(drop_time, '%h:%i %p') AS drop_time
+        FROM cycle_booking
+        WHERE booking_id = ?`,
+    [booking_id],
+  );
+  if (!cycle_booking)
+    return resp.json({
+      status: 0,
+      code: 400,
+      message: ["Booking does not found"],
+    });
+
+  const data = { cycle_booking, currency: "INR" };
+  return resp.json({ status: 1, code: 200, data });
 });
 
 

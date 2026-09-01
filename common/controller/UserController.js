@@ -10,7 +10,8 @@ dotenv.config();
 import bcrypt from "bcryptjs";
 // import generateUniqueId from 'generate-unique-id';
 import { io } from "../../server.js";
-import { newcreateCustomer } from "../../mobility/controller/razorpay/razorpay.js";
+import { deleteRiderCardsFromRazorpay, newcreateCustomer } from "../../mobility/controller/razorpay/razorpay.js";
+import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 
@@ -226,33 +227,82 @@ export const deleteAccount = asyncHandler(async (req, resp) => {
              WHERE rider_id = ? 
              AND status = 'ON'
              LIMIT 1`,
-            [rider_id]
-        );
-        if (ongoingBooking) {
-            await connection.rollback();
-            return resp.json({
-                status: 0,
-                code: 400,
-                message: ['Cannot delete account. Ride is still ongoing.']
-            });
-        }
-        
-        const [[rider]] = await connection.execute(`SELECT profile_img, rider_name,last_name, rider_email, country_code, rider_mobile, state,city_id,country_id,
-             country_id, student_id,id_image,password ,latitude,longitude,university,added_from,account_type FROM riders WHERE rider_id = ?`, [rider_id]);
-        if(!rider) { await connection.commit(); return resp.json({status:0, message: 'Rider not found.'});}
-       
-        // if(rider.profile_img) deleteFile('rider_profile', rider.profile_img);
+      [rider_id],
+    );
+    if (ongoingBooking) {
+      await connection.rollback();
+      return resp.json({
+        status: 0,
+        code: 400,
+        message: ["Cannot delete account. Ride is still ongoing."],
+      });
+    }
 
-       
-            const sql = `INSERT INTO deleted_riders (rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state, city_id, country_id, 
-                        student_id, id_image, password, latitude, longitude, university, profile_img, added_from, account_type) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-            const rider_data=[rider_id,rider.rider_name,rider.last_name,rider.rider_email,rider.country_code,rider.rider_mobile,rider.state,rider.city_id,
-                rider.country_id,rider.student_id,rider.id_image,rider.password,rider.latitude,rider.longitude,rider.university,rider.profile_img,rider.added_from,rider.account_type
-                 ];
-                
+    // Get rider + Razorpay customer ID
+    const [[rider]] = await connection.execute(
+      `SELECT
+        customer_id,
+        profile_img,
+        rider_name,
+        last_name,
+        rider_email,
+        country_code,
+        rider_mobile,
+        state,
+        city_id,
+        country_id,
+        student_id,
+        id_image,
+        password,
+        latitude,
+        longitude,
+        university,
+        added_from,
+        account_type
+       FROM riders
+       WHERE rider_id = ?`,
+      [rider_id],
+    );
+    if (!rider) {
+      await connection.commit();
+      return resp.json({ status: 0, message: "Rider not found." });
+    }
 
-          const deleted_riders= await connection.execute(sql, rider_data);
+    /*
+     * Delete all saved cards from Razorpay
+     */
+    if (rider.customer_id) {
+      await deleteRiderCardsFromRazorpay(rider.customer_id);
+    }
+
+    /*
+     * Save rider into deleted_riders
+     */
+    const sql = `INSERT INTO deleted_riders 
+            (rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state, city_id, country_id, student_id, id_image, password, latitude, longitude, university, profile_img, added_from, account_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+    const rider_data = [
+      rider_id,
+      rider.rider_name,
+      rider.last_name,
+      rider.rider_email,
+      rider.country_code,
+      rider.rider_mobile,
+      rider.state,
+      rider.city_id,
+      rider.country_id,
+      rider.student_id,
+      rider.id_image,
+      rider.password,
+      rider.latitude,
+      rider.longitude,
+      rider.university,
+      rider.profile_img,
+      rider.added_from,
+      rider.account_type,
+    ];
+    const deleted_riders = await connection.execute(sql, rider_data);
 
        
 

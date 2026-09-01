@@ -826,14 +826,22 @@ export const cycleInvoiceDetails = asyncHandler(async(req,resp)=>{
         cycle_booking.additionalPrice = additionalPrice.toFixed(2);
         cycle_booking.taxPrice        = (total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ) ? 0 : (total_cost * 0.18).toFixed(2); 
 
-        cycle_booking.additional_price_text = `${cycle_booking.post_price} per minutes after base period`;
-        cycle_booking.tax_text              = (total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ) ? `0%` : `18%`
+    cycle_booking.additional_price_text = `₹ ${cycle_booking.post_price} per minutes after base duration`;
+    cycle_booking.tax_text =
+      total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ? `0%` : `18%`;
 
-        return resp.json({ status : 1, message: 'Cycle invoice lists', data : cycle_booking })
-    } catch (error) {
-        console.log('Error fetching cycle invoice list:', error);
-        return resp.json({ status: 0, message: 'Error fetching cycle invoice lists' });
-    }
+    return resp.json({
+      status: 1,
+      message: "Cycle invoice lists",
+      data: cycle_booking,
+    });
+  } catch (error) {
+    console.log("Error fetching cycle invoice list:", error);
+    return resp.json({
+      status: 0,
+      message: "Error fetching cycle invoice lists",
+    });
+  }
 });
 
 export const IssuecycleBookingList = async (req, resp) => {

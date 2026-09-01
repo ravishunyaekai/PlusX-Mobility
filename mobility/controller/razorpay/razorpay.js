@@ -830,38 +830,60 @@ export const deleteCard = asyncHandler(async (req, resp) => {
       await razorpay.customers.deleteToken(riders.customer_id, t.id);
     }
 
-    // const deleteCard=db.execute("DELETE from rider_cards where token_id=?",[token_id]);
-    //  if( !response){ //!deleteCard ||
-    //   return resp.json({
-    //       status: 0,
-    //       code: 201,
-    //       message: ["Card was not deleted !"],
-    //     });
-    // }
-        return resp.json({
-      status: 1,
-      code: 200,
-      message: ["Card deleted successfully"],
-        });
-  }catch (error) {
-    console.error(" Error deleting token:", error);
-    throw error;
-  }
+      // const deleteCard=db.execute("DELETE from rider_cards where token_id=?",[token_id]);
+      //  if( !response){ //!deleteCard ||
+      //   return resp.json({
+      //       status: 0,
+      //       code: 201,
+      //       message: ["Card was not deleted !"],
+      //     });
+      // }
+      return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Card deleted successfully"],
+      });
+    } catch (error) {
+      console.error(" Error deleting token:", error);
+      throw error;
     }
-     
-     
-
-   
-
-
-    
-  
+  }
 });
 
+export const deleteRiderCardsFromRazorpay = async (customerId) => {
+  console.log(`\nDeleting all Razorpay cards for customer ID: ${customerId}`);
+  if (!customerId) {
+    console.log("\nNo Razorpay customer ID found");
+    return;
+  }
 
+  const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
 
+  // Get all saved cards/tokens for the customer
+  const tokensRes = await razorpay.customers.fetchTokens(customerId);
+  console.log("\ntokensRes", tokensRes);
 
+  const tokens = tokensRes.items || [];
 
+  console.log(`\nFound ${tokens.length} Razorpay tokens`);
+
+  // Delete every saved card token
+  for (const token of tokens) {
+    try {
+      await razorpay.customers.deleteToken(customerId, token.id);
+      console.log(`\nDeleted Razorpay token: ${token.id}`);
+    } catch (error) {
+      console.error(
+        `Failed to delete Razorpay token ${token.id}:`,
+        error.message,
+      );
+      throw error;
+    }
+  }
+};
 
 
 export const oldcreateCustomer= async(rider_id)=>{
