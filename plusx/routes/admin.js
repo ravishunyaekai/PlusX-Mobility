@@ -46,7 +46,7 @@ import { podDeviceList, podDeviceDetails, addPodDevice, editPodDevice, deletePod
 
 import { bikeList, bikeDetails, addBike, editBike, bikeSwipeData } from "../controller/admin/BikeController.js";
 import { swipeStationList, stationDetails, addStation, editStation } from "../controller/admin/SwipeStationController.js";
-import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector, chargeShareDelete, editChargShare, rejectChargShare } from "../controller/admin/ChargeShareController.js";
+import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector, chargeShareDelete, editChargShare, rejectChargShare, acceptChargShare } from "../controller/admin/ChargeShareController.js";
 const router = Router();
 
 const adminAuthRoutes = [
@@ -175,6 +175,7 @@ const adminRoutes = [
     { method: 'post', path: '/charge-share-edit', handler: editChargShare },
 
     { method: 'post', path: '/charge-share-reject', handler: rejectChargShare },
+    { method: 'post', path: '/charge-share-accept', handler: acceptChargShare },
 
 
     { method: 'post', path: '/charge-share-list', handler: chargeShareList },

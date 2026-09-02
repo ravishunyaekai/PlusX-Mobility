@@ -7,7 +7,7 @@ import { io } from "../../../server.js";
 
 export const addChargShare = async (req, resp) => {
     try {
-       const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude}=mergeParam(req);
+       const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude, accessPermit = 0, chargeRecomendRate }=mergeParam(req);
        
         const uploadedFiles = req.files;
         let charger_image      = '';
@@ -85,9 +85,9 @@ export const addChargShare = async (req, resp) => {
         formattedOpenTiming, charger_image,latitude,longitude)
          const insert = await insertRecord('charge_share',
         ['rider_id','rider_name','email','charger_id', 'mobile', 'charger_name', 'description', 'charger_type', 'output','connector_type', 'compatible', 'park_no', 'park_floor','open_days',
-        'open_timing', 'charger_image','latitude','longitude','city','state','address_data'], 
+        'open_timing', 'charger_image','latitude','longitude','city','state','address_data','accessPermit', 'chargeRecomendRate'], 
              [ rider_id,rider_name,email,charger_id, mobile, charger_name, description, charger_type, output, connector_type, formatted_compatible, park_no, park_floor,formattedOpenDays, 
-        formattedOpenTiming, charger_image,latitude,longitude,city,state,address_check.address_data]);
+        formattedOpenTiming, charger_image,latitude,longitude,city,state,address_check.address_data, accessPermit, chargeRecomendRate]);
 
         if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add Charge share! Please try again after some time."});
 
