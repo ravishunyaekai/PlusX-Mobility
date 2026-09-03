@@ -153,4 +153,6 @@ client.on('reconnect', () => console.log('Reconnecting...'));
 client.on('close', () => console.log('Disconnected'));
 client.on('error', err => console.log('Error', err.message));
 
+console.log('LIVE CODE: 03 Septpember 2026');
+
 export default client;
