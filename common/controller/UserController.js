@@ -729,12 +729,14 @@ export const getRiderData = asyncHandler(async(req, resp) => {
     const {rider_id} = mergeParam(req);
     if (!rider_id) return resp.json({ status: 0, code: 422, message: ["Rider Id is required"] });
     
-    const rider = await queryDB(`SELECT  cn.min_wallet_price,r.* ,st.name as state , ct.name city , cn.name as country, ${formatDateTimeInQuery(['r.created_at', 'r.updated_at'])}, ${formatDateInQuery(['date_of_birth'])} FROM
+    const rider = await queryDB(`SELECT  cn.min_wallet_price,r.* ,st.name as state , ct.name city , cn.name as country, ${formatDateTimeInQuery(['r.created_at', 'r.updated_at'])}, ${formatDateInQuery(['date_of_birth'])},
+    (SELECT COUNT(*) FROM purchase_history AS pu WHERE pu.customer_mobile = r.rider_mobile ) AS purchase_history_count,
+    (SELECT COUNT(*) FROM charge_share AS cs WHERE cs.rider_id = ? AND cs.charger_status = 1) AS charge_share_count FROM
      riders r
      LEFT JOIN states st on st.state_id=r.state_id
      LEFT JOIN cities ct on ct.city_id=r.city_id 
      LEFT join country cn on cn.country_id=r.country_id
-     WHERE rider_id=? `, [rider_id]);
+     WHERE rider_id=? `, [rider_id, rider_id]);
     rider.image_url = `${process.env.DIR_UPLOADS}profile-image/`;
       rider.min_wallet_price = parseFloat(rider.min_wallet_price);
         rider.out_standing_cost = parseFloat(rider.out_standing_cost);
@@ -756,12 +758,14 @@ export const home = asyncHandler(async (req, resp) => {
     if (!rider_id) return resp.json({ status: 0, code: 422, message: ["Rider Id is required"] });
     
     const riderQuery = `SELECT cn.min_wallet_price, r.out_standing_cost , r.rider_id, r.rider_name, r.amount as wallet_amount,
-        (SELECT COUNT(*) FROM notifications AS n WHERE n.panel_to = 'Rider' AND n.receive_id = r.rider_id AND status = '0') AS notification_count
+        (SELECT COUNT(*) FROM notifications AS n WHERE n.panel_to = 'Rider' AND n.receive_id = r.rider_id AND status = '0') AS notification_count,
+        (SELECT COUNT(*) FROM purchase_history AS pu WHERE pu.customer_mobile = r.rider_mobile ) AS purchase_history_count,
+        (SELECT COUNT(*) FROM charge_share AS cs WHERE cs.rider_id = ? AND cs.charger_status = 1) AS charge_share_count
         FROM riders r 
         JOIN country cn on cn.country_id=r.country_id
         WHERE r.rider_id =?
     `;
-    const riderData = await queryDB(riderQuery, [rider_id]);
+    const riderData = await queryDB(riderQuery, [rider_id, rider_id]);
 
     if (!riderData) {
         return resp.status(404).json({ message: "Rider not found", status: 0 });
@@ -773,7 +777,9 @@ export const home = asyncHandler(async (req, resp) => {
         notification_count : parseFloat(riderData.notification_count),
         wallet_amount:parseFloat(riderData.wallet_amount),
         out_standing_cost:parseFloat(riderData.out_standing_cost),
-        min_wallet_price:parseFloat(riderData.min_wallet_price)
+        min_wallet_price:parseFloat(riderData.min_wallet_price),
+        purchase_history_count : riderData.purchase_history_count,
+        charge_share_count     : riderData.charge_share_count
     };
     const orderData = await queryDB(
         `SELECT request_id, (SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) FROM rsa WHERE rsa_id = road_assistance.rsa_id) AS rsaDetails, created_at 
