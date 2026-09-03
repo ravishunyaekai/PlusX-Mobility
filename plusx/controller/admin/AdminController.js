@@ -104,7 +104,7 @@ export const notificationList = asyncHandler(async (req, resp) => {
     const start = parseInt((page_no * limit) - limit, 10);
 
     const totalRows  = await queryDB(`SELECT COUNT(*) AS total FROM notifications
-         WHERE module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking') and panel_to = ? and status = '0' `, ['Admin']);
+         WHERE module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking', 'charge share') and panel_to = ? and status = '0' `, ['Admin']);
     if(getCount){
         return resp.json({ 
             status : 1, 
@@ -118,12 +118,12 @@ export const notificationList = asyncHandler(async (req, resp) => {
     const total_page = Math.ceil(totalRows.total / limit) || 1; 
     const [rows] = await db.execute(`SELECT id, heading, description, module_name, panel_to, panel_from, receive_id, status, ${formatDateTimeInQuery(['created_at'])}, href_url
         FROM notifications WHERE 
-        module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking') and panel_to = 'Admin' ORDER BY id DESC LIMIT ${start}, ${parseInt(limit)} 
+        module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking', 'charge share') and panel_to = 'Admin' ORDER BY id DESC LIMIT ${start}, ${parseInt(limit)} 
     `, []);
     
     const notifications = rows;  // and status = 0 
     await db.execute(`UPDATE notifications SET status=? WHERE
-         module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking') and status=? AND panel_to=?`, ['1', '0', 'Admin']);
+         module_name in ('EV Accessories Booking','EV Charger Booking','Charging Installation Service','Roadside Assistance','Portable Charging Booking', 'charge share') and status=? AND panel_to=?`, ['1', '0', 'Admin']);
     
     return resp.json({ 
         status     : 1, 

@@ -94,7 +94,7 @@ export const addChargShare = async (req, resp) => {
        //
         // await pushNotification(user_details.fcm_token, charger_details.charger_name, 'Your EV share listing has been Rejected', 'RDRFCM', href );
        const href=`/electric/charge-share/charge-share-details/${charger_id}`
-              createNotification(charger_name, "Charge Share Listing",'charge share' , 'Admin', 'Rider', '', rider_id, href);
+              await createNotification(charger_name, "Charge Share Listing",'charge share' , 'Admin', 'Rider', rider_id, "", href);
          io.emit('plusx-notification-list', {msCount : 1});
 
         return resp.json({ status  : 1,code:200, message :[ "Your listing has been submitted successfully. You will be notified once your listing is approved."] });
@@ -331,7 +331,10 @@ export const chargeShareDelete = asyncHandler(async (req, resp) => {
 export const outputAndConnector = asyncHandler(async (req, resp) => {
     // const { requirement}      = mergeParam(req);
    
-   const [AC_output]=await db.execute(`SELECT id,value FROM output_connector where status='ac-output' order by sequence asc `);
+   const [AC_output]=await db.execute(`SELECT id,value FROM output_connector where status='ac-output' ORDER BY CAST(
+            REGEXP_SUBSTR(value, '^[0-9]+(\\.[0-9]+)?')
+            AS DECIMAL(10,2)
+        ) ASC `);
         const [DC_output]=await db.execute(`SELECT id,value FROM output_connector where status='dc-output' order by sequence asc `);
 
      const    [connector]=await db.execute(`SELECT id,value FROM output_connector where status='connector' order by id asc `);
