@@ -7,7 +7,7 @@ import { io } from "../../../server.js";
 
 export const addChargShare = async (req, resp) => {
     try {
-       const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude, accessPermit = 0, chargeRecomendRate }=mergeParam(req);
+       const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude, accessPermit = 0, chargeRecomendRate = null }=mergeParam(req);
        
         const uploadedFiles = req.files;
         let charger_image      = '';
@@ -299,9 +299,8 @@ export const chargeShareDetail = asyncHandler(async (req, resp) => {
     NULLIF(address_data->>'$.state', ''),
     NULLIF(address_data->>'$.pincode', '')
 ) AS address, park_no, park_floor, open_days,
-        open_timing, term_condition,charger_image, latitude, longitude, ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM charge_share WHERE charger_id = ?`, [charger_id]); 
+        open_timing, term_condition,charger_image, latitude, longitude, chargeRecomendRate,accessPermit , ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM charge_share WHERE charger_id = ?`, [charger_id]); 
     if (!charger) return resp.status(404).json({status: 0, code: 404, message: 'Charge share Product not found.'});
-    
     return resp.json({
         status       : 1,
         code         : 200,

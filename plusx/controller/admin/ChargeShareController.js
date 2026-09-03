@@ -400,7 +400,7 @@ cs.address_data->>'$.pincode'       AS pincode,
     NULLIF(cs.address_data->>'$.state', ''),
     NULLIF(cs.address_data->>'$.pincode', '')
 ) AS address, cs.park_no, cs.park_floor, cs.open_days,
-        cs.open_timing, cs.term_condition,cs.charger_image, cs.latitude, cs.longitude, ${formatDateTimeInQuery(['cs.created_at', 'cs.updated_at'])} FROM charge_share cs
+        cs.open_timing, cs.term_condition,cs.charger_image, cs.latitude, cs.longitude, cs.chargeRecomendRate,cs.accessPermit , ${formatDateTimeInQuery(['cs.created_at', 'cs.updated_at'])} FROM charge_share cs
         LEFT JOIN cities ct on ct.name=cs.city
         WHERE cs.charger_id = ?`, [charger_id]);
 
