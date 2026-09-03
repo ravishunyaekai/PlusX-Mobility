@@ -122,7 +122,7 @@ const adminRoutes = [
 
 
     /* Coupon */
-    // { method: 'post',   path: '/coupon-list',     handler: couponList },
+    { method: 'post',   path: '/coupon-list',     handler: couponList },
     { method: 'post', path: '/coupon-detail', handler: couponDetail },
     { method: 'post', path: '/coupon-data', handler: couponDetail },
     { method: 'post', path: '/add-coupan', handler: couponAdd },
@@ -238,6 +238,6 @@ adminRoutes.forEach(({ method, path, handler }) => {
 
     router[method](path, ...middlewares, handler);
 });
-router.post('/coupon-list', couponList);
+// router.post('/coupon-list', couponList);
 // router.post('/add-coupon', couponAdd );
 export default router;

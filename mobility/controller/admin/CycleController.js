@@ -396,7 +396,7 @@ export const cycledetails = asyncHandler(async (req, resp) => {
     });
 });
 
-export const cycleBookingList = async (req, resp) => {
+export const cycleBookingListOld = async (req, resp) => {
     try {
          
         const { page_no,  status, start_date, end_date, search_text = '', scheduleFilters, areaSelected, rowSelected ,city_id,country_id,handover_type, station_id=""} = mergeParam(req);
@@ -528,6 +528,171 @@ export const cycleBookingList = async (req, resp) => {
         console.error('Error fetching cycle booking list:', error);
         return resp.json({ status: 0, message: 'Error fetching cycle booking lists' });
     }
+};
+
+export const cycleBookingList = async (req, resp) => {
+  try {
+    const {
+      page_no,
+      status,
+      start_date,
+      end_date,
+      search_text = "",
+      scheduleFilters,
+      areaSelected,
+      rowSelected,
+      city_id,
+      country_id,
+      handover_type,
+      station_id = "",
+    } = mergeParam(req);
+
+    let query = "";
+    let queryParams = [];
+
+    switch (true) {
+      case !!country_id && !!city_id:
+        query = `
+            SELECT cs.name AS city, c.name AS country
+            FROM cities cs
+            JOIN country c ON c.country_id = ?
+            WHERE cs.city_id = ?`;
+        queryParams = [country_id, city_id];
+        break;
+
+      case !!city_id:
+        query = `
+            SELECT cs.name AS city, c.name AS country
+            FROM cities cs
+            JOIN country c ON cs.country_id = c.country_id
+            WHERE cs.city_id = ?`;
+        queryParams = [city_id];
+        break;
+
+      case !!country_id:
+        query = `
+            SELECT '' AS city, c.name AS country
+            FROM country c
+            WHERE c.country_id = ?`;
+        queryParams = [country_id];
+        break;
+
+      default:
+        return resp.json({
+          status: 0,
+          message: "city_id or country_id is required",
+        });
+    }
+    const CityCountry = await queryDB(query, queryParams);
+    const city = CityCountry?.city || "";
+    const country = CityCountry?.country || "";
+
+    const { isValid, errors } = validateFields(req.body, {
+      page_no: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const params = {
+      tableName: "cycle_booking",
+      columns: `lock_number, start_lat, start_long, cycle_id, handover_type, booking_id, cycle_id, rider_id, user_name, status,     (
+            SELECT rating
+            FROM cycle_booking_feedback cbf
+            WHERE cbf.booking_id = cycle_booking.booking_id
+            LIMIT 1
+            ) AS rating, ${sqlCase("cycle_type", { ecycle: "E-cycle", cycle: "Cycle" })}, pickup_station AS station_name, 
+            ${formatDateTimeInQuery(["created_at"])}, account_type`,
+      sortColumn: "updated_at DESC",
+      sortOrder: "",
+      page_no,
+      limit: rowSelected || 10,
+      liveSearchFields: ["booking_id", "user_name"],
+      liveSearchTexts: [search_text, search_text],
+      whereField: ["status"],
+      whereValue: ["PNR"],
+      whereOperator: ["!="],
+    };
+    if (city) {
+      params.whereField.push("city");
+      params.whereValue.push(city);
+      params.whereOperator.push("=");
+    }
+    if (country) {
+      params.whereField.push("country");
+      params.whereValue.push(country);
+      params.whereOperator.push("=");
+    }
+
+    if (start_date && end_date) {
+      const startToday = new Date(start_date);
+      const startFormattedDate = `${startToday.getFullYear()}-${(
+        startToday.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}-${startToday.getDate().toString().padStart(2, "0")}`;
+
+      const givenStartDateTime = startFormattedDate + " 00:00:01";
+      const modifiedStartDateTime = moment(givenStartDateTime).subtract(
+        4,
+        "hours",
+      );
+      const start = modifiedStartDateTime.format("YYYY-MM-DD HH:mm:ss");
+
+      const endToday = new Date(end_date);
+      const formattedEndDate = `${endToday.getFullYear()}-${(
+        endToday.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}-${endToday.getDate().toString().padStart(2, "0")}`;
+      const end = formattedEndDate + " 19:59:59";
+
+      params.whereField.push("created_at", "created_at");
+      params.whereValue.push(start, end);
+      params.whereOperator.push(">=", "<=");
+    }
+    if (scheduleFilters.start_date && scheduleFilters.end_date) {
+      const schStart = moment(scheduleFilters.start_date).format("YYYY-MM-DD");
+      const schEnd = moment(scheduleFilters.end_date, "YYYY-MM-DD").format(
+        "YYYY-MM-DD",
+      );
+
+      // params.whereField.push('slot_date', 'slot_date');
+      params.whereValue.push(schStart, schEnd);
+      params.whereOperator.push(">=", "<=");
+    }
+    if (status) {
+      params.whereField.push("status");
+      params.whereValue.push(status);
+      params.whereOperator.push("=");
+    }
+    if (station_id) {
+      params.whereField.push("pickup_station");
+      params.whereValue.push(station_id);
+      params.whereOperator.push("=");
+    }
+
+    if (handover_type) {
+      params.whereField.push("handover_type");
+      params.whereValue.push(handover_type);
+      params.whereOperator.push("=");
+    }
+    // console.log("params",params)
+    const result = await getPaginatedData(params);
+
+    return resp.json({
+      status: 1,
+      code: 200,
+      message: ["cycle  Booking List fetched successfully!"],
+      data: result.data,
+      total_page: result.totalPage,
+      total: result.total,
+    });
+  } catch (error) {
+    console.error("Error fetching cycle booking list:", error);
+    return resp.json({
+      status: 0,
+      message: "Error fetching cycle booking lists",
+    });
+  }
 };
 
 export const getCityList = async (req, resp) => {
@@ -794,7 +959,7 @@ export const cycleInvoiceList = async (req, resp) => {
     }
 };
 
-export const cycleInvoiceDetails = asyncHandler(async(req,resp)=>{
+export const cycleInvoiceDetailsOld = asyncHandler(async(req,resp)=>{
     let { booking_id } = req.body;
     if (!booking_id) return resp.status(200).json({ status : 0, code : 400, message :'Booking ID is required'});
     try {
@@ -826,10 +991,65 @@ export const cycleInvoiceDetails = asyncHandler(async(req,resp)=>{
         cycle_booking.additionalPrice = additionalPrice.toFixed(2);
         cycle_booking.taxPrice        = (total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ) ? 0 : (total_cost * 0.18).toFixed(2); 
 
+        cycle_booking.additional_price_text = `${cycle_booking.post_price} per minutes after base period`;
+        cycle_booking.tax_text              = (total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ) ? `0%` : `18%`
+
+        return resp.json({ status : 1, message: 'Cycle invoice lists', data : cycle_booking })
+    } catch (error) {
+        console.log('Error fetching cycle invoice list:', error);
+        return resp.json({ status: 0, message: 'Error fetching cycle invoice lists' });
+    }
+});
+
+export const cycleInvoiceDetails = asyncHandler(async (req, resp) => {
+  let { booking_id } = req.body;
+  if (!booking_id)
+    return resp
+      .status(200)
+      .json({ status: 0, code: 400, message: "Booking ID is required" });
+  try {
+    let cycle_booking = await queryDB(
+      `
+            SELECT 
+                booking_id, time_taken, price,  ${formatDateInQuery(["updated_at"])}, 
+                user_name, user_email, contact_no, time_taken,  
+                ${formatFloatInQuery("per_min_cost")} as base_price,
+                ${formatFloatInQuery("post_price")} as post_price,
+                ${formatFloatInQuery("base_duration")} as base_duration, 
+                ${formatFloatInQuery("price")} as price
+            FROM cycle_booking
+            WHERE booking_id = ?`,
+      [booking_id],
+    );
+    if (!cycle_booking)
+      return resp.json({
+        status: 0,
+        code: 400,
+        message: ["Booking does not found"],
+      });
+ 
+    const time_taken = cycle_booking.time_taken;
+    const base_duration = Number(cycle_booking.base_duration);
+    const base_price = parseFloat(cycle_booking.base_price);
+    const post_price = parseFloat(cycle_booking.post_price);
+ 
+    let total_cost = base_price;
+    let additionalPrice = 0;
+    if (time_taken > base_duration) {
+      const time_after_base_duration = time_taken - base_duration;
+      total_cost = base_price + time_after_base_duration * post_price;
+      additionalPrice = time_after_base_duration * post_price;
+    }
+    cycle_booking.additionalPrice = additionalPrice.toFixed(2);
+    cycle_booking.taxPrice =
+      total_cost.toFixed(2) == cycle_booking.price.toFixed(2)
+        ? 0
+        : (total_cost * 0.18).toFixed(2);
+ 
     cycle_booking.additional_price_text = `₹ ${cycle_booking.post_price} per minutes after base duration`;
     cycle_booking.tax_text =
       total_cost.toFixed(2) == cycle_booking.price.toFixed(2) ? `0%` : `18%`;
-
+ 
     return resp.json({
       status: 1,
       message: "Cycle invoice lists",
