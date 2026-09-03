@@ -458,7 +458,7 @@ const completeride = async (booking_id, station_id, handover_type, lock_number )
         
         const pick_db_ime = bookingDetail.pick_time;
         const pickMoment  = moment(pick_db_ime, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
-        const nowMoment   = moment(); //.add(5, 'hours').add(30, 'minutes');
+        const nowMoment   = moment().add(5, 'hours').add(30, 'minutes');
         // difference
         const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
         let diffInMinutes   = nowMoment.diff(pickMoment, "minutes");

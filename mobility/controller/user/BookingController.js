@@ -685,21 +685,21 @@ export const manualRideCreateOTP = asyncHandler(async(req,resp)=>{
     </html>`;
     emailQueue.addEmail(station_check.operator_email, `Manual Handover OTP - PlusX Electric`, html);
 
-   return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });   
+   // return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });   
 
-    // sendOtp(
-    //     fullMobile,
-    //     38,
-    //     otp
-    // )
-    // .then(result => {
-    //     if (result.status === 0) return resp.json(result);
-    //     return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent to the station operator for verification'] });
-    // })
-    // .catch(err => {
-    //     console.log('Error in otpController:', err.message);
-    //     return resp.json({ status: 'error', msg: 'Failed to send OTP' });
-    // });   
+    sendOtp(
+        fullMobile,
+        38,
+        otp
+    )
+    .then(result => {
+        if (result.status === 0) return resp.json(result);
+        return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent to the station operator for verification'] });
+    })
+    .catch(err => {
+        console.log('Error in otpController:', err.message);
+        return resp.json({ status: 'error', msg: 'Failed to send OTP' });
+    });   
 }); 
 
 export const manualVerifyOTP = asyncHandler(async (req, resp) => {
