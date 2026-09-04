@@ -6,6 +6,7 @@ import { queryDB, getPaginatedData, insertRecord, updateRecord } from '../../../
 import validateFields from "../../../../validation.js";
 import generateUniqueId from 'generate-unique-id';
 import emailQueue from '../../../../emailQueue.js';
+import { tryCatchErrorHandler } from '../../../../middleware/errorHandler.js';
 dotenv.config();
 
 export const chargerList = async (req, resp) => {
