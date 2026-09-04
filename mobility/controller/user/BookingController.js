@@ -53,8 +53,8 @@ export const startScanCycleQr = asyncHandler(async (req, resp) => {
     );
     if (!pricing_details) return resp.json({ status: 0, error_type : 'invaild-QR', code : 201, message: ['The cycle QR code is incorrect. Please scan the correct QR code.'] });
 
-    // const currTime  = moment().tz('Asia/Kolkata').format('HH:mm:ss');
-    const currTime = moment().add(5, 'hours').add(30, 'minutes');
+    const currTime  = moment().tz('Asia/Kolkata').format('HH:mm:ss');
+    // const currTime = moment().add(5, 'hours').add(30, 'minutes');
     if (currTime < pricing_details.open_time || currTime > pricing_details.close_time) {
 
         const formatTime = (time) => {
@@ -504,7 +504,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
     const pick_db_ime = bookingDetail.pick_time;
     const pickMoment  = moment(pick_db_ime, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
 
-    const nowMoment = moment().add(5, 'hours').add(30, 'minutes');
+    const nowMoment = moment()//.add(5, 'hours').add(30, 'minutes');
     
     // difference
     const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
@@ -685,7 +685,7 @@ export const manualRideCreateOTP = asyncHandler(async(req,resp)=>{
     </html>`;
     emailQueue.addEmail(station_check.operator_email, `Manual Handover OTP - PlusX Electric`, html);
 
-   // return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });   
+   return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });   
 
     sendOtp(
         fullMobile,
@@ -752,7 +752,7 @@ const completeride = async (rider_id, booking_id, station_id, handover_type, loc
         const pick_db_ime = bookingDetail.pick_time;
         const pickMoment  = moment(pick_db_ime, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
         
-        const nowMoment = moment().add(5, 'hours').add(30, 'minutes');
+        const nowMoment = moment()//.add(5, 'hours').add(30, 'minutes');
             
         // difference  price
         const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
