@@ -185,7 +185,38 @@ export const razorpayWebhook = async (req, res) => {
                 }
                 break;
 
-             
+            // case "MOBILITY_REFUND":
+            //   console.log("MOBILITY_REFUND case hit");
+
+            //   if (event === "refund.processed") {
+            //     const refund = req.body.payload.refund.entity;
+
+            //     console.log("Refund ID:", refund.id);
+            //     console.log("Payment ID:", refund.payment_id);
+            //     console.log("Refund Amount:", refund.amount); // paise
+            //     console.log("Status:", refund.status);
+
+            //     // Update your database here
+            //     await completeRefundProcess({
+            //       refundRequestId: refund.notes.refund_request_id,
+            //       refundId: refund.id,
+            //       refundStatus: refund.status,
+            //       riderId: refund.notes.rider_id,
+            //       refundAmount: Number(refund.notes.refund_amount),
+            //     });
+            //   }
+
+            //   if (event === "refund.failed") {
+            //     const refund = req.body.payload.refund.entity;
+
+            //     console.log("Refund ID:", refund.id);
+            //     console.log("Payment ID:", refund.payment_id);
+            //     console.log("Refund Amount:", refund.amount); // paise
+            //     console.log("Status:", refund.status);
+
+            //     // Update your database here
+            //   }
+            //   break;
 
             default:
                 // console.log("Unhandled booking_type");
@@ -823,3 +854,110 @@ const confirmCycleBookingPayment = async (rider_id, booking_id, payment) => {
     }
 };
  
+// export const completeRefundProcess = async ({
+//   refundRequestId,
+//   refundId,
+//   refundStatus,
+//   riderId,
+//   refundAmount,
+// }) => {
+//   // Refund request
+//   console.log("completeRefundProcess called\n\n\n")
+//   const refundRequest = await queryDB(
+//     `SELECT * FROM refund_requests WHERE id = ? LIMIT 1`,
+//     [refundRequestId],
+//   );
+
+//   if (!refundRequest) {
+//     throw new Error("Refund request not found");
+//   }
+
+//   // Already processed (idempotency)
+//   if (refundRequest.status === "approved") {
+//     return;
+//   }
+
+//   // Rider details
+//   const riderData = await queryDB(
+//     `SELECT amount, fcm_token
+//      FROM riders
+//      WHERE rider_id = ?
+//      LIMIT 1`,
+//     [riderId],
+//   );
+
+//   if (!riderData) {
+//     throw new Error("Rider not found");
+//   }
+
+//   const currentWalletAmount = Number(riderData.amount || 0);
+
+//   // Update refund request
+//   await updateRecord(
+//     "refund_requests",
+//     {
+//       status: "approved",
+//       refund_id: refundId,
+//       refund_status: refundStatus,
+//     },
+//     ["id"],
+//     [refundRequestId],
+//   );
+
+//   // Reset rider balances
+//   await updateRecord(
+//     "riders",
+//     {
+//       security_deposit: 0,
+//       out_standing_cost: 0,
+//     },
+//     ["rider_id"],
+//     [riderId],
+//   );
+
+//   // Transaction history
+//   await insertRecord(
+//     "transaction_history",
+//     [
+//       "rider_id",
+//       "amount",
+//       "payment_type",
+//       "outstanding",
+//       "current_balance",
+//       "prev_balance",
+//       "status",
+//       "payment_id",
+//     ],
+//     [
+//       riderId,
+//       refundAmount,
+//       "sd_refund",
+//       0,
+//       currentWalletAmount,
+//       currentWalletAmount,
+//       "CNF",
+//       refundId,
+//     ],
+//   );
+
+//   // Notification
+//   await sendNotification(
+//     "USER_REFUND_APPROVED",
+//     {
+//       amount: refundAmount,
+//       rider_id: riderId,
+//     },
+//     riderId,
+//     riderId,
+//   );
+
+//   const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+
+//   await pushNotification(
+//     riderData.fcm_token,
+//     template.heading,
+//     template.desc({ amount: refundAmount }),
+//     "RDRFCM",
+//     template.href({ rider_id: riderId }),
+//   );
+// };

@@ -5,8 +5,8 @@ import multer from "multer";
 import { apiAuthorization } from '../../../middleware/apiAuthorizationMiddleware.js';
 import { apiAuthentication } from '../../../middleware/apiAuthenticationMiddleware.js';
 //
-import { 
-    chargerList, chargerBooking, chargerBookingList,chargerBookingDetail,  getPcSlotList, getPcSubscriptionList, userCancelPCBooking,
+import {
+    chargerList, chargerBooking, chargerBookingList, chargerBookingDetail, getPcSlotList, getPcSubscriptionList, userCancelPCBooking,
     reScheduleBooking, userFeedbackPCBooking, getPcSlotDateList,
     podInvoiceDetails
 } from '../controller/user/PortableChargerController.js';
@@ -28,58 +28,58 @@ const router = Router();
 /* -- Api Auth Middleware -- */
 const authzRoutes = [
     /* API Routes */
-    
+
     /* Dynamic List */
-   
-    
+
+
 ];
 authzRoutes.forEach(({ method, path, handler }) => {
-    
+
     const middlewares = [apiAuthorization];  // rateLimit
-    
-    
+
+
     router[method](path, ...middlewares, handler);
 });
 
 /* -- Api Auth & Api Authz Middleware -- */
 const authzAndAuthRoutes = [
-    
-   /* Portable charger */
-    { method: 'get',  path: '/portable-charger-list',               handler: chargerList },
-    { method: 'post', path: '/portable-charger-booking',            handler: chargerBooking },
-    { method: 'post', path: '/create-portable-charger-invoice',     handler: portableChargerInvoice },
-    { method: 'get',  path: '/portable-charger-booking-list',       handler: chargerBookingList },
-    { method: 'get',  path: '/portable-charger-booking-detail',     handler: chargerBookingDetail },
-    { method: 'get',  path: '/portable-charger-slot-list',          handler: getPcSlotList },
-    { method: 'get',  path: '/portable-charger-subscription',       handler: getPcSubscriptionList },
-    { method: 'get',  path: '/portable-charger-cancel',             handler: userCancelPCBooking }, 
+
+    /* Portable charger */
+    { method: 'get', path: '/portable-charger-list', handler: chargerList },
+    { method: 'post', path: '/portable-charger-booking', handler: chargerBooking },
+    { method: 'post', path: '/create-portable-charger-invoice', handler: portableChargerInvoice },
+    { method: 'get', path: '/portable-charger-booking-list', handler: chargerBookingList },
+    { method: 'get', path: '/portable-charger-booking-detail', handler: chargerBookingDetail },
+    { method: 'get', path: '/portable-charger-slot-list', handler: getPcSlotList },
+    { method: 'get', path: '/portable-charger-subscription', handler: getPcSubscriptionList },
+    { method: 'get', path: '/portable-charger-cancel', handler: userCancelPCBooking },
     { method: 'post', path: '/reschedule-portable-charger-booking', handler: reScheduleBooking },
-    { method: 'post', path: '/feedback-portable-charger-booking',   handler: userFeedbackPCBooking },
-    { method: 'get',  path: '/portable-charger-slot-date-list',     handler: getPcSlotDateList },
-     { method: 'get',  path: '/portable-charger-invoice',           handler: podInvoiceDetails },
+    { method: 'post', path: '/feedback-portable-charger-booking', handler: userFeedbackPCBooking },
+    { method: 'get', path: '/portable-charger-slot-date-list', handler: getPcSlotDateList },
+    { method: 'get', path: '/portable-charger-invoice', handler: podInvoiceDetails },
 
 ];
 
 // Define your upload rules in a config map
 const uploadRules = {//rider_profile
-   
-   
+
+
 };
 authzAndAuthRoutes.forEach(({ method, path, handler }) => {
-    const middlewares = []; 
+    const middlewares = [];
 
     const rule = uploadRules[path];
     if (rule) {
         middlewares.push(handleFileUpload(rule.folder, rule.fields, rule.maxCount));
 
-    } 
+    }
     middlewares.push(apiAuthorization);
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
 // router.post('/portable-charger-booking', chargerBooking);
 // router.get('/portable-charger-booking-detail', chargerBookingDetail);
-    //  { method: 'get',  path: '/portable-charger-invoice',            handler: podInvoiceDetails },
+//  { method: 'get',  path: '/portable-charger-invoice',            handler: podInvoiceDetails },
 // router.get('/portable-charger-invoice', podInvoiceDetails);
 
 export default router;

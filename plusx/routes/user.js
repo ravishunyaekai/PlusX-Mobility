@@ -154,7 +154,7 @@ const authzAndAuthRoutes = [
    
 
     /* Payment */
-    // { method: 'post', path: '/payment-intent',                       handler: createIntent },
+    { method: 'post', path: '/payment-intent',                       handler: createIntent },
    
     
     /* Invoice */ 
@@ -214,7 +214,7 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
-router.post('/payment-intent', createIntent);
+// router.post('/payment-intent', createIntent);
 router.post('/charger-booking-payment-confirm-test', portableChargerBookingConfirm);
 
 export default router;
