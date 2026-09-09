@@ -1928,7 +1928,7 @@ export const addMoneyForCycleBookingOld = asyncHandler(async (req, resp) => {
   });
 });
 
-export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
+export const addMoneyForCycleBookingOLD111 = asyncHandler(async (req, resp) => {
   try {
     const { rider_id, amount } = mergeParam(req);
     const numericAmount = parseFloat(amount);
@@ -2091,6 +2091,341 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
       status: 0,
       code: 500,
       message: ["Something went wrong. Please try again."],
+    });
+  }
+});
+
+
+export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
+  try {
+    const { rider_id, amount } = mergeParam(req);
+
+    const numericAmount = parseFloat(amount);
+
+    // --------------------------------------------------
+    // Validation
+    // --------------------------------------------------
+    const { isValid, errors } = validateFields(mergeParam(req), {
+      rider_id: ["required"],
+      amount: ["required"],
+    });
+
+    if (!isValid) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: errors,
+      });
+    }
+
+    if (isNaN(numericAmount)) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: ["Please enter a valid amount."],
+      });
+    }
+
+    if (numericAmount < 1) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: ["Amount cannot be less than 1 INR"],
+      });
+    }
+
+    // --------------------------------------------------
+    // Get rider wallet/security/outstanding details
+    // --------------------------------------------------
+    const result = await queryDB(
+      `
+        SELECT
+            r.amount,
+            r.security_deposit,
+            r.out_standing_cost,
+
+            ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+            ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit,
+
+            cb.booking_id
+
+        FROM riders r
+
+        JOIN country cn
+            ON cn.country_id = r.country_id
+
+        LEFT JOIN cycle_booking cb
+            ON cb.booking_id = (
+                SELECT booking_id
+                FROM cycle_booking
+                WHERE rider_id = r.rider_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+
+        WHERE r.rider_id = ?
+      `,
+      [rider_id],
+    );
+
+    // --------------------------------------------------
+    // Rider not found
+    // --------------------------------------------------
+    if (!result) {
+      return resp.json({
+        status: 0,
+        code: 404,
+        message: ["Rider not found"],
+      });
+    }
+
+    // --------------------------------------------------
+    // Check successful transactions
+    // --------------------------------------------------
+    const transactions = await queryDB(
+      `
+        SELECT COUNT(*) AS total_transactions
+        FROM transaction_history
+        WHERE rider_id = ?
+        AND status = 'CNF'
+      `,
+      [rider_id],
+    );
+
+    console.log("transactions:", transactions);
+
+    const transactionCount = Number(
+      transactions?.total_transactions || 0
+    );
+
+    const isFirstPayment = transactionCount === 0;
+
+    // --------------------------------------------------
+    // Country configuration
+    // --------------------------------------------------
+    const minWallet = parseFloat(
+      result.min_wallet_price || 20
+    );
+
+    const minSecurity = parseFloat(
+      result.min_sec_deposit || 100
+    );
+
+    // --------------------------------------------------
+    // Rider current balances
+    // --------------------------------------------------
+    const currentWallet = parseFloat(
+      result.amount || 0
+    );
+
+    const securityDeposit = parseFloat(
+      result.security_deposit || 0
+    );
+
+    const outstandingCost = parseFloat(
+      result.out_standing_cost || 0
+    );
+
+    // --------------------------------------------------
+    // Calculate required amounts
+    // --------------------------------------------------
+
+    // Amount required to complete security deposit
+    let securityRequired = 0;
+
+    if (securityDeposit < minSecurity) {
+      securityRequired = minSecurity - securityDeposit;
+    }
+
+    // Amount required to maintain minimum wallet balance
+    let walletRequired = 0;
+
+    if (currentWallet < minWallet) {
+      walletRequired = minWallet - currentWallet;
+    }
+
+    // Amount required to clear outstanding
+    const outstandingRequired = Math.max(
+      outstandingCost,
+      0
+    );
+
+    // --------------------------------------------------
+    // Total minimum amount required
+    // --------------------------------------------------
+    let requiredAmount =
+      outstandingRequired +
+      securityRequired +
+      walletRequired;
+
+    // --------------------------------------------------
+    // First successful payment minimum = ₹200
+    // --------------------------------------------------
+    if (isFirstPayment) {
+      requiredAmount = Math.max(
+        requiredAmount,
+        200
+      );
+    }
+
+    // Round to 2 decimal places
+    requiredAmount = Number(
+      requiredAmount.toFixed(2)
+    );
+
+    console.log("Payment calculation:", {
+      currentWallet,
+      securityDeposit,
+      outstandingCost,
+      minWallet,
+      minSecurity,
+      walletRequired,
+      securityRequired,
+      outstandingRequired,
+      requiredAmount,
+      numericAmount,
+      isFirstPayment,
+    });
+
+    // --------------------------------------------------
+    // Validate entered amount
+    // --------------------------------------------------
+    if (numericAmount < requiredAmount) {
+      let message;
+
+      if (isFirstPayment) {
+        message = `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
+          2
+        )}.`;
+      } else {
+        const reasons = [];
+
+        if (outstandingRequired > 0) {
+          reasons.push(
+            `₹${outstandingRequired.toFixed(
+              2
+            )} towards outstanding amount`
+          );
+        }
+
+        if (securityRequired > 0) {
+          reasons.push(
+            `₹${securityRequired.toFixed(
+              2
+            )} towards refundable security deposit`
+          );
+        }
+
+        if (walletRequired > 0) {
+          reasons.push(
+            `₹${walletRequired.toFixed(
+              2
+            )} towards minimum wallet balance`
+          );
+        }
+
+        message = `Please add a minimum of ₹${requiredAmount.toFixed(
+          2
+        )}. This includes ${reasons.join(" and ")}.`;
+      }
+
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: [message],
+      });
+    }
+
+    // --------------------------------------------------
+    // Create Razorpay receipt
+    // --------------------------------------------------
+    const receipt = `${numericAmount}_BOOKING_${rider_id}_${moment().format(
+      "YY-MM-DD_HH:mm:ss"
+    )}`;
+
+    // --------------------------------------------------
+    // Create Razorpay instance
+    // --------------------------------------------------
+    const razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+
+    // --------------------------------------------------
+    // Create Razorpay order
+    // --------------------------------------------------
+    const order = await razorpay.orders.create({
+      amount: Math.round(numericAmount * 100),
+      currency: "INR",
+      receipt,
+
+      notes: {
+        rider_id: rider_id.toString(),
+
+        booking_id: result.booking_id
+          ? result.booking_id.toString()
+          : "",
+
+        booking_type: "BOOKING",
+
+        amount: numericAmount,
+
+        outstanding_amount: outstandingRequired,
+
+        security_required: securityRequired,
+
+        wallet_required: walletRequired,
+      },
+    });
+
+    // --------------------------------------------------
+    // Create Razorpay customer
+    // --------------------------------------------------
+    const customer_id = await createCustomer(
+      rider_id
+    );
+
+    // --------------------------------------------------
+    // Response
+    // --------------------------------------------------
+    return resp.json({
+      status: 1,
+      code: 200,
+
+      orderId: order.id,
+
+      customer_id,
+
+      message: ["Order created for booking"],
+
+      amount: numericAmount,
+
+      currency: "INR",
+
+      key_id: process.env.RAZORPAY_KEY_ID,
+
+      // Useful for frontend/debugging
+      payment_breakdown: {
+        outstanding_amount: outstandingRequired,
+        security_required: securityRequired,
+        wallet_required: walletRequired,
+        minimum_required: requiredAmount,
+      },
+    });
+
+  } catch (error) {
+
+    console.log(
+      "\nERROR:- addMoneyForCycleBooking",
+      error
+    );
+
+    return resp.json({
+      status: 0,
+      code: 500,
+      message: [
+        "Something went wrong. Please try again.",
+      ],
     });
   }
 });
