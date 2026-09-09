@@ -436,15 +436,29 @@ export const addmoneyINWalletOld = asyncHandler(async (req, resp) => {
 
 export const addmoneyINWallet = asyncHandler(async (req, resp) => {
   try {
+    console.log("\n========== ADD MONEY WALLET START ==========");
+
     const { rider_id, amount } = mergeParam(req);
-    console.log("first", rider_id, amount);
+
+    console.log("[1] Request params:", {
+      rider_id,
+      amount,
+      amountType: typeof amount,
+    });
 
     const { isValid, errors } = validateFields(mergeParam(req), {
       rider_id: ["required"],
       amount: ["required"],
     });
 
+    console.log("[2] Validation result:", {
+      isValid,
+      errors,
+    });
+
     if (!isValid) {
+      console.log("[2] Validation FAILED");
+
       return resp.json({
         status: 0,
         code: 422,
@@ -454,7 +468,14 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
     const numericAmount = parseFloat(amount);
 
+    console.log("[3] Numeric amount:", {
+      originalAmount: amount,
+      numericAmount,
+    });
+
     if (numericAmount < 1) {
+      console.log("[3] Amount validation FAILED:", numericAmount);
+
       return resp.json({
         status: 0,
         code: 422,
@@ -466,7 +487,11 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       "YY-MM-DD_HH:mm:ss",
     )}`;
 
+    console.log("[4] Razorpay receipt:", receipt);
+
     // Get rider + country configuration
+    console.log("[5] Fetching rider details...");
+
     const rider = await queryDB(
       `SELECT 
           r.amount,
@@ -477,11 +502,15 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
         FROM riders r
         JOIN country cn 
         ON cn.country_id = r.country_id   
-        WHERE r.rider_id = ?  `,
+        WHERE r.rider_id = ?`,
       [rider_id],
     );
 
+    console.log("[5] Rider DB result:", rider);
+
     if (!rider) {
+      console.log("[5] Rider NOT FOUND:", rider_id);
+
       return resp.json({
         status: 0,
         code: 404,
@@ -489,29 +518,50 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       });
     }
 
-    console.log("rider", rider);
+    // Check successful transactions
+    console.log("[6] Checking previous successful transactions...");
 
-    // Check if this is the first successful payment
     const transactions = await queryDB(
       `SELECT COUNT(*) AS total_transactions
-      FROM transaction_history
-      WHERE rider_id = ?
-      AND status = 'CNF'`,
+       FROM transaction_history
+       WHERE rider_id = ?
+       AND status = 'CNF'`,
       [rider_id],
-      // ['rider_id'],
     );
-    console.log(transactions);
+
+    console.log("[6] Transaction result:", transactions);
 
     const transaction = transactions;
-    const isFirstPayment = Number(transaction?.total_transactions || 0) == 0;
+    const totalTransactions = Number(
+      transaction?.total_transactions || 0,
+    );
+
+    const isFirstPayment = totalTransactions === 0;
+
+    console.log("[7] First payment check:", {
+      totalTransactions,
+      isFirstPayment,
+    });
 
     // Country configuration
     const minWallet = parseFloat(rider.min_wallet_price || 20);
     const minSecurity = parseFloat(rider.min_sec_deposit || 100);
 
+    console.log("[8] Country configuration:", {
+      minWallet,
+      minSecurity,
+    });
+
     // Rider balances
     const currentWallet = parseFloat(rider.amount || 0);
     const securityDeposit = parseFloat(rider.security_deposit || 0);
+    const outstandingCost = parseFloat(rider.out_standing_cost || 0);
+
+    console.log("[9] Current rider balances:", {
+      currentWallet,
+      securityDeposit,
+      outstandingCost,
+    });
 
     let securityRequired = 0;
     let walletRequired = 0;
@@ -523,16 +573,43 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       requiredAmount += securityRequired;
     }
 
+    console.log("[10] Security deposit calculation:", {
+      currentSecurityDeposit: securityDeposit,
+      minSecurity,
+      securityRequired,
+      requiredAmount,
+    });
+
     // Wallet balance requirement
     if (currentWallet < minWallet) {
       walletRequired = minWallet - currentWallet;
       requiredAmount += walletRequired;
     }
 
+    console.log("[11] Wallet calculation:", {
+      currentWallet,
+      minWallet,
+      walletRequired,
+      requiredAmount,
+    });
+
     // First recharge should be at least ₹200
     if (isFirstPayment) {
       requiredAmount = Math.max(requiredAmount, 200);
+
+      console.log("[12] First payment minimum applied:", {
+        minimumFirstRecharge: 200,
+        requiredAmount,
+      });
     }
+
+    console.log("[13] FINAL REQUIRED AMOUNT:", {
+      enteredAmount: numericAmount,
+      requiredAmount,
+      securityRequired,
+      walletRequired,
+      isFirstPayment,
+    });
 
     // Validate entered amount
     if (numericAmount < requiredAmount) {
@@ -552,6 +629,12 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
         )} towards your wallet balance.`;
       }
 
+      console.log("[14] Amount validation FAILED:", {
+        numericAmount,
+        requiredAmount,
+        message,
+      });
+
       return resp.json({
         status: 0,
         code: 422,
@@ -559,14 +642,21 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       });
     }
 
+    console.log("[14] Amount validation PASSED");
+
     // Create Razorpay order
+    console.log("[15] Creating Razorpay order...");
+
     const razorpay = new Razorpay({
       key_id: process.env.RAZORPAY_KEY_ID,
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
 
-    const order = await razorpay.orders.create({
-      amount: Math.round(Number(numericAmount) * 100), // in paise
+    const razorpayAmount = Math.round(Number(numericAmount) * 100);
+
+    console.log("[16] Razorpay order payload:", {
+      amount: razorpayAmount,
+      amountInRupees: numericAmount,
       currency: "INR",
       receipt,
       notes: {
@@ -575,9 +665,37 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
         amount: Number(numericAmount),
       },
     });
-    // if(!insert_transacstion){resp.json({status:0,code:400,message:["payment was not completed!"]}) }
+
+    const order = await razorpay.orders.create({
+      amount: razorpayAmount,
+      currency: "INR",
+      receipt,
+      notes: {
+        rider_id: rider_id.toString(),
+        booking_type: "MOBILITY",
+        amount: Number(numericAmount),
+      },
+    });
+
+    console.log("[17] Razorpay order CREATED:", {
+      orderId: order?.id,
+      amount: order?.amount,
+      currency: order?.currency,
+      status: order?.status,
+      receipt: order?.receipt,
+    });
+
+    console.log("[18] Creating/Fetching customer...");
 
     const customer_id = await createCustomer(rider_id);
+
+    console.log("[19] Customer result:", {
+      rider_id,
+      customer_id,
+    });
+
+    console.log("========== ADD MONEY WALLET SUCCESS ==========\n");
+
     return resp.json({
       status: 1,
       code: 200,
@@ -589,7 +707,11 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       key_id: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
-    console.log("\nERROR:- addmoneyINWallet", error);
+    console.log("\n========== ADD MONEY WALLET ERROR ==========");
+    console.log("Error message:", error?.message);
+    console.log("Error stack:", error?.stack);
+    console.log("Full error:", error);
+    console.log("============================================\n");
 
     return resp.json({
       status: 0,

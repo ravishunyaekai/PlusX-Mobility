@@ -112,7 +112,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
 
         const riderData = await queryDB(
             `
-            SELECT r.out_standing_cost, r.amount, c.min_wallet_price FROM riders r 
+            SELECT r.out_standing_cost, r.amount, r.security_deposit, c.min_wallet_price FROM riders r 
             LEFT JOIN country c ON c.country_id = r.country_id WHERE rider_id = ? `,
             [rider_id],
         );
@@ -138,6 +138,9 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             message: ["User Transaction List fetched successfully!"],
             current_bal: parseFloat(riderData?.amount || 0).toFixed(2),
             out_standing_cost: parseFloat(riderData?.out_standing_cost || 0).toFixed(
+                2,
+            ),
+            security_deposit: parseFloat(riderData?.security_deposit || 0).toFixed(
                 2,
             ),
             data: finalData,
