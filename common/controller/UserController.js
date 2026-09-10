@@ -808,7 +808,9 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     const rider = await queryDB(
         `
         SELECT
-            cn.min_wallet_price, r.* ,
+            cn.min_wallet_price, 
+            cn.min_sec_deposit,
+            r.* ,
              (
                 SELECT booking_id
                 FROM cycle_booking
@@ -836,8 +838,33 @@ export const getRiderData = asyncHandler(async (req, resp) => {
 
     rider.image_url = `${process.env.DIR_UPLOADS}profile-image/`;
     rider.min_wallet_price = parseFloat(rider.min_wallet_price);
+    rider.min_sec_deposit = parseFloat(rider.min_sec_deposit);
     rider.out_standing_cost = parseFloat(rider.out_standing_cost);
     rider.amount = parseFloat(rider.amount);
+
+    const transactions = await queryDB(
+      `
+        SELECT
+          COUNT(*) AS total_transactions
+        FROM transaction_history
+        WHERE rider_id = ?
+          AND status = 'CNF'
+      `,
+      [rider_id],
+    );
+
+    console.log(
+      "[11] Transaction result:",
+      transactions,
+    );
+
+    const totalTransactions = Number(
+      transactions?.total_transactions || 0,
+    );
+
+    const isFirstPayment =
+      totalTransactions === 0;
+
     //   const deductionAmount = Number(((rider.amount * 2) / 100).toFixed(2));
     //   const refundAmount = Number((rider.amount - deductionAmount).toFixed(2));
 
@@ -879,6 +906,7 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     rider.refund_amount = refundAmount >= 60 ? refundAmount : 0;
     rider.is_refund_eligible = refundAmount >= 60 ? 1 : 0;
     rider.is_refund_requested = isRefundRaised ? 1 : 0;
+    rider.default_wallet_recharge_amount = isFirstPayment ? 200 : 200;
 
     const [responseContent] = await db.execute(
         `
@@ -925,6 +953,7 @@ export const home = asyncHandler(async (req, resp) => {
     const riderQuery = `
         SELECT 
             cn.min_wallet_price, 
+            cn.min_sec_deposit, 
             r.out_standing_cost, 
             r.security_deposit, 
             r.rider_id, 
@@ -949,6 +978,29 @@ export const home = asyncHandler(async (req, resp) => {
     if (!riderData) {
         return resp.status(404).json({ message: "Rider not found", status: 0 });
     }
+
+    const transactions = await queryDB(
+      `
+        SELECT
+          COUNT(*) AS total_transactions
+        FROM transaction_history
+        WHERE rider_id = ?
+          AND status = 'CNF'
+      `,
+      [rider_id],
+    );
+
+    console.log(
+      "[11] Transaction result:",
+      transactions,
+    );
+
+    const totalTransactions = Number(
+      transactions?.total_transactions || 0,
+    );
+
+    const isFirstPayment =
+      totalTransactions === 0;
 
     //   const deductionAmount = Number(
     //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
@@ -1022,6 +1074,8 @@ export const home = asyncHandler(async (req, resp) => {
         wallet_amount: parseFloat(riderData.wallet_amount),
         out_standing_cost: parseFloat(riderData.out_standing_cost),
         min_wallet_price: parseFloat(riderData.min_wallet_price),
+        min_sec_deposit: parseFloat(riderData.min_sec_deposit),
+        default_wallet_recharge_amount: isFirstPayment ? 200 : 200,
         purchase_history_count: purchaseHistoryCount?.total || 0,
         charge_share_count: chargeShareCount?.total || 0,
         // refund_amount:

@@ -434,10 +434,300 @@ export const addmoneyINWalletOld = asyncHandler(async (req, resp) => {
   });
 });
 
+// export const addmoneyINWallet = asyncHandler(async (req, resp) => {
+//   try {
+//     console.log("\n========== ADD MONEY WALLET START ==========");
+
+//     const { rider_id, amount } = mergeParam(req);
+
+//     console.log("[1] Request params:", {
+//       rider_id,
+//       amount,
+//       amountType: typeof amount,
+//     });
+
+//     const { isValid, errors } = validateFields(mergeParam(req), {
+//       rider_id: ["required"],
+//       amount: ["required"],
+//     });
+
+//     console.log("[2] Validation result:", {
+//       isValid,
+//       errors,
+//     });
+
+//     if (!isValid) {
+//       console.log("[2] Validation FAILED");
+
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: errors,
+//       });
+//     }
+
+//     const numericAmount = parseFloat(amount);
+
+//     console.log("[3] Numeric amount:", {
+//       originalAmount: amount,
+//       numericAmount,
+//     });
+
+//     if (numericAmount < 1) {
+//       console.log("[3] Amount validation FAILED:", numericAmount);
+
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: ["Amount cannot be less than 1 INR"],
+//       });
+//     }
+
+//     const receipt = `${numericAmount}_RS_by_${rider_id}_${moment().format(
+//       "YY-MM-DD_HH:mm:ss",
+//     )}`;
+
+//     console.log("[4] Razorpay receipt:", receipt);
+
+//     // Get rider + country configuration
+//     console.log("[5] Fetching rider details...");
+
+//     const rider = await queryDB(
+//       `SELECT 
+//           r.amount,
+//           r.security_deposit,
+//           r.out_standing_cost,
+//           ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+//           ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit
+//         FROM riders r
+//         JOIN country cn 
+//         ON cn.country_id = r.country_id   
+//         WHERE r.rider_id = ?`,
+//       [rider_id],
+//     );
+
+//     console.log("[5] Rider DB result:", rider);
+
+//     if (!rider) {
+//       console.log("[5] Rider NOT FOUND:", rider_id);
+
+//       return resp.json({
+//         status: 0,
+//         code: 404,
+//         message: ["Rider not found"],
+//       });
+//     }
+
+//     // Check successful transactions
+//     console.log("[6] Checking previous successful transactions...");
+
+//     const transactions = await queryDB(
+//       `SELECT COUNT(*) AS total_transactions
+//        FROM transaction_history
+//        WHERE rider_id = ?
+//        AND status = 'CNF'`,
+//       [rider_id],
+//     );
+
+//     console.log("[6] Transaction result:", transactions);
+
+//     const transaction = transactions;
+//     const totalTransactions = Number(
+//       transaction?.total_transactions || 0,
+//     );
+
+//     const isFirstPayment = totalTransactions === 0;
+
+//     console.log("[7] First payment check:", {
+//       totalTransactions,
+//       isFirstPayment,
+//     });
+
+//     // Country configuration
+//     const minWallet = parseFloat(rider.min_wallet_price || 20);
+//     const minSecurity = parseFloat(rider.min_sec_deposit || 100);
+
+//     console.log("[8] Country configuration:", {
+//       minWallet,
+//       minSecurity,
+//     });
+
+//     // Rider balances
+//     const currentWallet = parseFloat(rider.amount || 0);
+//     const securityDeposit = parseFloat(rider.security_deposit || 0);
+//     const outstandingCost = parseFloat(rider.out_standing_cost || 0);
+
+//     console.log("[9] Current rider balances:", {
+//       currentWallet,
+//       securityDeposit,
+//       outstandingCost,
+//     });
+
+//     let securityRequired = 0;
+//     let walletRequired = 0;
+//     let requiredAmount = 0;
+
+//     // Security deposit requirement
+//     if (securityDeposit < minSecurity) {
+//       securityRequired = minSecurity - securityDeposit;
+//       requiredAmount += securityRequired;
+//     }
+
+//     console.log("[10] Security deposit calculation:", {
+//       currentSecurityDeposit: securityDeposit,
+//       minSecurity,
+//       securityRequired,
+//       requiredAmount,
+//     });
+
+//     // Wallet balance requirement
+//     if (currentWallet < minWallet) {
+//       walletRequired = minWallet - currentWallet;
+//       requiredAmount += walletRequired;
+//     }
+
+//     console.log("[11] Wallet calculation:", {
+//       currentWallet,
+//       minWallet,
+//       walletRequired,
+//       requiredAmount,
+//     });
+
+//     // First recharge should be at least ₹200
+//     if (isFirstPayment) {
+//       requiredAmount = Math.max(requiredAmount, 200);
+
+//       console.log("[12] First payment minimum applied:", {
+//         minimumFirstRecharge: 200,
+//         requiredAmount,
+//       });
+//     }
+
+//     console.log("[13] FINAL REQUIRED AMOUNT:", {
+//       enteredAmount: numericAmount,
+//       requiredAmount,
+//       securityRequired,
+//       walletRequired,
+//       isFirstPayment,
+//     });
+
+//     // Validate entered amount
+//     if (numericAmount < requiredAmount) {
+//       let message;
+
+//       if (isFirstPayment) {
+//         message = `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
+//           2,
+//         )}.`;
+//       } else {
+//         message = `Please add a minimum of ₹${requiredAmount.toFixed(
+//           2,
+//         )}. This includes ₹${securityRequired.toFixed(
+//           2,
+//         )} towards your refundable security deposit and ₹${walletRequired.toFixed(
+//           2,
+//         )} towards your wallet balance.`;
+//       }
+
+//       console.log("[14] Amount validation FAILED:", {
+//         numericAmount,
+//         requiredAmount,
+//         message,
+//       });
+
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: [message],
+//       });
+//     }
+
+//     console.log("[14] Amount validation PASSED");
+
+//     // Create Razorpay order
+//     console.log("[15] Creating Razorpay order...");
+
+//     const razorpay = new Razorpay({
+//       key_id: process.env.RAZORPAY_KEY_ID,
+//       key_secret: process.env.RAZORPAY_KEY_SECRET,
+//     });
+
+//     const razorpayAmount = Math.round(Number(numericAmount) * 100);
+
+//     console.log("[16] Razorpay order payload:", {
+//       amount: razorpayAmount,
+//       amountInRupees: numericAmount,
+//       currency: "INR",
+//       receipt,
+//       notes: {
+//         rider_id: rider_id.toString(),
+//         booking_type: "MOBILITY",
+//         amount: Number(numericAmount),
+//       },
+//     });
+
+//     const order = await razorpay.orders.create({
+//       amount: razorpayAmount,
+//       currency: "INR",
+//       receipt,
+//       notes: {
+//         rider_id: rider_id.toString(),
+//         booking_type: "MOBILITY",
+//         amount: Number(numericAmount),
+//       },
+//     });
+
+//     console.log("[17] Razorpay order CREATED:", {
+//       orderId: order?.id,
+//       amount: order?.amount,
+//       currency: order?.currency,
+//       status: order?.status,
+//       receipt: order?.receipt,
+//     });
+
+//     console.log("[18] Creating/Fetching customer...");
+
+//     const customer_id = await createCustomer(rider_id);
+
+//     console.log("[19] Customer result:", {
+//       rider_id,
+//       customer_id,
+//     });
+
+//     console.log("========== ADD MONEY WALLET SUCCESS ==========\n");
+
+//     return resp.json({
+//       status: 1,
+//       code: 200,
+//       orderId: order.id,
+//       customer_id,
+//       message: ["Order Created successfully"],
+//       amount: numericAmount,
+//       currency: "INR",
+//       key_id: process.env.RAZORPAY_KEY_ID,
+//     });
+//   } catch (error) {
+//     console.log("\n========== ADD MONEY WALLET ERROR ==========");
+//     console.log("Error message:", error?.message);
+//     console.log("Error stack:", error?.stack);
+//     console.log("Full error:", error);
+//     console.log("============================================\n");
+
+//     return resp.json({
+//       status: 0,
+//       code: 500,
+//       message: ["Something went wrong. Please try again."],
+//     });
+//   }
+// });
+
 export const addmoneyINWallet = asyncHandler(async (req, resp) => {
   try {
     console.log("\n========== ADD MONEY WALLET START ==========");
 
+    // --------------------------------------------------
+    // 1. Get request parameters
+    // --------------------------------------------------
     const { rider_id, amount } = mergeParam(req);
 
     console.log("[1] Request params:", {
@@ -446,10 +736,16 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       amountType: typeof amount,
     });
 
-    const { isValid, errors } = validateFields(mergeParam(req), {
-      rider_id: ["required"],
-      amount: ["required"],
-    });
+    // --------------------------------------------------
+    // 2. Basic request validation
+    // --------------------------------------------------
+    const { isValid, errors } = validateFields(
+      mergeParam(req),
+      {
+        rider_id: ["required"],
+        amount: ["required"],
+      },
+    );
 
     console.log("[2] Validation result:", {
       isValid,
@@ -466,260 +762,907 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       });
     }
 
-    const numericAmount = parseFloat(amount);
+    // --------------------------------------------------
+    // 3. Strict amount validation
+    // --------------------------------------------------
+    const amountString = String(amount).trim();
 
-    console.log("[3] Numeric amount:", {
-      originalAmount: amount,
-      numericAmount,
+    console.log("[3] Raw amount:", {
+      amountString,
     });
 
-    if (numericAmount < 1) {
-      console.log("[3] Amount validation FAILED:", numericAmount);
+    /*
+      VALID:
+        1
+        1.5
+        1.50
+        100
+        100.5
+        100.50
+        200.00
+
+      INVALID:
+        0
+        -1
+        -100
+        1.
+        .50
+        100.123
+        1,000
+        ₹100
+        100abc
+        abc100
+        10 20
+        Infinity
+        NaN
+    */
+
+    if (!/^\d+(\.\d{1,2})?$/.test(amountString)) {
+      console.log(
+        "[3] Amount format validation FAILED:",
+        amountString,
+      );
 
       return resp.json({
         status: 0,
         code: 422,
-        message: ["Amount cannot be less than 1 INR"],
+        message: [
+          "Please enter a valid amount with maximum 2 decimal places.",
+        ],
       });
     }
 
-    const receipt = `${numericAmount}_RS_by_${rider_id}_${moment().format(
-      "YY-MM-DD_HH:mm:ss",
-    )}`;
+    // --------------------------------------------------
+    // 4. Convert amount to number
+    // --------------------------------------------------
+    const numericAmount = Number(amountString);
 
-    console.log("[4] Razorpay receipt:", receipt);
+    console.log("[4] Numeric amount:", {
+      numericAmount,
+    });
 
-    // Get rider + country configuration
-    console.log("[5] Fetching rider details...");
+    if (!Number.isFinite(numericAmount)) {
+      console.log(
+        "[4] Invalid numeric amount:",
+        numericAmount,
+      );
+
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: [
+          "Please enter a valid amount.",
+        ],
+      });
+    }
+
+    // --------------------------------------------------
+    // 5. Amount must be greater than zero
+    // --------------------------------------------------
+    if (numericAmount <= 0) {
+      console.log(
+        "[5] Amount <= 0:",
+        numericAmount,
+      );
+
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: [
+          "Amount must be greater than 0 INR.",
+        ],
+      });
+    }
+
+    // --------------------------------------------------
+    // 6. Convert entered amount to paise
+    // --------------------------------------------------
+    const razorpayAmount = Math.round(
+      numericAmount * 100,
+    );
+
+    console.log("[6] Amount in paise:", {
+      numericAmount,
+      razorpayAmount,
+    });
+
+    // --------------------------------------------------
+    // 7. Minimum transaction amount = ₹1
+    // --------------------------------------------------
+    if (razorpayAmount < 100) {
+      console.log(
+        "[7] Amount less than ₹1:",
+        razorpayAmount,
+      );
+
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: [
+          "Amount cannot be less than 1 INR",
+        ],
+      });
+    }
+
+    // --------------------------------------------------
+    // 8. Normalize amount
+    // --------------------------------------------------
+    const finalAmount = Number(
+      (razorpayAmount / 100).toFixed(2),
+    );
+
+    console.log("[8] Final amount:", {
+      finalAmount,
+      razorpayAmount,
+    });
+
+    // --------------------------------------------------
+    // 9. Get rider details
+    // --------------------------------------------------
+    console.log(
+      "[9] Fetching rider details...",
+    );
 
     const rider = await queryDB(
-      `SELECT 
+      `
+        SELECT
           r.amount,
           r.security_deposit,
           r.out_standing_cost,
-          ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
-          ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit
+
+          ${formatFloatInQuery(
+            "cn.min_wallet_price",
+          )} AS min_wallet_price,
+
+          ${formatFloatInQuery(
+            "cn.min_sec_deposit",
+          )} AS min_sec_deposit
+
         FROM riders r
-        JOIN country cn 
-        ON cn.country_id = r.country_id   
-        WHERE r.rider_id = ?`,
+
+        JOIN country cn
+          ON cn.country_id = r.country_id
+
+        WHERE r.rider_id = ?
+      `,
       [rider_id],
     );
 
-    console.log("[5] Rider DB result:", rider);
+    console.log(
+      "[9] Rider DB result:",
+      rider,
+    );
 
+    // --------------------------------------------------
+    // 10. Rider not found
+    // --------------------------------------------------
     if (!rider) {
-      console.log("[5] Rider NOT FOUND:", rider_id);
+      console.log(
+        "[10] Rider NOT FOUND:",
+        rider_id,
+      );
 
       return resp.json({
         status: 0,
         code: 404,
-        message: ["Rider not found"],
+        message: [
+          "Rider not found",
+        ],
       });
     }
 
-    // Check successful transactions
-    console.log("[6] Checking previous successful transactions...");
+    // --------------------------------------------------
+    // 11. Get successful transaction count
+    // --------------------------------------------------
+    console.log(
+      "[11] Checking successful transactions...",
+    );
 
     const transactions = await queryDB(
-      `SELECT COUNT(*) AS total_transactions
-       FROM transaction_history
-       WHERE rider_id = ?
-       AND status = 'CNF'`,
+      `
+        SELECT
+          COUNT(*) AS total_transactions
+        FROM transaction_history
+        WHERE rider_id = ?
+          AND status = 'CNF'
+      `,
       [rider_id],
     );
 
-    console.log("[6] Transaction result:", transactions);
-
-    const transaction = transactions;
-    const totalTransactions = Number(
-      transaction?.total_transactions || 0,
+    console.log(
+      "[11] Transaction result:",
+      transactions,
     );
 
-    const isFirstPayment = totalTransactions === 0;
+    const totalTransactions = Number(
+      transactions?.total_transactions || 0,
+    );
 
-    console.log("[7] First payment check:", {
-      totalTransactions,
-      isFirstPayment,
-    });
+    const isFirstPayment =
+      totalTransactions === 0;
 
-    // Country configuration
-    const minWallet = parseFloat(rider.min_wallet_price || 20);
-    const minSecurity = parseFloat(rider.min_sec_deposit || 100);
+    console.log(
+      "[12] Payment history:",
+      {
+        totalTransactions,
+        isFirstPayment,
+      },
+    );
 
-    console.log("[8] Country configuration:", {
-      minWallet,
-      minSecurity,
-    });
+    // --------------------------------------------------
+    // 12. Country configuration
+    // --------------------------------------------------
+    const minWallet = Number(
+      rider.min_wallet_price ?? 20,
+    );
 
-    // Rider balances
-    const currentWallet = parseFloat(rider.amount || 0);
-    const securityDeposit = parseFloat(rider.security_deposit || 0);
-    const outstandingCost = parseFloat(rider.out_standing_cost || 0);
+    const minSecurity = Number(
+      rider.min_sec_deposit ?? 100,
+    );
 
-    console.log("[9] Current rider balances:", {
-      currentWallet,
-      securityDeposit,
-      outstandingCost,
-    });
+    console.log(
+      "[13] Country configuration:",
+      {
+        minWallet,
+        minSecurity,
+      },
+    );
 
-    let securityRequired = 0;
-    let walletRequired = 0;
-    let requiredAmount = 0;
-
-    // Security deposit requirement
-    if (securityDeposit < minSecurity) {
-      securityRequired = minSecurity - securityDeposit;
-      requiredAmount += securityRequired;
+    // --------------------------------------------------
+    // 13. Validate country configuration
+    // --------------------------------------------------
+    if (
+      !Number.isFinite(minWallet) ||
+      minWallet < 0
+    ) {
+      throw new Error(
+        `Invalid min_wallet_price for rider ${rider_id}: ${rider.min_wallet_price}`,
+      );
     }
 
-    console.log("[10] Security deposit calculation:", {
-      currentSecurityDeposit: securityDeposit,
-      minSecurity,
-      securityRequired,
-      requiredAmount,
-    });
-
-    // Wallet balance requirement
-    if (currentWallet < minWallet) {
-      walletRequired = minWallet - currentWallet;
-      requiredAmount += walletRequired;
+    if (
+      !Number.isFinite(minSecurity) ||
+      minSecurity < 0
+    ) {
+      throw new Error(
+        `Invalid min_sec_deposit for rider ${rider_id}: ${rider.min_sec_deposit}`,
+      );
     }
 
-    console.log("[11] Wallet calculation:", {
-      currentWallet,
-      minWallet,
-      walletRequired,
-      requiredAmount,
-    });
+    // --------------------------------------------------
+    // 14. Current rider balances
+    // --------------------------------------------------
+    const rawWallet = Number(
+      rider.amount ?? 0,
+    );
 
-    // First recharge should be at least ₹200
+    const rawSecurityDeposit = Number(
+      rider.security_deposit ?? 0,
+    );
+
+    const rawOutstanding = Number(
+      rider.out_standing_cost ?? 0,
+    );
+
+    console.log(
+      "[14] Raw rider balances:",
+      {
+        rawWallet,
+        rawSecurityDeposit,
+        rawOutstanding,
+      },
+    );
+
+    // --------------------------------------------------
+    // 15. Validate rider balances
+    // --------------------------------------------------
+    if (!Number.isFinite(rawWallet)) {
+      throw new Error(
+        `Invalid wallet balance for rider ${rider_id}`,
+      );
+    }
+
+    if (!Number.isFinite(rawSecurityDeposit)) {
+      throw new Error(
+        `Invalid security deposit for rider ${rider_id}`,
+      );
+    }
+
+    if (!Number.isFinite(rawOutstanding)) {
+      throw new Error(
+        `Invalid outstanding amount for rider ${rider_id}`,
+      );
+    }
+
+    // --------------------------------------------------
+    // 16. Normalize negative balances
+    // --------------------------------------------------
+    const currentWallet = Math.max(
+      rawWallet,
+      0,
+    );
+
+    const securityDeposit = Math.max(
+      rawSecurityDeposit,
+      0,
+    );
+
+    const outstandingCost = Math.max(
+      rawOutstanding,
+      0,
+    );
+
+    console.log(
+      "[15] Normalized rider balances:",
+      {
+        currentWallet,
+        securityDeposit,
+        outstandingCost,
+      },
+    );
+
+    // --------------------------------------------------
+    // 17. Calculate outstanding requirement
+    // --------------------------------------------------
+    const outstandingRequired =
+      Number(
+        outstandingCost.toFixed(2),
+      );
+
+    // --------------------------------------------------
+    // 18. Calculate security deposit requirement
+    // --------------------------------------------------
+    const securityRequired = Number(
+      Math.max(
+        minSecurity - securityDeposit,
+        0,
+      ).toFixed(2),
+    );
+
+    // --------------------------------------------------
+    // 19. Calculate wallet requirement
+    // --------------------------------------------------
+    const walletRequired = Number(
+      Math.max(
+        minWallet - currentWallet,
+        0,
+      ).toFixed(2),
+    );
+
+    console.log(
+      "[16] Requirement calculation:",
+      {
+        outstandingRequired,
+        securityRequired,
+        walletRequired,
+      },
+    );
+
+    // --------------------------------------------------
+    // 20. Normal minimum required amount
+    // --------------------------------------------------
+    const calculatedRequiredAmount =
+      Number(
+        (
+          outstandingRequired +
+          securityRequired +
+          walletRequired
+        ).toFixed(2),
+      );
+
+    console.log(
+      "[17] Calculated required amount:",
+      {
+        calculatedRequiredAmount,
+      },
+    );
+
+    // --------------------------------------------------
+    // 21. First payment minimum
+    // --------------------------------------------------
+    const firstPaymentMinimum = 200;
+
+    let requiredAmount =
+      calculatedRequiredAmount;
+
     if (isFirstPayment) {
-      requiredAmount = Math.max(requiredAmount, 200);
-
-      console.log("[12] First payment minimum applied:", {
-        minimumFirstRecharge: 200,
-        requiredAmount,
-      });
+      requiredAmount = Math.max(
+        calculatedRequiredAmount,
+        firstPaymentMinimum,
+      );
     }
 
-    console.log("[13] FINAL REQUIRED AMOUNT:", {
-      enteredAmount: numericAmount,
-      requiredAmount,
-      securityRequired,
-      walletRequired,
-      isFirstPayment,
-    });
+    requiredAmount = Number(
+      requiredAmount.toFixed(2),
+    );
 
-    // Validate entered amount
-    if (numericAmount < requiredAmount) {
+    // --------------------------------------------------
+    // 22. Convert requirement to paise
+    // --------------------------------------------------
+    const requiredAmountPaise =
+      Math.round(
+        requiredAmount * 100,
+      );
+
+    console.log(
+      "[18] FINAL PAYMENT REQUIREMENT:",
+      {
+        currentWallet,
+        securityDeposit,
+        outstandingCost,
+
+        minWallet,
+        minSecurity,
+
+        outstandingRequired,
+        securityRequired,
+        walletRequired,
+
+        calculatedRequiredAmount,
+
+        firstPaymentMinimum,
+
+        requiredAmount,
+        requiredAmountPaise,
+
+        enteredAmount: finalAmount,
+        enteredAmountPaise:
+          razorpayAmount,
+
+        isFirstPayment,
+      },
+    );
+
+    // --------------------------------------------------
+    // 23. Validate entered amount
+    // --------------------------------------------------
+    if (
+      razorpayAmount <
+      requiredAmountPaise
+    ) {
       let message;
 
+      // ------------------------------------------------
+      // First payment
+      // ------------------------------------------------
       if (isFirstPayment) {
-        message = `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
-          2,
-        )}.`;
+        message =
+          `Your first wallet recharge amount should be at least ₹${requiredAmount.toFixed(
+            2,
+          )}.`;
       } else {
-        message = `Please add a minimum of ₹${requiredAmount.toFixed(
-          2,
-        )}. This includes ₹${securityRequired.toFixed(
-          2,
-        )} towards your refundable security deposit and ₹${walletRequired.toFixed(
-          2,
-        )} towards your wallet balance.`;
+        // ----------------------------------------------
+        // Subsequent payment
+        // ----------------------------------------------
+        const reasons = [];
+
+        if (
+          outstandingRequired > 0
+        ) {
+          reasons.push(
+            `₹${outstandingRequired.toFixed(
+              2,
+            )} towards outstanding amount`,
+          );
+        }
+
+        if (
+          securityRequired > 0
+        ) {
+          reasons.push(
+            `₹${securityRequired.toFixed(
+              2,
+            )} towards refundable security deposit`,
+          );
+        }
+
+        if (
+          walletRequired > 0
+        ) {
+          reasons.push(
+            `₹${walletRequired.toFixed(
+              2,
+            )} towards minimum wallet balance`,
+          );
+        }
+
+        if (
+          reasons.length > 0
+        ) {
+          message =
+            `Please add a minimum of ₹${requiredAmount.toFixed(
+              2,
+            )}. This includes ${reasons.join(
+              " and ",
+            )}.`;
+        } else {
+          message =
+            `Please add a minimum of ₹${requiredAmount.toFixed(
+              2,
+            )}.`;
+        }
       }
 
-      console.log("[14] Amount validation FAILED:", {
-        numericAmount,
-        requiredAmount,
-        message,
-      });
+      console.log(
+        "[19] AMOUNT VALIDATION FAILED:",
+        {
+          enteredAmount: finalAmount,
+          requiredAmount,
+          enteredPaise:
+            razorpayAmount,
+          requiredPaise:
+            requiredAmountPaise,
+          message,
+        },
+      );
 
       return resp.json({
         status: 0,
+
         code: 422,
+
         message: [message],
+
+        payment_breakdown: {
+          outstanding_amount:
+            outstandingRequired,
+
+          security_required:
+            securityRequired,
+
+          wallet_required:
+            walletRequired,
+
+          calculated_required:
+            calculatedRequiredAmount,
+
+          minimum_required:
+            requiredAmount,
+
+          is_first_payment:
+            isFirstPayment,
+        },
       });
     }
 
-    console.log("[14] Amount validation PASSED");
+    // --------------------------------------------------
+    // 24. Amount is valid
+    // --------------------------------------------------
+    console.log(
+      "[19] AMOUNT VALIDATION PASSED:",
+      {
+        enteredAmount: finalAmount,
+        requiredAmount,
+      },
+    );
 
-    // Create Razorpay order
-    console.log("[15] Creating Razorpay order...");
+    // --------------------------------------------------
+    // 25. Calculate expected allocation
+    //
+    // This is only for information / Razorpay notes.
+    // Actual balance update should be recalculated
+    // inside the successful-payment webhook.
+    // --------------------------------------------------
+
+    let remainingAmount =
+      finalAmount;
+
+    // Outstanding allocation
+    const outstandingPayment =
+      Number(
+        Math.min(
+          remainingAmount,
+          outstandingRequired,
+        ).toFixed(2),
+      );
+
+    remainingAmount = Number(
+      (
+        remainingAmount -
+        outstandingPayment
+      ).toFixed(2),
+    );
+
+    // Security allocation
+    const securityPayment =
+      Number(
+        Math.min(
+          remainingAmount,
+          securityRequired,
+        ).toFixed(2),
+      );
+
+    remainingAmount = Number(
+      (
+        remainingAmount -
+        securityPayment
+      ).toFixed(2),
+    );
+
+    // Wallet allocation
+    const walletMinimumPayment =
+      Number(
+        Math.min(
+          remainingAmount,
+          walletRequired,
+        ).toFixed(2),
+      );
+
+    remainingAmount = Number(
+      (
+        remainingAmount -
+        walletMinimumPayment
+      ).toFixed(2),
+    );
+
+    // Any remaining amount becomes extra wallet balance
+    const additionalWalletAmount =
+      remainingAmount;
+
+    const totalWalletCredit =
+      Number(
+        (
+          walletMinimumPayment +
+          additionalWalletAmount
+        ).toFixed(2),
+      );
+
+    console.log(
+      "[20] Expected payment allocation:",
+      {
+        paymentAmount: finalAmount,
+
+        outstandingPayment,
+
+        securityPayment,
+
+        walletMinimumPayment,
+
+        additionalWalletAmount,
+
+        totalWalletCredit,
+      },
+    );
+
+    // --------------------------------------------------
+    // 26. Create Razorpay receipt
+    // --------------------------------------------------
+    const receipt = `${finalAmount}_RS_by_${rider_id}_${moment().format(
+      "YY-MM-DD_HH:mm:ss",
+    )}`;
+
+    console.log(
+      "[21] Razorpay receipt:",
+      receipt,
+    );
+
+    // --------------------------------------------------
+    // 27. Create Razorpay instance
+    // --------------------------------------------------
+    console.log(
+      "[22] Creating Razorpay instance...",
+    );
 
     const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
+      key_id:
+        process.env.RAZORPAY_KEY_ID,
+
+      key_secret:
+        process.env.RAZORPAY_KEY_SECRET,
     });
 
-    const razorpayAmount = Math.round(Number(numericAmount) * 100);
+    // --------------------------------------------------
+    // 28. Razorpay notes
+    // --------------------------------------------------
+    const razorpayNotes = {
+      rider_id:
+        rider_id.toString(),
 
-    console.log("[16] Razorpay order payload:", {
-      amount: razorpayAmount,
-      amountInRupees: numericAmount,
-      currency: "INR",
-      receipt,
-      notes: {
-        rider_id: rider_id.toString(),
-        booking_type: "MOBILITY",
-        amount: Number(numericAmount),
+      booking_type:
+        "MOBILITY",
+
+      amount:
+        finalAmount,
+
+      outstanding_amount:
+        outstandingRequired,
+
+      security_required:
+        securityRequired,
+
+      wallet_required:
+        walletRequired,
+
+      calculated_required:
+        calculatedRequiredAmount,
+
+      minimum_required:
+        requiredAmount,
+
+      expected_outstanding_payment:
+        outstandingPayment,
+
+      expected_security_payment:
+        securityPayment,
+
+      expected_wallet_credit:
+        totalWalletCredit,
+
+      is_first_payment:
+        isFirstPayment,
+    };
+
+    console.log(
+      "[23] Razorpay order payload:",
+      {
+        amount:
+          razorpayAmount,
+
+        amountInRupees:
+          finalAmount,
+
+        currency:
+          "INR",
+
+        receipt,
+
+        notes:
+          razorpayNotes,
       },
-    });
+    );
 
-    const order = await razorpay.orders.create({
-      amount: razorpayAmount,
-      currency: "INR",
-      receipt,
-      notes: {
-        rider_id: rider_id.toString(),
-        booking_type: "MOBILITY",
-        amount: Number(numericAmount),
+    // --------------------------------------------------
+    // 29. Create Razorpay order
+    // --------------------------------------------------
+    const order =
+      await razorpay.orders.create({
+        amount:
+          razorpayAmount,
+
+        currency:
+          "INR",
+
+        receipt,
+
+        notes:
+          razorpayNotes,
+      });
+
+    console.log(
+      "[24] Razorpay order CREATED:",
+      {
+        orderId:
+          order?.id,
+
+        amount:
+          order?.amount,
+
+        currency:
+          order?.currency,
+
+        status:
+          order?.status,
+
+        receipt:
+          order?.receipt,
       },
-    });
+    );
 
-    console.log("[17] Razorpay order CREATED:", {
-      orderId: order?.id,
-      amount: order?.amount,
-      currency: order?.currency,
-      status: order?.status,
-      receipt: order?.receipt,
-    });
+    // --------------------------------------------------
+    // 30. Create / Fetch customer
+    // --------------------------------------------------
+    console.log(
+      "[25] Creating/Fetching customer...",
+    );
 
-    console.log("[18] Creating/Fetching customer...");
+    const customer_id =
+      await createCustomer(
+        rider_id,
+      );
 
-    const customer_id = await createCustomer(rider_id);
+    console.log(
+      "[26] Customer result:",
+      {
+        rider_id,
+        customer_id,
+      },
+    );
 
-    console.log("[19] Customer result:", {
-      rider_id,
-      customer_id,
-    });
+    console.log(
+      "========== ADD MONEY WALLET SUCCESS ==========\n",
+    );
 
-    console.log("========== ADD MONEY WALLET SUCCESS ==========\n");
-
+    // --------------------------------------------------
+    // 31. Response
+    // --------------------------------------------------
     return resp.json({
       status: 1,
+
       code: 200,
-      orderId: order.id,
+
+      orderId:
+        order.id,
+
       customer_id,
-      message: ["Order Created successfully"],
-      amount: numericAmount,
-      currency: "INR",
-      key_id: process.env.RAZORPAY_KEY_ID,
+
+      message: [
+        "Order Created successfully",
+      ],
+
+      amount:
+        finalAmount,
+
+      currency:
+        "INR",
+
+      key_id:
+        process.env.RAZORPAY_KEY_ID,
+
+      payment_breakdown: {
+        outstanding_amount:
+          outstandingRequired,
+
+        security_required:
+          securityRequired,
+
+        wallet_required:
+          walletRequired,
+
+        calculated_required:
+          calculatedRequiredAmount,
+
+        minimum_required:
+          requiredAmount,
+
+        expected_outstanding_payment:
+          outstandingPayment,
+
+        expected_security_payment:
+          securityPayment,
+
+        expected_wallet_credit:
+          totalWalletCredit,
+
+        is_first_payment:
+          isFirstPayment,
+      },
     });
   } catch (error) {
-    console.log("\n========== ADD MONEY WALLET ERROR ==========");
-    console.log("Error message:", error?.message);
-    console.log("Error stack:", error?.stack);
-    console.log("Full error:", error);
-    console.log("============================================\n");
+    console.log(
+      "\n========== ADD MONEY WALLET ERROR ==========",
+    );
+
+    console.log(
+      "Error message:",
+      error?.message,
+    );
+
+    console.log(
+      "Error stack:",
+      error?.stack,
+    );
+
+    console.log(
+      "Full error:",
+      error,
+    );
+
+    console.log(
+      "============================================\n",
+    );
 
     return resp.json({
       status: 0,
+
       code: 500,
-      message: ["Something went wrong. Please try again."],
+
+      message: [
+        "Something went wrong. Please try again.",
+      ],
     });
   }
 });
+
 
 export const completeRefundProcess = async ({
   refundRequestId,
@@ -2096,16 +3039,350 @@ export const addMoneyForCycleBookingOLD111 = asyncHandler(async (req, resp) => {
 });
 
 
+// export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
+//   try {
+//     const { rider_id, amount } = mergeParam(req);
+
+//     const numericAmount = parseFloat(amount);
+
+//     // --------------------------------------------------
+//     // Validation
+//     // --------------------------------------------------
+//     const { isValid, errors } = validateFields(mergeParam(req), {
+//       rider_id: ["required"],
+//       amount: ["required"],
+//     });
+
+//     if (!isValid) {
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: errors,
+//       });
+//     }
+
+//     if (isNaN(numericAmount)) {
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: ["Please enter a valid amount."],
+//       });
+//     }
+
+//     if (numericAmount < 1) {
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: ["Amount cannot be less than 1 INR"],
+//       });
+//     }
+
+//     // --------------------------------------------------
+//     // Get rider wallet/security/outstanding details
+//     // --------------------------------------------------
+//     const result = await queryDB(
+//       `
+//         SELECT
+//             r.amount,
+//             r.security_deposit,
+//             r.out_standing_cost,
+
+//             ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+//             ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit,
+
+//             cb.booking_id
+
+//         FROM riders r
+
+//         JOIN country cn
+//             ON cn.country_id = r.country_id
+
+//         LEFT JOIN cycle_booking cb
+//             ON cb.booking_id = (
+//                 SELECT booking_id
+//                 FROM cycle_booking
+//                 WHERE rider_id = r.rider_id
+//                 ORDER BY created_at DESC
+//                 LIMIT 1
+//             )
+
+//         WHERE r.rider_id = ?
+//       `,
+//       [rider_id],
+//     );
+
+//     // --------------------------------------------------
+//     // Rider not found
+//     // --------------------------------------------------
+//     if (!result) {
+//       return resp.json({
+//         status: 0,
+//         code: 404,
+//         message: ["Rider not found"],
+//       });
+//     }
+
+//     // --------------------------------------------------
+//     // Check successful transactions
+//     // --------------------------------------------------
+//     const transactions = await queryDB(
+//       `
+//         SELECT COUNT(*) AS total_transactions
+//         FROM transaction_history
+//         WHERE rider_id = ?
+//         AND status = 'CNF'
+//       `,
+//       [rider_id],
+//     );
+
+//     console.log("transactions:", transactions);
+
+//     const transactionCount = Number(
+//       transactions?.total_transactions || 0
+//     );
+
+//     const isFirstPayment = transactionCount === 0;
+
+//     // --------------------------------------------------
+//     // Country configuration
+//     // --------------------------------------------------
+//     const minWallet = parseFloat(
+//       result.min_wallet_price || 20
+//     );
+
+//     const minSecurity = parseFloat(
+//       result.min_sec_deposit || 100
+//     );
+
+//     // --------------------------------------------------
+//     // Rider current balances
+//     // --------------------------------------------------
+//     const currentWallet = parseFloat(
+//       result.amount || 0
+//     );
+
+//     const securityDeposit = parseFloat(
+//       result.security_deposit || 0
+//     );
+
+//     const outstandingCost = parseFloat(
+//       result.out_standing_cost || 0
+//     );
+
+//     // --------------------------------------------------
+//     // Calculate required amounts
+//     // --------------------------------------------------
+
+//     // Amount required to complete security deposit
+//     let securityRequired = 0;
+
+//     if (securityDeposit < minSecurity) {
+//       securityRequired = minSecurity - securityDeposit;
+//     }
+
+//     // Amount required to maintain minimum wallet balance
+//     let walletRequired = 0;
+
+//     if (currentWallet < minWallet) {
+//       walletRequired = minWallet - currentWallet;
+//     }
+
+//     // Amount required to clear outstanding
+//     const outstandingRequired = Math.max(
+//       outstandingCost,
+//       0
+//     );
+
+//     // --------------------------------------------------
+//     // Total minimum amount required
+//     // --------------------------------------------------
+//     let requiredAmount =
+//       outstandingRequired +
+//       securityRequired +
+//       walletRequired;
+
+//     // --------------------------------------------------
+//     // First successful payment minimum = ₹200
+//     // --------------------------------------------------
+//     if (isFirstPayment) {
+//       requiredAmount = Math.max(
+//         requiredAmount,
+//         200
+//       );
+//     }
+
+//     // Round to 2 decimal places
+//     requiredAmount = Number(
+//       requiredAmount.toFixed(2)
+//     );
+
+//     console.log("Payment calculation:", {
+//       currentWallet,
+//       securityDeposit,
+//       outstandingCost,
+//       minWallet,
+//       minSecurity,
+//       walletRequired,
+//       securityRequired,
+//       outstandingRequired,
+//       requiredAmount,
+//       numericAmount,
+//       isFirstPayment,
+//     });
+
+//     // --------------------------------------------------
+//     // Validate entered amount
+//     // --------------------------------------------------
+//     if (numericAmount < requiredAmount) {
+//       let message;
+
+//       if (isFirstPayment) {
+//         message = `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
+//           2
+//         )}.`;
+//       } else {
+//         const reasons = [];
+
+//         if (outstandingRequired > 0) {
+//           reasons.push(
+//             `₹${outstandingRequired.toFixed(
+//               2
+//             )} towards outstanding amount`
+//           );
+//         }
+
+//         if (securityRequired > 0) {
+//           reasons.push(
+//             `₹${securityRequired.toFixed(
+//               2
+//             )} towards refundable security deposit`
+//           );
+//         }
+
+//         if (walletRequired > 0) {
+//           reasons.push(
+//             `₹${walletRequired.toFixed(
+//               2
+//             )} towards minimum wallet balance`
+//           );
+//         }
+
+//         message = `Please add a minimum of ₹${requiredAmount.toFixed(
+//           2
+//         )}. This includes ${reasons.join(" and ")}.`;
+//       }
+
+//       return resp.json({
+//         status: 0,
+//         code: 422,
+//         message: [message],
+//       });
+//     }
+
+//     // --------------------------------------------------
+//     // Create Razorpay receipt
+//     // --------------------------------------------------
+//     const receipt = `${numericAmount}_BOOKING_${rider_id}_${moment().format(
+//       "YY-MM-DD_HH:mm:ss"
+//     )}`;
+
+//     // --------------------------------------------------
+//     // Create Razorpay instance
+//     // --------------------------------------------------
+//     const razorpay = new Razorpay({
+//       key_id: process.env.RAZORPAY_KEY_ID,
+//       key_secret: process.env.RAZORPAY_KEY_SECRET,
+//     });
+
+//     // --------------------------------------------------
+//     // Create Razorpay order
+//     // --------------------------------------------------
+//     const order = await razorpay.orders.create({
+//       amount: Math.round(numericAmount * 100),
+//       currency: "INR",
+//       receipt,
+
+//       notes: {
+//         rider_id: rider_id.toString(),
+
+//         booking_id: result.booking_id
+//           ? result.booking_id.toString()
+//           : "",
+
+//         booking_type: "BOOKING",
+
+//         amount: numericAmount,
+
+//         outstanding_amount: outstandingRequired,
+
+//         security_required: securityRequired,
+
+//         wallet_required: walletRequired,
+//       },
+//     });
+
+//     // --------------------------------------------------
+//     // Create Razorpay customer
+//     // --------------------------------------------------
+//     const customer_id = await createCustomer(
+//       rider_id
+//     );
+
+//     // --------------------------------------------------
+//     // Response
+//     // --------------------------------------------------
+//     return resp.json({
+//       status: 1,
+//       code: 200,
+
+//       orderId: order.id,
+
+//       customer_id,
+
+//       message: ["Order created for booking"],
+
+//       amount: numericAmount,
+
+//       currency: "INR",
+
+//       key_id: process.env.RAZORPAY_KEY_ID,
+
+//       // Useful for frontend/debugging
+//       payment_breakdown: {
+//         outstanding_amount: outstandingRequired,
+//         security_required: securityRequired,
+//         wallet_required: walletRequired,
+//         minimum_required: requiredAmount,
+//       },
+//     });
+
+//   } catch (error) {
+
+//     console.log(
+//       "\nERROR:- addMoneyForCycleBooking",
+//       error
+//     );
+
+//     return resp.json({
+//       status: 0,
+//       code: 500,
+//       message: [
+//         "Something went wrong. Please try again.",
+//       ],
+//     });
+//   }
+// });
+
 export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
   try {
-    const { rider_id, amount } = mergeParam(req);
+    const params = mergeParam(req);
 
-    const numericAmount = parseFloat(amount);
+    const { rider_id, amount } = params;
 
     // --------------------------------------------------
-    // Validation
+    // Basic field validation
     // --------------------------------------------------
-    const { isValid, errors } = validateFields(mergeParam(req), {
+    const { isValid, errors } = validateFields(params, {
       rider_id: ["required"],
       amount: ["required"],
     });
@@ -2118,7 +3395,46 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
       });
     }
 
-    if (isNaN(numericAmount)) {
+    // --------------------------------------------------
+    // Strict amount validation
+    // --------------------------------------------------
+    //
+    // Valid:
+    // 1
+    // 100
+    // 100.5
+    // 100.50
+    // 0.50
+    //
+    // Invalid:
+    // 100abc
+    // abc100
+    // 100.123
+    // 1,000
+    // ₹100
+    // 100.
+    // .50
+    // -100
+    // +100
+    // --------------------------------------------------
+    const amountString = String(amount).trim();
+
+    if (!/^\d+(\.\d{1,2})?$/.test(amountString)) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: [
+          "Please enter a valid amount with maximum 2 decimal places.",
+        ],
+      });
+    }
+
+    // --------------------------------------------------
+    // Convert amount to Number
+    // --------------------------------------------------
+    const numericAmount = Number(amountString);
+
+    if (!Number.isFinite(numericAmount)) {
       return resp.json({
         status: 0,
         code: 422,
@@ -2126,13 +3442,46 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
       });
     }
 
-    if (numericAmount < 1) {
+    // --------------------------------------------------
+    // Amount must be greater than 0
+    // --------------------------------------------------
+    if (numericAmount <= 0) {
       return resp.json({
         status: 0,
         code: 422,
-        message: ["Amount cannot be less than 1 INR"],
+        message: ["Amount must be greater than 0 INR."],
       });
     }
+
+    // --------------------------------------------------
+    // Convert entered amount to paise
+    //
+    // This avoids floating-point comparison issues.
+    //
+    // Example:
+    // ₹100.50 => 10050 paise
+    // --------------------------------------------------
+    const paymentPaise = Math.round(
+      numericAmount * 100
+    );
+
+    // --------------------------------------------------
+    // Minimum Razorpay amount = ₹1
+    // --------------------------------------------------
+    if (paymentPaise < 100) {
+      return resp.json({
+        status: 0,
+        code: 422,
+        message: ["Amount cannot be less than 1 INR."],
+      });
+    }
+
+    // --------------------------------------------------
+    // Normalize amount to exactly 2 decimal places
+    // --------------------------------------------------
+    const finalAmount = Number(
+      (paymentPaise / 100).toFixed(2)
+    );
 
     // --------------------------------------------------
     // Get rider wallet/security/outstanding details
@@ -2175,7 +3524,7 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
       return resp.json({
         status: 0,
         code: 404,
-        message: ["Rider not found"],
+        message: ["Rider not found."],
       });
     }
 
@@ -2187,234 +3536,486 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
         SELECT COUNT(*) AS total_transactions
         FROM transaction_history
         WHERE rider_id = ?
-        AND status = 'CNF'
+          AND status = 'CNF'
       `,
       [rider_id],
     );
 
-    console.log("transactions:", transactions);
+    console.log(
+      "Successful transactions:",
+      transactions
+    );
 
     const transactionCount = Number(
       transactions?.total_transactions || 0
     );
 
-    const isFirstPayment = transactionCount === 0;
+    // --------------------------------------------------
+    // First successful payment
+    // --------------------------------------------------
+    const isFirstPayment =
+      transactionCount === 0;
 
     // --------------------------------------------------
     // Country configuration
     // --------------------------------------------------
-    const minWallet = parseFloat(
-      result.min_wallet_price || 20
+    const minWallet = Number(
+      result.min_wallet_price ?? 20
     );
 
-    const minSecurity = parseFloat(
-      result.min_sec_deposit || 100
-    );
-
-    // --------------------------------------------------
-    // Rider current balances
-    // --------------------------------------------------
-    const currentWallet = parseFloat(
-      result.amount || 0
-    );
-
-    const securityDeposit = parseFloat(
-      result.security_deposit || 0
-    );
-
-    const outstandingCost = parseFloat(
-      result.out_standing_cost || 0
+    const minSecurity = Number(
+      result.min_sec_deposit ?? 100
     );
 
     // --------------------------------------------------
-    // Calculate required amounts
+    // Validate country configuration
     // --------------------------------------------------
-
-    // Amount required to complete security deposit
-    let securityRequired = 0;
-
-    if (securityDeposit < minSecurity) {
-      securityRequired = minSecurity - securityDeposit;
+    if (
+      !Number.isFinite(minWallet) ||
+      minWallet < 0
+    ) {
+      throw new Error(
+        `Invalid min_wallet_price for rider ${rider_id}`
+      );
     }
 
-    // Amount required to maintain minimum wallet balance
-    let walletRequired = 0;
-
-    if (currentWallet < minWallet) {
-      walletRequired = minWallet - currentWallet;
+    if (
+      !Number.isFinite(minSecurity) ||
+      minSecurity < 0
+    ) {
+      throw new Error(
+        `Invalid min_sec_deposit for rider ${rider_id}`
+      );
     }
 
-    // Amount required to clear outstanding
+    // --------------------------------------------------
+    // Current rider balances
+    // --------------------------------------------------
+    const currentWallet = Number(
+      result.amount ?? 0
+    );
+
+    const currentSecurityDeposit = Number(
+      result.security_deposit ?? 0
+    );
+
+    const currentOutstanding = Number(
+      result.out_standing_cost ?? 0
+    );
+
+    // --------------------------------------------------
+    // Validate rider balances
+    // --------------------------------------------------
+    if (
+      !Number.isFinite(currentWallet) ||
+      currentWallet < 0
+    ) {
+      throw new Error(
+        `Invalid wallet balance for rider ${rider_id}`
+      );
+    }
+
+    if (
+      !Number.isFinite(currentSecurityDeposit) ||
+      currentSecurityDeposit < 0
+    ) {
+      throw new Error(
+        `Invalid security deposit for rider ${rider_id}`
+      );
+    }
+
+    if (
+      !Number.isFinite(currentOutstanding)
+    ) {
+      throw new Error(
+        `Invalid outstanding amount for rider ${rider_id}`
+      );
+    }
+
+    // --------------------------------------------------
+    // Calculate requirements
+    // --------------------------------------------------
+
+    // --------------------------------------------------
+    // 1. Outstanding amount
+    //
+    // Outstanding must be cleared first.
+    // --------------------------------------------------
     const outstandingRequired = Math.max(
-      outstandingCost,
+      currentOutstanding,
       0
     );
 
     // --------------------------------------------------
-    // Total minimum amount required
+    // 2. Security deposit
+    //
+    // Only the missing amount required to reach the
+    // country's minimum security deposit is collected.
+    //
+    // Example:
+    // minSecurity = 100
+    // currentSecurity = 50
+    //
+    // securityRequired = 50
     // --------------------------------------------------
-    let requiredAmount =
-      outstandingRequired +
-      securityRequired +
-      walletRequired;
+    const securityRequired = Math.max(
+      minSecurity - currentSecurityDeposit,
+      0
+    );
+
+    // --------------------------------------------------
+    // 3. Wallet minimum
+    //
+    // Only the amount required to bring the wallet to
+    // min_wallet_price is included.
+    //
+    // Example:
+    // minWallet = 20
+    // currentWallet = 10
+    //
+    // walletRequired = 10
+    // --------------------------------------------------
+    const walletRequired = Math.max(
+      minWallet - currentWallet,
+      0
+    );
+
+    // --------------------------------------------------
+    // Convert all calculated requirements to paise
+    //
+    // This makes the final comparison exact.
+    // --------------------------------------------------
+    const outstandingRequiredPaise =
+      Math.round(outstandingRequired * 100);
+
+    const securityRequiredPaise =
+      Math.round(securityRequired * 100);
+
+    const walletRequiredPaise =
+      Math.round(walletRequired * 100);
+
+    // --------------------------------------------------
+    // Total amount required
+    // --------------------------------------------------
+    const calculatedRequiredPaise =
+      outstandingRequiredPaise +
+      securityRequiredPaise +
+      walletRequiredPaise;
 
     // --------------------------------------------------
     // First successful payment minimum = ₹200
     // --------------------------------------------------
+    const firstPaymentMinimumPaise = 20000;
+
+    let requiredAmountPaise =
+      calculatedRequiredPaise;
+
     if (isFirstPayment) {
-      requiredAmount = Math.max(
-        requiredAmount,
-        200
+      requiredAmountPaise = Math.max(
+        requiredAmountPaise,
+        firstPaymentMinimumPaise
       );
     }
 
-    // Round to 2 decimal places
-    requiredAmount = Number(
-      requiredAmount.toFixed(2)
+    // --------------------------------------------------
+    // Convert required amount back to rupees
+    // --------------------------------------------------
+    const outstandingRequiredFinal =
+      Number(
+        (outstandingRequiredPaise / 100).toFixed(2)
+      );
+
+    const securityRequiredFinal =
+      Number(
+        (securityRequiredPaise / 100).toFixed(2)
+      );
+
+    const walletRequiredFinal =
+      Number(
+        (walletRequiredPaise / 100).toFixed(2)
+      );
+
+    const calculatedRequiredAmount =
+      Number(
+        (calculatedRequiredPaise / 100).toFixed(2)
+      );
+
+    const requiredAmount =
+      Number(
+        (requiredAmountPaise / 100).toFixed(2)
+      );
+
+    // --------------------------------------------------
+    // Debug calculation
+    // --------------------------------------------------
+    console.log(
+      "Cycle booking payment calculation:",
+      {
+        rider_id,
+
+        enteredAmount: finalAmount,
+        paymentPaise,
+
+        currentWallet,
+        currentSecurityDeposit,
+        currentOutstanding,
+
+        minWallet,
+        minSecurity,
+
+        outstandingRequired:
+          outstandingRequiredFinal,
+
+        securityRequired:
+          securityRequiredFinal,
+
+        walletRequired:
+          walletRequiredFinal,
+
+        calculatedRequiredAmount,
+
+        requiredAmount,
+
+        requiredAmountPaise,
+
+        isFirstPayment,
+      }
     );
 
-    console.log("Payment calculation:", {
-      currentWallet,
-      securityDeposit,
-      outstandingCost,
-      minWallet,
-      minSecurity,
-      walletRequired,
-      securityRequired,
-      outstandingRequired,
-      requiredAmount,
-      numericAmount,
-      isFirstPayment,
-    });
-
     // --------------------------------------------------
-    // Validate entered amount
+    // Validate entered payment amount
     // --------------------------------------------------
-    if (numericAmount < requiredAmount) {
+    //
+    // LESS:
+    // Reject payment.
+    //
+    // EQUAL:
+    // Accept payment.
+    //
+    // MORE:
+    // Accept payment. Extra amount will ultimately
+    // remain in wallet after outstanding/security
+    // requirements are satisfied.
+    // --------------------------------------------------
+    if (paymentPaise < requiredAmountPaise) {
       let message;
 
       if (isFirstPayment) {
-        message = `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
-          2
-        )}.`;
+        message =
+          `Your first wallet recharge must be at least ₹${requiredAmount.toFixed(
+            2
+          )}.`;
       } else {
         const reasons = [];
 
-        if (outstandingRequired > 0) {
+        if (outstandingRequiredPaise > 0) {
           reasons.push(
-            `₹${outstandingRequired.toFixed(
+            `₹${outstandingRequiredFinal.toFixed(
               2
             )} towards outstanding amount`
           );
         }
 
-        if (securityRequired > 0) {
+        if (securityRequiredPaise > 0) {
           reasons.push(
-            `₹${securityRequired.toFixed(
+            `₹${securityRequiredFinal.toFixed(
               2
             )} towards refundable security deposit`
           );
         }
 
-        if (walletRequired > 0) {
+        if (walletRequiredPaise > 0) {
           reasons.push(
-            `₹${walletRequired.toFixed(
+            `₹${walletRequiredFinal.toFixed(
               2
             )} towards minimum wallet balance`
           );
         }
 
-        message = `Please add a minimum of ₹${requiredAmount.toFixed(
-          2
-        )}. This includes ${reasons.join(" and ")}.`;
+        if (reasons.length > 0) {
+          message =
+            `Please add a minimum of ₹${requiredAmount.toFixed(
+              2
+            )}. This includes ${reasons.join(
+              " and "
+            )}.`;
+        } else {
+          message =
+            `Please add a minimum of ₹${requiredAmount.toFixed(
+              2
+            )}.`;
+        }
       }
 
       return resp.json({
         status: 0,
         code: 422,
+
         message: [message],
+
+        // Useful for frontend/debugging
+        payment_breakdown: {
+          outstanding_amount:
+            outstandingRequiredFinal,
+
+          security_required:
+            securityRequiredFinal,
+
+          wallet_required:
+            walletRequiredFinal,
+
+          calculated_required:
+            calculatedRequiredAmount,
+
+          minimum_required:
+            requiredAmount,
+
+          entered_amount:
+            finalAmount,
+
+          is_first_payment:
+            isFirstPayment,
+        },
       });
     }
 
     // --------------------------------------------------
+    // Amount is valid
+    // --------------------------------------------------
+    console.log(
+      "Cycle booking payment amount validation PASSED:",
+      {
+        enteredAmount: finalAmount,
+        requiredAmount,
+        isFirstPayment,
+      }
+    );
+
+    // --------------------------------------------------
     // Create Razorpay receipt
     // --------------------------------------------------
-    const receipt = `${numericAmount}_BOOKING_${rider_id}_${moment().format(
-      "YY-MM-DD_HH:mm:ss"
-    )}`;
+    const receipt =
+      `${finalAmount}_BOOKING_${rider_id}_${moment().format(
+        "YY-MM-DD_HH:mm:ss"
+      )}`;
 
     // --------------------------------------------------
     // Create Razorpay instance
     // --------------------------------------------------
     const razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
+      key_id:
+        process.env.RAZORPAY_KEY_ID,
+
+      key_secret:
+        process.env.RAZORPAY_KEY_SECRET,
     });
 
     // --------------------------------------------------
     // Create Razorpay order
     // --------------------------------------------------
-    const order = await razorpay.orders.create({
-      amount: Math.round(numericAmount * 100),
-      currency: "INR",
-      receipt,
+    const order =
+      await razorpay.orders.create({
+        amount: paymentPaise,
 
-      notes: {
-        rider_id: rider_id.toString(),
+        currency: "INR",
 
-        booking_id: result.booking_id
-          ? result.booking_id.toString()
-          : "",
+        receipt,
 
-        booking_type: "BOOKING",
+        notes: {
+          rider_id:
+            rider_id.toString(),
 
-        amount: numericAmount,
+          booking_id:
+            result.booking_id
+              ? result.booking_id.toString()
+              : "",
 
-        outstanding_amount: outstandingRequired,
+          booking_type:
+            "BOOKING",
 
-        security_required: securityRequired,
+          amount:
+            finalAmount,
 
-        wallet_required: walletRequired,
-      },
-    });
+          outstanding_amount:
+            outstandingRequiredFinal,
+
+          security_required:
+            securityRequiredFinal,
+
+          wallet_required:
+            walletRequiredFinal,
+
+          calculated_required:
+            calculatedRequiredAmount,
+
+          minimum_required:
+            requiredAmount,
+
+          is_first_payment:
+            isFirstPayment,
+        },
+      });
 
     // --------------------------------------------------
     // Create Razorpay customer
     // --------------------------------------------------
-    const customer_id = await createCustomer(
-      rider_id
-    );
+    const customer_id =
+      await createCustomer(rider_id);
 
     // --------------------------------------------------
     // Response
     // --------------------------------------------------
     return resp.json({
       status: 1,
+
       code: 200,
 
-      orderId: order.id,
+      orderId:
+        order.id,
 
       customer_id,
 
-      message: ["Order created for booking"],
+      message: [
+        "Order created for booking",
+      ],
 
-      amount: numericAmount,
+      amount:
+        finalAmount,
 
-      currency: "INR",
+      currency:
+        "INR",
 
-      key_id: process.env.RAZORPAY_KEY_ID,
+      key_id:
+        process.env.RAZORPAY_KEY_ID,
 
-      // Useful for frontend/debugging
+      // ------------------------------------------------
+      // Payment breakdown
+      // ------------------------------------------------
       payment_breakdown: {
-        outstanding_amount: outstandingRequired,
-        security_required: securityRequired,
-        wallet_required: walletRequired,
-        minimum_required: requiredAmount,
+        outstanding_amount:
+          outstandingRequiredFinal,
+
+        security_required:
+          securityRequiredFinal,
+
+        wallet_required:
+          walletRequiredFinal,
+
+        calculated_required:
+          calculatedRequiredAmount,
+
+        minimum_required:
+          requiredAmount,
+
+        entered_amount:
+          finalAmount,
+
+        is_first_payment:
+          isFirstPayment,
       },
     });
 
   } catch (error) {
-
     console.log(
       "\nERROR:- addMoneyForCycleBooking",
       error
@@ -2429,3 +4030,4 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
     });
   }
 });
+
