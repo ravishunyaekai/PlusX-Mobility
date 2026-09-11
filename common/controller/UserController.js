@@ -839,6 +839,8 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     rider.image_url = `${process.env.DIR_UPLOADS}profile-image/`;
     rider.min_wallet_price = parseFloat(rider.min_wallet_price);
     rider.min_sec_deposit = parseFloat(rider.min_sec_deposit);
+    rider.sec_deposit_content_amount = parseFloat(100);
+    rider.wallet_content_amount = parseFloat(100);
     rider.out_standing_cost = parseFloat(rider.out_standing_cost);
     rider.amount = parseFloat(rider.amount);
 
@@ -1075,6 +1077,8 @@ export const home = asyncHandler(async (req, resp) => {
         out_standing_cost: parseFloat(riderData.out_standing_cost),
         min_wallet_price: parseFloat(riderData.min_wallet_price),
         min_sec_deposit: parseFloat(riderData.min_sec_deposit),
+        sec_deposit_content_amount: parseFloat(100),
+        wallet_content_amount: parseFloat(100),
         default_wallet_recharge_amount: isFirstPayment ? 200 : 200,
         purchase_history_count: purchaseHistoryCount?.total || 0,
         charge_share_count: chargeShareCount?.total || 0,

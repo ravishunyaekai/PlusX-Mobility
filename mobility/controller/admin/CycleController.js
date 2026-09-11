@@ -1940,196 +1940,425 @@ export const approveRefundRequestOld = asyncHandler(async (req, resp) => {
 
 export const approveRefundRequest = asyncHandler(async (req, resp) => {
     try {
-        console.log("CONTROLLER FUNCTIN CLLED\n\n\n\n");
+        console.log("APPROVE REFUND FUNCTION CALLED");
+
         const { refund_request_id } = mergeParam(req);
+
+        // ---------------------------------------------------------
+        // 1. Validate request
+        // ---------------------------------------------------------
         const { isValid, errors } = validateFields(mergeParam(req), {
             refund_request_id: ["required"],
         });
+
         if (!isValid) {
-            return resp.json({ status: 0, code: 422, message: errors });
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: errors,
+            });
         }
 
-        // Refund Request
+        // ---------------------------------------------------------
+        // 2. Get refund request
+        // ---------------------------------------------------------
         const refundRequests = await queryDB(
-            `SELECT * FROM refund_requests WHERE id = ? LIMIT 1`,
-            [refund_request_id],
+            `SELECT *
+             FROM refund_requests
+             WHERE id = ?
+             LIMIT 1`,
+            [refund_request_id]
         );
 
         if (!refundRequests) {
             return resp.json({
                 status: 0,
+                code: 404,
                 message: "Refund request not found",
             });
         }
 
         const refundRequest = refundRequests;
 
-        // Already Processed
+        console.log("Refund Request =>", refundRequest);
+
+        // ---------------------------------------------------------
+        // 3. Check refund status
+        // ---------------------------------------------------------
         if (refundRequest.status !== "pending") {
             return resp.json({
                 status: 0,
+                code: 400,
                 message: `Refund already ${refundRequest.status}`,
             });
         }
 
-        // Rider Wallet Check
+        // ---------------------------------------------------------
+        // 4. Get CURRENT rider wallet values
+        //
+        // IMPORTANT:
+        // We intentionally DO NOT use:
+        // refundRequest.refund_amount
+        //
+        // The actual refund is calculated from the CURRENT values
+        // at the time admin approves the refund.
+        // ---------------------------------------------------------
         const riderData = await queryDB(
-            `SELECT amount, fcm_token FROM riders WHERE rider_id = ? LIMIT 1`,
-            [refundRequest.rider_id],
+            `SELECT
+                rider_id,
+                amount,
+                out_standing_cost,
+                security_deposit,
+                fcm_token,
+                user_name,
+                rider_email
+             FROM riders
+             WHERE rider_id = ?
+             LIMIT 1`,
+            [refundRequest.rider_id]
         );
 
         if (!riderData) {
             return resp.json({
                 status: 0,
+                code: 404,
                 message: "Rider not found",
             });
         }
+
+        console.log("CURRENT RIDER DATA =>", riderData);
+
+        // ---------------------------------------------------------
+        // 5. Check ongoing ride
+        // ---------------------------------------------------------
         const ongoingRide = await queryDB(
-            `SELECT booking_id FROM cycle_booking WHERE rider_id = ? AND status = 'ON' LIMIT 1`,
-            [refundRequest.rider_id],
+            `SELECT booking_id
+             FROM cycle_booking
+             WHERE rider_id = ?
+             AND status = 'ON'
+             LIMIT 1`,
+            [refundRequest.rider_id]
         );
 
         if (ongoingRide) {
             return resp.json({
                 status: 0,
-                code: 201,
-                message: ["Refund cannot be approved while rider has an ongoing trip."],
+                code: 400,
+                message: [
+                    "Refund cannot be approved while rider has an ongoing trip.",
+                ],
             });
         }
 
+        // ---------------------------------------------------------
+        // 6. CURRENT wallet values
+        // ---------------------------------------------------------
         const currentWalletAmount = Number(riderData.amount || 0);
 
-        const refundAmountInRupees = Number(refundRequest.refund_amount);
-
-        // if (currentWalletAmount < refundAmountInRupees) {
-        //   return resp.json({
-        //     status: 0,
-        //     message: "Refund amount already utilized by rider",
-        //   });
-        // }
-
-        // // Transaction
-        // const transactions = await queryDB(
-        //   `SELECT payment_id FROM transaction_history WHERE rider_id = ? ORDER BY id DESC LIMIT 1`,
-        //   [refundRequest.rider_id],
-        // );
-        const transactions = await queryDB(
-            // `SELECT payment_id
-            `SELECT *
-      FROM transaction_history
-      WHERE rider_id = ?
-      AND amount >= ?
-      AND payment_type = 'crd'
-      ORDER BY id DESC LIMIT 1`,
-            [refundRequest.rider_id, refundAmountInRupees],
+        const currentSecurityDeposit = Number(
+            riderData.security_deposit || 0
         );
-        console.log("transactions", transactions);
-        // const transactions = await queryDB(
-        //   `SELECT payment_id
-        //   FROM transaction_history
-        //   WHERE rider_id = ?
-        //     AND amount >= ?
-        //     AND payment_type IN ('crd', 'debt')
-        //   ORDER BY id DESC
-        //   LIMIT 1`,
-        //   [refundRequest.rider_id, refundAmountInRupees],
-        // );
+
+        const currentOutstandingAmount = Number(
+            riderData.out_standing_cost || 0
+        );
+
+        console.log("CURRENT VALUES =>", {
+            currentWalletAmount,
+            currentSecurityDeposit,
+            currentOutstandingAmount,
+        });
+
+        // ---------------------------------------------------------
+        // 7. Check security deposit
+        // ---------------------------------------------------------
+        if (currentSecurityDeposit <= 0) {
+            const rider_mail_template =
+                NOTIFICATION_CONTENT["MOBILITY_REFUND_REQ_CANCELLED"];
+
+            emailQueue.addEmail(
+                riderData.rider_email,
+                rider_mail_template.subject({}),
+                rider_mail_template.content({
+                    rider_name: riderData.user_name,
+                })
+            );
+
+            return resp.json({
+                status: 0,
+                code: 400,
+                message: ["No refundable balance available!"],
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 8. Deduct CURRENT outstanding from CURRENT security deposit
+        //
+        // Example:
+        //
+        // Security Deposit = ₹100
+        // Outstanding      = ₹20
+        //
+        // Refundable before fee = ₹80
+        // ---------------------------------------------------------
+        const amountAfterOutstanding = Number(
+            (
+                currentSecurityDeposit - currentOutstandingAmount
+            ).toFixed(2)
+        );
+
+        console.log("AMOUNT AFTER OUTSTANDING =>", amountAfterOutstanding);
+
+        // ---------------------------------------------------------
+        // 9. If outstanding consumes entire security deposit
+        // ---------------------------------------------------------
+        if (amountAfterOutstanding <= 0) {
+            const rider_mail_template =
+                NOTIFICATION_CONTENT["MOBILITY_REFUND_REQ_CANCELLED"];
+
+            emailQueue.addEmail(
+                riderData.rider_email,
+                rider_mail_template.subject({}),
+                rider_mail_template.content({
+                    rider_name: riderData.user_name,
+                })
+            );
+
+            return resp.json({
+                status: 0,
+                code: 400,
+                message: [
+                    "Refund request can only be approved when the refundable amount is greater than or equal to ₹60.",
+                ],
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 10. Calculate 3% processing fee
+        // ---------------------------------------------------------
+        const processingFee = Number(
+            (amountAfterOutstanding * 0.03).toFixed(2)
+        );
+
+        // ---------------------------------------------------------
+        // 11. Calculate FINAL refundable amount
+        // ---------------------------------------------------------
+        const finalRefundAmount = Number(
+            (amountAfterOutstanding - processingFee).toFixed(2)
+        );
+
+        console.log("REFUND CALCULATION =>", {
+            securityDeposit: currentSecurityDeposit,
+            outstandingAmount: currentOutstandingAmount,
+            amountAfterOutstanding,
+            processingFee,
+            finalRefundAmount,
+        });
+
+        // ---------------------------------------------------------
+        // 12. Minimum refundable amount check
+        //
+        // Requirement:
+        // Final refundable amount must be >= ₹60
+        //
+        // Therefore:
+        // ₹60     => eligible
+        // ₹59.99  => not eligible
+        // ---------------------------------------------------------
+        if (finalRefundAmount < 60) {
+            const rider_mail_template =
+                NOTIFICATION_CONTENT["MOBILITY_REFUND_REQ_CANCELLED"];
+
+            emailQueue.addEmail(
+                riderData.rider_email,
+                rider_mail_template.subject({}),
+                rider_mail_template.content({
+                    rider_name: riderData.user_name,
+                })
+            );
+
+            return resp.json({
+                status: 0,
+                code: 400,
+                message: [
+                    "Refund request can only be approved when the refundable amount is greater than or equal to ₹60.",
+                ],
+            });
+        }
+
+        // ---------------------------------------------------------
+        // 13. Get Razorpay payment transaction
+        //
+        // IMPORTANT:
+        // refundRequest.refund_amount is NOT used here.
+        //
+        // We use the FINAL CURRENT refundable amount.
+        // ---------------------------------------------------------
+        const transactions = await queryDB(
+            `SELECT *
+             FROM transaction_history
+             WHERE rider_id = ?
+             AND amount >= ?
+             AND payment_type = 'crd'
+             ORDER BY id DESC
+             LIMIT 1`,
+            [
+                refundRequest.rider_id,
+                finalRefundAmount,
+            ]
+        );
+
+        console.log("TRANSACTION =>", transactions);
 
         if (!transactions) {
             return resp.json({
                 status: 0,
+                code: 404,
                 message: "Transaction not found",
             });
         }
 
+        // ---------------------------------------------------------
+        // 14. Get payment ID
+        // ---------------------------------------------------------
         const paymentId = transactions.payment_id;
 
         if (!paymentId) {
             return resp.json({
                 status: 0,
+                code: 400,
                 message: "Payment ID not found",
             });
         }
 
-        // Razorpay Payment Verify
+        console.log("PAYMENT ID =>", paymentId);
+
+        // ---------------------------------------------------------
+        // 15. Fetch payment from Razorpay
+        // ---------------------------------------------------------
         const payment = await razorpay.payments.fetch(paymentId);
-        console.log("\npayment", payment);
+
+        console.log("RAZORPAY PAYMENT =>", payment);
 
         if (payment.status !== "captured") {
             return resp.json({
                 status: 0,
+                code: 400,
                 message: "Payment is not captured",
             });
         }
 
-        const refundAmount = Math.round(refundAmountInRupees * 100);
+        // ---------------------------------------------------------
+        // 16. Convert refund amount to paise
+        // ---------------------------------------------------------
+        const refundAmount = Math.round(
+            finalRefundAmount * 100
+        );
 
         if (refundAmount <= 0) {
             return resp.json({
                 status: 0,
+                code: 400,
                 message: "Invalid refund amount",
             });
         }
 
+        // ---------------------------------------------------------
+        // 17. Check Razorpay payment amount
+        // ---------------------------------------------------------
         if (refundAmount > payment.amount) {
             return resp.json({
                 status: 0,
+                code: 400,
                 message: "Refund amount exceeds payment amount",
             });
         }
-        console.log("refundAmount", refundAmount);
-        const alreadyRefunded = payment.amount_refunded || 0;
-        const refundableAmount = payment.amount - alreadyRefunded;
 
-        console.log({
+        // ---------------------------------------------------------
+        // 18. Check already refunded amount
+        // ---------------------------------------------------------
+        const alreadyRefunded = Number(
+            payment.amount_refunded || 0
+        );
+
+        const razorpayRefundableAmount =
+            payment.amount - alreadyRefunded;
+
+        console.log("RAZORPAY REFUND CHECK =>", {
             paymentAmount: payment.amount,
             alreadyRefunded,
-            refundableAmount,
-            refundAmount,
+            razorpayRefundableAmount,
+            requestedRefundAmount: refundAmount,
         });
 
-        if (refundAmount > refundableAmount) {
+        if (refundAmount > razorpayRefundableAmount) {
             return resp.json({
                 status: 0,
-                message: `Only ₹${(refundableAmount / 100).toFixed(2)} can be refunded.`,
+                code: 400,
+                message: `Only ₹${(
+                    razorpayRefundableAmount / 100
+                ).toFixed(2)} can be refunded.`,
             });
         }
 
-        console.log({
-            paymentId,
-            paymentAmount: payment.amount,
-            paymentCaptured: payment.status,
-            refundAmount,
-        });
-
-        // // Refund from Razorpay
-        // const refund = await razorpay.payments.refund(paymentId, {
-        //   amount: refundAmount,
-        //   notes: {
-        //     refund_request_id: String(refundRequest.id),
-        //     booking_id: String(refundRequest.booking_id),
-        //   },
-        // });
-
-        // Refund from Razorpay
+        // ---------------------------------------------------------
+        // 19. Razorpay refund payload
+        // ---------------------------------------------------------
         const refundPayload = {
             amount: refundAmount,
             notes: {
-                refund_request_id: String(refundRequest.id),
-                booking_id: String(refundRequest.booking_id),
-                rider_id: String(refundRequest.rider_id),
-                refund_amount: String(refundAmountInRupees),
+                refund_request_id: String(
+                    refundRequest.id
+                ),
+
+                booking_id: String(
+                    refundRequest.booking_id || ""
+                ),
+
+                rider_id: String(
+                    refundRequest.rider_id
+                ),
+
+                // This is the ACTUAL calculated refund amount
+                refund_amount: String(
+                    finalRefundAmount
+                ),
+
+                // Useful for audit
+                security_deposit: String(
+                    currentSecurityDeposit
+                ),
+
+                outstanding_amount: String(
+                    currentOutstandingAmount
+                ),
+
+                processing_fee: String(
+                    processingFee
+                ),
+
                 booking_type: "MOBILITY_REFUND",
             },
         };
 
-        console.log(refundPayload);
+        console.log(
+            "RAZORPAY REFUND PAYLOAD =>",
+            refundPayload
+        );
 
-        const refund = await razorpay.payments.refund(paymentId, refundPayload);
+        // ---------------------------------------------------------
+        // 20. Process Razorpay refund
+        // ---------------------------------------------------------
+        const refund = await razorpay.payments.refund(
+            paymentId,
+            refundPayload
+        );
 
-        console.log("\n\nrefund", refund);
+        console.log("RAZORPAY REFUND RESPONSE =>", refund);
 
-        // Update Refund Request
+        // ---------------------------------------------------------
+        // 21. Update refund request
+        // ---------------------------------------------------------
         await updateRecord(
             "refund_requests",
             {
@@ -2138,11 +2367,20 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 refund_status: refund.status,
             },
             ["id"],
-            [refund_request_id],
+            [refund_request_id]
         );
-        //    const remainingWalletBalance = currentWalletAmount - refundAmountInRupees;
-        const remainingWalletBalance = currentWalletAmount;
-        // Deduct Security and O/s amount
+
+        // ---------------------------------------------------------
+        // 22. Wallet balance remains unchanged
+        //
+        // Only security deposit and outstanding are settled.
+        // ---------------------------------------------------------
+        const remainingWalletBalance =
+            currentWalletAmount;
+
+        // ---------------------------------------------------------
+        // 23. Clear security deposit and outstanding
+        // ---------------------------------------------------------
         await updateRecord(
             "riders",
             {
@@ -2150,8 +2388,12 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 out_standing_cost: 0.0,
             },
             ["rider_id"],
-            [refundRequest.rider_id],
+            [refundRequest.rider_id]
         );
+
+        // ---------------------------------------------------------
+        // 24. Add refund transaction history
+        // ---------------------------------------------------------
         await insertRecord(
             "transaction_history",
             [
@@ -2164,51 +2406,107 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 "status",
                 "payment_id",
             ],
-
             [
                 refundRequest.rider_id,
-                refundAmountInRupees,
+
+                // ACTUAL REFUND AMOUNT
+                finalRefundAmount,
+
                 "sd_refund",
+
+                // Outstanding has been settled
                 0,
-                // remainingWalletBalance,
+
+                // Wallet remains unchanged
                 currentWalletAmount,
+
                 currentWalletAmount,
+
                 "CNF",
+
                 refund.id,
-            ],
+            ]
         );
+
+        // ---------------------------------------------------------
+        // 25. Send notification
+        // ---------------------------------------------------------
         await sendNotification(
             "USER_REFUND_APPROVED",
-            { amount: refundAmountInRupees, rider_id: refundRequest.rider_id },
+            {
+                amount: finalRefundAmount,
+                rider_id: refundRequest.rider_id,
+            },
             refundRequest.rider_id,
-            refundRequest.rider_id,
+            refundRequest.rider_id
         );
-        const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+
+        // ---------------------------------------------------------
+        // 26. Push notification
+        // ---------------------------------------------------------
+        const template =
+            NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
 
         await pushNotification(
             riderData.fcm_token,
             template.heading,
-            template.desc({ amount: refundAmountInRupees }),
+            template.desc({
+                amount: finalRefundAmount,
+            }),
             "RDRFCM",
-            template.href({ rider_id: refundRequest.rider_id }),
+            template.href({
+                rider_id: refundRequest.rider_id,
+            })
+        );
+
+        // ---------------------------------------------------------
+        // 27. Final response
+        // ---------------------------------------------------------
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: "Refund processed successfully",
+
+            data: {
+                refund_id: refund.id,
+
+                refund_status: refund.status,
+
+                // Actual amount sent to Razorpay
+                refund_amount:
+                    refund.amount / 100,
+
+                // Calculation details
+                security_deposit:
+                    currentSecurityDeposit,
+
+                outstanding_amount:
+                    currentOutstandingAmount,
+
+                amount_after_outstanding:
+                    amountAfterOutstanding,
+
+                processing_fee:
+                    processingFee,
+
+                final_refund_amount:
+                    finalRefundAmount,
+
+                // Wallet is not refunded
+                remaining_wallet_balance:
+                    remainingWalletBalance,
+            },
+        });
+
+    } catch (error) {
+        console.error(
+            "Refund Error => ",
+            error
         );
 
         return resp.json({
-            status: 1,
-            message: "Refund processed successfully",
-            data: {
-                refund_id: refund.id,
-                refund_status: refund.status,
-                refund_amount: refund.amount / 100,
-                // remaining_wallet_balance: currentWalletAmount - refundAmountInRupees,
-                remaining_wallet_balance: currentWalletAmount,
-            },
-        });
-    } catch (error) {
-        console.error("Refund Error => ", error);
-
-        return resp.json({
             status: 0,
+            code: 500,
             message:
                 error?.error?.description ||
                 error?.description ||
