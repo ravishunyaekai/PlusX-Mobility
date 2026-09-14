@@ -72,7 +72,7 @@ cron.schedule('* * * * *', async () => {
 cron.schedule('*/5 * * * *', async () => {
     console.log('Outstanding deduction cron started');
     try {
-        await deductOutstandingAmount();
+        // await deductOutstandingAmount();
     } catch (error) {
         console.log('Cron Error:', error.message);
     }

@@ -2010,7 +2010,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 out_standing_cost,
                 security_deposit,
                 fcm_token,
-                user_name,
+                rider_name,
                 rider_email
              FROM riders
              WHERE rider_id = ?
@@ -2080,7 +2080,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 riderData.rider_email,
                 rider_mail_template.subject({}),
                 rider_mail_template.content({
-                    rider_name: riderData.user_name,
+                    rider_name: riderData.rider_name,
                 })
             );
 
@@ -2120,7 +2120,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 riderData.rider_email,
                 rider_mail_template.subject({}),
                 rider_mail_template.content({
-                    rider_name: riderData.user_name,
+                    rider_name: riderData.rider_name,
                 })
             );
 
@@ -2173,7 +2173,7 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 riderData.rider_email,
                 rider_mail_template.subject({}),
                 rider_mail_template.content({
-                    rider_name: riderData.user_name,
+                    rider_name: riderData.rider_name,
                 })
             );
 

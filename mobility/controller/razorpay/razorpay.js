@@ -757,7 +757,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
       return resp.json({
         status: 0,
-        code: 422,
+        code: 201,
         message: errors,
       });
     }
@@ -805,7 +805,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
       return resp.json({
         status: 0,
-        code: 422,
+        code: 201,
         message: [
           "Please enter a valid amount with maximum 2 decimal places.",
         ],
@@ -829,7 +829,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
       return resp.json({
         status: 0,
-        code: 422,
+        code: 201,
         message: [
           "Please enter a valid amount.",
         ],
@@ -847,7 +847,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
       return resp.json({
         status: 0,
-        code: 422,
+        code: 201,
         message: [
           "Amount must be greater than 0 INR.",
         ],
@@ -877,7 +877,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
 
       return resp.json({
         status: 0,
-        code: 422,
+        code: 201,
         message: [
           "Amount cannot be less than 1 INR",
         ],
@@ -1299,7 +1299,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
       return resp.json({
         status: 0,
 
-        code: 422,
+        code: 201,
 
         message: [message],
 
