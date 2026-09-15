@@ -845,27 +845,27 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     rider.amount = parseFloat(rider.amount);
 
     const transactions = await queryDB(
-      `
+        `
         SELECT
           COUNT(*) AS total_transactions
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
       `,
-      [rider_id],
+        [rider_id],
     );
 
     console.log(
-      "[11] Transaction result:",
-      transactions,
+        "[11] Transaction result:",
+        transactions,
     );
 
     const totalTransactions = Number(
-      transactions?.total_transactions || 0,
+        transactions?.total_transactions || 0,
     );
 
     const isFirstPayment =
-      totalTransactions === 0;
+        totalTransactions === 0;
 
     //   const deductionAmount = Number(((rider.amount * 2) / 100).toFixed(2));
     //   const refundAmount = Number((rider.amount - deductionAmount).toFixed(2));
@@ -912,14 +912,15 @@ export const getRiderData = asyncHandler(async (req, resp) => {
 
     const [responseContent] = await db.execute(
         `
-        SELECT content 
-        FROM response_content 
-        WHERE module_name = ? 
-        AND sub_module
-        AND status = 1 
-        LIMIT 1
-         `,
-        ["mobility-refund", "raise-refund-request"],
+    SELECT content
+    FROM response_content
+    WHERE module_name = ?
+      AND sub_module = ?
+      AND status = 1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+        ["refund-request", "refund-request"]
     );
 
     const purchaseHistoryCount = await queryDB(
@@ -982,27 +983,27 @@ export const home = asyncHandler(async (req, resp) => {
     }
 
     const transactions = await queryDB(
-      `
+        `
         SELECT
           COUNT(*) AS total_transactions
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
       `,
-      [rider_id],
+        [rider_id],
     );
 
     console.log(
-      "[11] Transaction result:",
-      transactions,
+        "[11] Transaction result:",
+        transactions,
     );
 
     const totalTransactions = Number(
-      transactions?.total_transactions || 0,
+        transactions?.total_transactions || 0,
     );
 
     const isFirstPayment =
-      totalTransactions === 0;
+        totalTransactions === 0;
 
     //   const deductionAmount = Number(
     //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
@@ -1029,15 +1030,17 @@ export const home = asyncHandler(async (req, resp) => {
     );
     const [response] = await db.execute(
         `
-        SELECT content 
-        FROM response_content 
-        WHERE module_name = ? 
-        AND sub_module
-        AND status = 1 
-        LIMIT 1
-         `,
-        ["mobility-refund", "raise-refund-request"],
+    SELECT content
+    FROM response_content
+    WHERE module_name = ?
+      AND sub_module = ?
+      AND status = 1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+        ["refund-request", "refund-request"]
     );
+    console.log("Response content:", response);
 
     const purchaseHistoryCount = await queryDB(
         `SELECT COUNT(*) as total FROM purchase_history `,
@@ -1185,16 +1188,16 @@ export const home = asyncHandler(async (req, resp) => {
 
 
 export const redeemCoupon = asyncHandler(async (req, resp) => {
-    const {rider_id, amount, booking_type, coupon_code } = mergeParam(req);
-    
+    const { rider_id, amount, booking_type, coupon_code } = mergeParam(req);
+
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id     : ["required"], 
-        amount       : ["required"],
-        booking_type : ["required"],
-        coupon_code  : ["required"],
+        rider_id: ["required"],
+        amount: ["required"],
+        booking_type: ["required"],
+        coupon_code: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    const [[{ count }]] = await db.execute('SELECT COUNT(*) AS count FROM coupon WHERE coupan_code = ?',[coupon_code]);
+    const [[{ count }]] = await db.execute('SELECT COUNT(*) AS count FROM coupon WHERE coupan_code = ?', [coupon_code]);
     if (count === 0) return resp.json({ status: 0, code: 422, message: ['The coupon you entered is not valid.'] });
 
     const coupon = await queryDB(`
@@ -1204,16 +1207,16 @@ export const redeemCoupon = asyncHandler(async (req, resp) => {
         FROM coupon
         WHERE coupan_code = ?
         LIMIT 1
-    `, [rider_id, coupon_code]); 
+    `, [rider_id, coupon_code]);
 
-    if (moment(coupon.end_date).isBefore(moment(), 'day') || coupon.status < 1){
-        return resp.json({ status: 0, code: 422, message: ["The coupon you entered has expired."]} );
+    if (moment(coupon.end_date).isBefore(moment(), 'day') || coupon.status < 1) {
+        return resp.json({ status: 0, code: 422, message: ["The coupon you entered has expired."] });
 
     } else if (coupon.booking_for != booking_type) {
         return resp.json({ status: 0, code: 422, message: ["The coupon you entered is not valid."] });
 
-    } else if(coupon.use_count >= coupon.user_per_user){
-        return resp.json({ status: 0, code: 422, message: ["This coupon code has already been used the maximum number of times."]} );
+    } else if (coupon.use_count >= coupon.user_per_user) {
+        return resp.json({ status: 0, code: 422, message: ["This coupon code has already been used the maximum number of times."] });
     }
     const data = {};
     if (coupon.coupan_percentage != parseFloat(100)) {
@@ -1253,13 +1256,12 @@ export const redeemCoupon = asyncHandler(async (req, resp) => {
 
 export const uploadSImage = asyncHandler(async (req, resp) => {
     console.log(req.files)
-        let profile_image = '';
-        if(req.files && req.files['image']) { 
-            const files   = req.files;
-            profile_image = files ? files['image'][0].filename : '';
-        }
+    let profile_image = '';
+    if (req.files && req.files['image']) {
+        const files = req.files;
+        profile_image = files ? files['image'][0].filename : '';
+    }
 
-        resp.json({message:"done"})
-    })
+    resp.json({ message: "done" })
+})
 
-    

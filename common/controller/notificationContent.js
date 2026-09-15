@@ -256,16 +256,6 @@ export const NOTIFICATION_CONTENT = {
     content: ({
       rider_name = "",
       amount = 0,
-
-      // Settlement breakdown
-      outstanding_paid = 0,
-      security_deposit_added = 0,
-      wallet_added = 0,
-
-      // Balances after payment
-      current_wallet_balance = 0,
-      current_security_deposit = 0,
-      remaining_outstanding = 0,
     }) => `
     <html>
       <body
@@ -298,286 +288,45 @@ export const NOTIFICATION_CONTENT = {
           </h2>
 
           <p>
-            Hi ${rider_name},
+            Dear ${rider_name},
           </p>
 
           <p>
-            We have successfully received your payment of
+            Thank you for your payment.
+          </p>
+
+          <p>
+            We are pleased to confirm that we have successfully received
+            your payment of
             <strong>
               INR ${Number(amount || 0).toFixed(2)}
-            </strong>.
+            </strong>
+            for PlusX Mobility.
           </p>
 
-          <!-- PAYMENT SETTLEMENT -->
-          <div
-            style="
-              background-color: #f1f8f4;
-              border-radius: 6px;
-              padding: 20px;
-              margin: 25px 0;
-            "
-          >
-
-            <h3
-              style="
-                margin-top: 0;
-                color: #222222;
-              "
-            >
-              Payment Settlement
-            </h3>
-
-            <table
-              style="
-                width: 100%;
-                border-collapse: collapse;
-              "
-            >
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Total Amount Paid
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                    font-weight: bold;
-                  "
-                >
-                  INR ${Number(amount || 0).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Outstanding Amount Settled
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                  "
-                >
-                  INR ${Number(
-      outstanding_paid || 0
-    ).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Security Deposit Added
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                  "
-                >
-                  INR ${Number(
-      security_deposit_added || 0
-    ).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Amount Added to Wallet
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                  "
-                >
-                  INR ${Number(
-      wallet_added || 0
-    ).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td colspan="2">
-                  <hr
-                    style="
-                      border: 0;
-                      border-top: 1px solid #dddddd;
-                      margin: 12px 0;
-                    "
-                  />
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    font-weight: bold;
-                  "
-                >
-                  Total Settled / Allocated
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                    font-weight: bold;
-                  "
-                >
-                  INR ${(
-        Number(outstanding_paid || 0) +
-        Number(security_deposit_added || 0) +
-        Number(wallet_added || 0)
-      ).toFixed(2)}
-                </td>
-              </tr>
-
-            </table>
-          </div>
-
-          <!-- BALANCE AFTER PAYMENT -->
-          <div
-            style="
-              background-color: #f8f9fb;
-              border-radius: 6px;
-              padding: 20px;
-              margin: 25px 0;
-            "
-          >
-
-            <h3
-              style="
-                margin-top: 0;
-                color: #222222;
-              "
-            >
-              Balance After Payment
-            </h3>
-
-            <table
-              style="
-                width: 100%;
-                border-collapse: collapse;
-              "
-            >
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Wallet Balance
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                    font-weight: bold;
-                  "
-                >
-                  INR ${Number(
-        current_wallet_balance || 0
-      ).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Security Deposit
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                    font-weight: bold;
-                  "
-                >
-                  INR ${Number(
-        current_security_deposit || 0
-      ).toFixed(2)}
-                </td>
-              </tr>
-
-              <tr>
-                <td
-                  style="
-                    padding: 9px 0;
-                    color: #555555;
-                  "
-                >
-                  Remaining Outstanding
-                </td>
-
-                <td
-                  style="
-                    padding: 9px 0;
-                    text-align: right;
-                    font-weight: bold;
-                    color: ${Number(remaining_outstanding || 0) > 0
-        ? "#d9534f"
-        : "#28a745"
-      };
-                  "
-                >
-                  INR ${Number(
-        remaining_outstanding || 0
-      ).toFixed(2)}
-                </td>
-              </tr>
-
-            </table>
-          </div>
           <p>
-              Thank you for making the payment. We hope you enjoyed your ride and 
-              look forward to serving you again soon.
+            Your payment has been recorded successfully, and you can
+            continue using PlusX Mobility services through the app.
           </p>
+
           <p>
-              If you have any questions or need assistance, please contact us through the app.
+            If you have any questions or require any assistance, please
+            contact our support team.
           </p>
-          <p>Happy Riding!</p>
+
           <p>
-              Team PlusX Mobility
+            Thank you for choosing PlusX Mobility.
+          </p>
+
+          <p>
+            Best regards,<br />
+            Team PlusX Mobility
           </p>
 
         </div>
       </body>
     </html>
-    `,
+  `,
   },
 
 
