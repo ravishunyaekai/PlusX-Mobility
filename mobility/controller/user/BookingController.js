@@ -2283,7 +2283,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
         if (db_logs_data?.description) {
             const description =
                 typeof db_logs_data.description ===
-                "string"
+                    "string"
                     ? JSON.parse(
                         db_logs_data.description,
                     )
@@ -2357,7 +2357,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
 
         const template =
             NOTIFICATION_CONTENT[
-                "USER_COMPLETE_RIDE"
+            "USER_COMPLETE_RIDE"
             ];
 
         await pushNotification(
@@ -2393,7 +2393,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
 
         const mail_template =
             NOTIFICATION_CONTENT[
-                "USER_RIDE_COMPLETE_EMAIL"
+            "USER_RIDE_COMPLETE_EMAIL"
             ];
 
         emailQueue.addEmail(
@@ -2960,7 +2960,7 @@ const completeride = async (
             total_cost =
                 base_price +
                 time_after_base_duration *
-                    post_price;
+                post_price;
         }
 
         total_cost = parseFloat(
@@ -3244,7 +3244,7 @@ const completeride = async (
 
         const template =
             NOTIFICATION_CONTENT[
-                "USER_COMPLETE_RIDE"
+            "USER_COMPLETE_RIDE"
             ];
 
         await pushNotification(
@@ -3288,7 +3288,7 @@ const completeride = async (
 
         const mail_template =
             NOTIFICATION_CONTENT[
-                "USER_RIDE_COMPLETE_EMAIL"
+            "USER_RIDE_COMPLETE_EMAIL"
             ];
 
         emailQueue.addEmail(
@@ -3846,7 +3846,7 @@ export const requestRefund = asyncHandler(async (req, resp) => {
         if (pendingRequest) {
             return resp.json({
                 status: 0,
-                code: 409,
+                code: 422,
                 message: [" Your refund request has already been submitted."],
             });
         }
