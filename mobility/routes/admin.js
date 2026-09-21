@@ -122,6 +122,14 @@ const adminRoutes = [
     // { method: 'post',  path: '/resident-list-single-old', handler: residentListOld }, // handler commented out in CommunityController
     { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
     { method: 'post',  path: '/resident-search',  handler: residentSearchMulti },
+
+    { method: 'post',  path: '/get-invoice-data',           handler : getInvoiceData }, 
+    { method: 'post',  path: '/create-scan-charge-invoice', handler : createScanChargeInvoice },
+    { method: 'post',  path: '/scan-charge-invoice-list',   handler : scanChargeInvoiceList },
+    { method: 'post',  path: '/scan-charge-invoice-detail', handler : scanChargeInvoiceDetail },
+
+    { method: 'post',  path: '/session-list',    handler : sessionList },
+    { method: 'post',  path: '/session-detail',  handler : sessionDetail },
 ]; 
 
 const uploadRules = {
