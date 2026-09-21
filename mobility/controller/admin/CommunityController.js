@@ -1,0 +1,1354 @@
+import { mergeParam, formatDateTimeInQuery, asyncHandler, createNotification, pushNotification, } from "../../../utils.js";
+import validateFields from "../../../validation.js";
+import { queryDB, getPaginatedData, updateRecord, insertRecord } from "../../../dbUtils.js";
+import db from "../../../config/indiadb.js";
+import moment from "moment";
+import bcrypt from "bcryptjs";
+import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
+
+// import { tryCatchErrorHandler } from "../../middleware/errorHandler.js";
+
+const formatUsageToThreeDecimals = (value) => parseFloat(value || 0).toFixed(3);
+
+const parseCommunityIds = (input) => {
+    if (Array.isArray(input)) {
+        return [...new Set(input.map((id) => String(id).trim()).filter(Boolean))];
+    }
+    if (typeof input === 'string' && input.trim()) {
+        try {
+            const parsed = JSON.parse(input);
+            if (Array.isArray(parsed)) {
+                return [...new Set(parsed.map((id) => String(id).trim()).filter(Boolean))];
+            }
+        } catch {
+            return [input.trim()];
+        }
+    }
+    return [];
+};
+
+/**
+ * Ensure all community IDs exist and are active.
+ */
+const validateCommunityIds = async (communityIds) => {
+    if (!communityIds.length) {
+        return { valid: false, message: ['At least one community is required.'] };
+    }
+
+    const placeholders = communityIds.map(() => '?').join(', ');
+    const [rows] = await db.execute(
+        `SELECT community_id FROM community_list WHERE status = 1 AND community_id IN (${placeholders})`,
+        communityIds
+    );
+
+    if (rows.length !== communityIds.length) {
+        return { valid: false, message: ['Invalid or inactive community selected.'] };
+    }
+
+    return { valid: true, communityIds };
+};
+
+/**
+ * Replace map rows for a resident.
+ */
+const syncResidentCommunities = async (residentId, communityIds) => {
+    await db.execute('DELETE FROM community_resident_map WHERE resident_id = ?', [residentId]);
+
+    if (!communityIds.length) return;
+
+    const values = communityIds.map((communityId) => [residentId, communityId]);
+    const placeholders = values.map(() => '(?, ?)').join(', ');
+
+    await db.execute(
+        `INSERT INTO community_resident_map (resident_id, community_id) VALUES ${placeholders}`,
+        values.flat()
+    );
+}
+
+/**
+ * Fetch communities linked to a resident.
+ */
+const getCommunitiesForResident = async (residentId) => {
+    const [rows] = await db.execute(`
+        SELECT cl.community_id, cl.community_name, cl.area_name
+        FROM community_resident_map AS m
+        INNER JOIN community_list AS cl ON cl.community_id = m.community_id
+        WHERE m.resident_id = ?
+        ORDER BY cl.community_name ASC
+    `, [residentId]);
+
+    return rows;
+};
+
+/** Current-month booking match for session_used / kwh_used (same window as invoice). */
+const getResidentUsageBookingMatchSql = () => `
+    scb.status = 'C'
+    AND scb.created_at >= ? AND scb.created_at <= ?
+    AND (
+        JSON_UNQUOTE(JSON_EXTRACT(scb.resident_data, '$.resident_id')) = cr.resident_id
+        OR scb.rider_id IN (SELECT r.rider_id FROM riders AS r WHERE r.rider_mobile = cr.resident_mobile)
+    )`;
+
+const getCurrentMonthUsageWindow = () => ({
+    monthStart: moment().startOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss'),
+    monthEnd: moment().endOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss'),
+});
+
+export const communityList = async (req, resp) => {
+    try {
+        const { page_no = 1, search_text = '' } = mergeParam(req);
+        const params = { //;
+            tableName: ' community_list as cl',
+            columns: `cl.community_id, community_name, area_name, total_residence, (SELECT count(*) FROM community_chargers as cc WHERE cc.community_id = cl.community_id ) AS no_of_chargers`,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
+            page_no,
+            liveSearchFields: ['community_name', 'area_name'],
+            liveSearchTexts: [search_text, search_text],
+            limit: 10,
+            whereField: [],
+            whereValue: [],
+            whereOperator: [],
+        }
+        const result = await getPaginatedData(params);
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Community List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
+        });
+
+    } catch (error) {
+        console.log('Error fetching station list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const communityDetail = asyncHandler(async (req, resp) => {
+    const { community_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), { community_id: ["required"] });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const communities = await queryDB(`
+        SELECT 
+            community_id, community_name, area_name, total_residence, ${formatDateTimeInQuery(['created_at'])}, status
+        FROM community_list 
+        WHERE community_id = ?`, [community_id]
+    );
+    if (!communities) return resp.json({ status: 0, code: 404, message: 'Community not found.' });
+
+    const [chargers] = await db.execute(`
+        SELECT id, charger_id, kw
+        FROM community_chargers 
+        WHERE community_id = ?`, [community_id]
+    );
+
+    const manager = await queryDB(`
+        SELECT 
+            manager_id, manager_name, manager_email, country_code, manager_contact, status, ${formatDateTimeInQuery(['created_at'])}
+        FROM community_managers 
+        WHERE community_id = ?`, [community_id]
+    );
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Community Details fetched successfully!"],
+        data: communities,
+        chargers,
+        manager,
+    });
+});
+
+export const addCommunity = asyncHandler(async (req, resp) => {
+    try {
+        const {
+            community_name, area_name, total_residence, chargers, kwValues,
+            manager_name, manager_email, manager_contact, country_code = '+971', password
+        } = req.body;
+
+        // return resp.json({ status : 0, message : "Community added successfully.", body : req.body });
+
+        const { isValid, errors } = validateFields(req.body, {
+            community_name: ["required"],
+            area_name: ["required"],
+            total_residence: ["required"],
+            chargers: ["required"],
+            kwValues: ["required"],
+            manager_name: ["required"],
+            manager_email: ["required"],
+            // manager_contact  : ["required"],
+            password: ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        if (password.length < 6) return resp.json({ status: 0, code: 422, message: ["Password must be at least 6 characters"] });
+
+        const [duplicateCheck] = await db.query(`
+            SELECT 'contact' AS type FROM community_managers WHERE manager_contact = ?
+            UNION
+                SELECT 'email' AS type FROM community_managers WHERE manager_email = ? `,
+            [manager_contact, manager_email]
+        );
+        const types = duplicateCheck.map(row => row.type);
+        if (types.includes('contact') && types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager contact number and Email already exist"] });
+        } else if (types.includes('contact')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager contact number already exists"] });
+        } else if (types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager email already exists"] });
+        }
+
+        const insert = await insertRecord('community_list',
+            ['community_id', 'community_name', 'area_name', 'total_residence', 'status'],
+            ["community_id", community_name, area_name, total_residence, 1]
+        );
+        // community_id
+        if (insert.affectedRows == 0) return resp.json({ status: 0, message: "Failed to add public charger! Please try again after some time." });
+
+        const community_id = 'CMT' + String(insert.insertId).padStart(4, '0');
+        await updateRecord('community_list', { community_id: community_id }, ['id'], [insert.insertId]);
+
+        const charger_points = JSON.parse(chargers);
+        const kw = JSON.parse(kwValues);
+        if (charger_points.length > 0) {
+
+            const values = charger_points.map((charger_point, index) => [community_id, charger_point, kw[index]]);
+            const placeholders = values.map(() => '(?, ?, ?)').join(', ');
+
+            await db.execute(
+                `INSERT INTO community_chargers (community_id, charger_id, kw) VALUES ${placeholders}`, values.flat()
+            );
+        }
+
+        const hashedPswd = await bcrypt.hash(password, 10);
+        const managerInsert = await insertRecord('community_managers',
+            ['manager_id', 'community_id', 'manager_name', 'manager_email', 'country_code', 'manager_contact', 'password', 'status'],
+            ['manager_id', community_id, manager_name, manager_email, country_code || '+971', manager_contact, hashedPswd, 1]
+        );
+        if (managerInsert.affectedRows == 0) {
+            return resp.json({ status: 0, message: "Community added but failed to add community manager. Please try again." });
+        }
+        const manager_id = 'CM-' + String(managerInsert.insertId).padStart(3, '0');
+        await updateRecord('community_managers', { manager_id }, ['id'], [managerInsert.insertId]);
+
+        return resp.json({ status: 1, message: "Community added successfully." });
+
+    } catch (error) {
+        console.log('Something went wrong:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+});
+
+export const editCommunity = asyncHandler(async (req, resp) => {
+    try {
+        const {
+            community_id, community_name, area_name, total_residence, chargers, kwValues,
+            manager_name, manager_email, manager_contact, country_code = '+971', password
+        } = req.body;
+
+        // return resp.json({ status : 0, message : "Community added successfully.", body : req.body });
+
+        const { isValid, errors } = validateFields(req.body, {
+            community_id: ["required"],
+            community_name: ["required"],
+            area_name: ["required"],
+            total_residence: ["required"],
+            chargers: ["required"],
+            kwValues: ["required"],
+            manager_name: ["required"],
+            manager_email: ["required"],
+            // manager_contact  : ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+        if (password && password.length < 6) {
+            return resp.json({ status: 0, code: 422, message: ["Password must be at least 6 characters"] });
+        }
+
+        const [duplicateCheck] = await db.query(`
+            SELECT 'contact' AS type FROM community_managers WHERE manager_contact = ? AND community_id != ?
+            UNION
+                SELECT 'email' AS type FROM community_managers WHERE manager_email = ? AND community_id != ? `,
+            [manager_contact, community_id, manager_email, community_id]
+        );
+        const types = duplicateCheck.map(row => row.type);
+        if (types.includes('contact') && types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager contact number and Email already exist"] });
+        } else if (types.includes('contact')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager contact number already exists"] });
+        } else if (types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Manager email already exists"] });
+        }
+
+        const updtObj = { community_name, area_name, total_residence }
+        const update = await updateRecord('community_list', updtObj, ['community_id'], [community_id]);
+
+        const charger_points = JSON.parse(chargers);
+        const kw = JSON.parse(kwValues);
+        if (charger_points.length > 0) {
+            await db.execute('DELETE FROM community_chargers WHERE community_id = ?', [community_id]);
+            const values = charger_points.map((charger_point, index) => [community_id, charger_point, kw[index]]);
+            const placeholders = values.map(() => '(?, ?, ?)').join(', ');
+
+            await db.execute(
+                `INSERT INTO community_chargers (community_id, charger_id, kw) VALUES ${placeholders}`, values.flat()
+            );
+        }
+
+        const managerUpdtObj = { manager_name, manager_email, manager_contact, country_code: country_code || '+971' };
+        if (password) {
+            managerUpdtObj.password = await bcrypt.hash(password, 10);
+        }
+        await updateRecord('community_managers', managerUpdtObj, ['community_id'], [community_id]);
+
+        return resp.json({
+            status: update.affectedRows > 0 ? 1 : 0,
+            code: 200,
+            message: update.affectedRows > 0 ? "Community updated successfully" : "Failed to update, Please Try Again!",
+        });
+
+    } catch (error) {
+        console.log('Something went wrong:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+});
+
+// Resident Functions
+export const allCommunityList = asyncHandler(async (req, resp) => {
+    const [list] = await db.execute(`
+        SELECT community_id as value, community_name as label 
+        FROM community_list 
+        WHERE status = 1 
+        ORDER BY community_name ASC`
+    );
+    return resp.json({ status: 1, code: 200, message: '', data: list });
+});
+
+export const communityAreaList = asyncHandler(async (req, resp) => {
+    const { community } = req.body;
+    const { isValid, errors } = validateFields(mergeParam(req), { community: ["required"] });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const [list] = await db.execute(`
+        SELECT area_name as value, area_name as label 
+        FROM community_list 
+        WHERE status = 1 AND community_name LIKE "%${community}%"
+        ORDER BY area_name ASC`
+    );
+    return resp.json({ status: 1, code: 200, message: '', data: list });
+});
+
+// without multi community
+// export const addResident = asyncHandler(async (req, resp) => {
+//     try {
+//         const {
+//             resident_name, mobile_number, country_code = '+971', resident_email, community_id, address, monthly_session_allocation,
+//             alloted_time, kwh_allocated, per_kwh_charge, extra_charge
+//         } = req.body;
+
+//         const { isValid, errors } = validateFields(req.body, { 
+//             resident_name              : ["required"], 
+//             mobile_number              : ["required"], 
+//             resident_email             : ["required"], 
+//             community_id               : ["required"],
+//             address                    : ["required"], 
+//             monthly_session_allocation : ["required"], 
+//             alloted_time               : ["required"], 
+//             kwh_allocated              : ["required"],
+//             per_kwh_charge             : ["required"], 
+//             extra_charge               : ["required"],
+//         });
+//         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+//         const [duplicateCheck] = await db.query(`
+//             SELECT 'mobile' AS type FROM community_resident WHERE resident_mobile = ?
+//             UNION
+//                 SELECT 'email' AS type FROM community_resident WHERE resident_email = ? `, 
+//             [ mobile_number, resident_email ]
+//         );
+
+//         const types = duplicateCheck.map(row => row.type);
+//         if (types.includes('mobile') && types.includes('email')) {
+//             return resp.json({ status: 0, code: 422, message: ["Mobile number and Email already exist"] });
+
+//         } else if (types.includes('mobile')) {
+//             return resp.json({ status: 0, code: 422, message: ["Mobile number already exists"] });
+
+//         } else if (types.includes('email')) {
+//             return resp.json({ status: 0, code: 422, message: ["Email already exists"] });
+//         }
+//         const insert = await insertRecord('community_resident',
+//         [
+//             'resident_id', 'community_id', 'resident_name', 'country_code', 'resident_mobile', 'resident_email', 'address', 'monthly_session_allocation', 'alloted_time', 'kwh_allocated', 'per_kwh_charge', 'extra_charge', 'status',
+//         ], [
+//             'resident_id', community_id, resident_name, country_code || '+971', mobile_number, resident_email, address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, 1, 
+//         ]);
+
+//         if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add Please try again after some time."});
+
+//         const resident_id = 'RD' + String( insert.insertId ).padStart(4, '0');
+//         await updateRecord('community_resident', { resident_id : resident_id }, ['id'], [insert.insertId] );
+//         return resp.json({ status  : 1, message : "Resident added successfully." });
+
+//     } catch (error) {
+//         console.log('Something went wrong:', error);
+//         tryCatchErrorHandler(req.originalUrl, error, resp );
+//     }
+// });
+
+// export const residentList = async (req, resp) => {
+//     try {
+//         const { page_no = 1, search_text = '', community_id = '' } = mergeParam(req);
+
+//         const limit  = 10;
+//         const page   = (isNaN(page_no) || page_no < 1) ? 1 : parseInt(page_no, 10);
+//         const offset = (page * limit) - limit;
+
+//         const monthStart = moment().startOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss');
+//         const monthEnd   = moment().endOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss');
+
+//         const bookingMatchSql = `
+//             scb.status = 'C'
+//             AND scb.created_at >= ? AND scb.created_at <= ?
+//             AND (
+//                 JSON_UNQUOTE(JSON_EXTRACT(scb.resident_data, '$.resident_id')) = cr.resident_id
+//                 OR scb.rider_id IN (SELECT r.rider_id FROM riders AS r WHERE r.rider_mobile = cr.resident_mobile)
+//             )`;
+
+//         const whereParts = ['1 = 1'];
+//         const queryParams = [monthStart, monthEnd, monthStart, monthEnd];
+
+//         if (community_id) {
+//             whereParts.push('cr.community_id = ?');
+//             queryParams.push(community_id);
+//         }
+
+//         if (search_text && String(search_text).trim()) {
+//             const like = `%${String(search_text).trim()}%`;
+//             whereParts.push('(cr.resident_id LIKE ? OR cr.resident_name LIKE ? OR cr.resident_mobile LIKE ?)');
+//             queryParams.push(like, like, like);
+//         }
+
+//         const whereSql = `WHERE ${whereParts.join(' AND ')}`;
+
+//         const [rows] = await db.execute(`
+//             SELECT SQL_CALC_FOUND_ROWS
+//                 cr.resident_id,
+//                 cr.resident_name,
+//                 cm.community_name,
+//                 cm.area_name,
+//                 cr.monthly_session_allocation,
+//                 cr.kwh_allocated,
+//                 (SELECT COUNT(*)
+//                     FROM scan_charger_booking AS scb
+//                     WHERE ${bookingMatchSql}) AS session_used,
+//                 (SELECT COALESCE(SUM(scb.total_consumption), 0)
+//                     FROM scan_charger_booking AS scb
+//                     WHERE ${bookingMatchSql}) AS kwh_used
+//             FROM community_resident AS cr
+//             LEFT JOIN community_list AS cm ON cm.community_id = cr.community_id
+//             ${whereSql}
+//             ORDER BY cr.id DESC
+//             LIMIT ${offset}, ${limit}
+//         `, queryParams);
+
+//         const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
+//         const totalPage = Math.max(Math.ceil(total / limit), 1);
+
+//         const data = rows.map((row) => ({
+//             ...row,
+//             session_used : formatUsageToThreeDecimals(row.session_used),
+//             kwh_used     : formatUsageToThreeDecimals(row.kwh_used),
+//         }));
+
+//         return resp.json({
+//             status     : 1,
+//             code       : 200,
+//             message    : ["Community List fetch successfully!"],
+//             data,
+//             total_page : totalPage,
+//             total,
+//         });
+
+//     } catch (error) {
+//         console.log('Error fetching station list:', error);
+//         tryCatchErrorHandler(req.originalUrl, error, resp );
+//     }
+// };
+
+// export const residentListOld = async (req, resp) => {
+//     try {
+//         const { page_no = 1, search_text = '', community_id = '' } = mergeParam(req);
+
+//         const limit  = 10;
+//         const page   = (isNaN(page_no) || page_no < 1) ? 1 : parseInt(page_no, 10);
+//         const offset = (page * limit) - limit;
+
+//         const monthStart = moment().startOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss');
+//         const monthEnd   = moment().endOf('month').subtract(4, 'hours').format('YYYY-MM-DD HH:mm:ss');
+
+//         const bookingMatchSql = `
+//             scb.status = 'C'
+//             AND scb.created_at >= ? AND scb.created_at <= ?
+//             AND (
+//                 JSON_UNQUOTE(JSON_EXTRACT(scb.resident_data, '$.resident_id')) = cr.resident_id
+//                 OR scb.rider_id IN (SELECT r.rider_id FROM riders AS r WHERE r.rider_mobile = cr.resident_mobile)
+//             )`;
+
+//         const whereParts = ['1 = 1'];
+//         const queryParams = [monthStart, monthEnd, monthStart, monthEnd];
+
+//         if (community_id) {
+//             whereParts.push('cr.community_id = ?');
+//             queryParams.push(community_id);
+//         }
+
+//         if (search_text && String(search_text).trim()) {
+//             const like = `%${String(search_text).trim()}%`;
+//             whereParts.push('(cr.resident_id LIKE ? OR cr.resident_name LIKE ? OR cr.resident_mobile LIKE ?)');
+//             queryParams.push(like, like, like);
+//         }
+
+//         const whereSql = `WHERE ${whereParts.join(' AND ')}`;
+
+//         const [rows] = await db.execute(`
+//             SELECT SQL_CALC_FOUND_ROWS
+//                 cr.resident_id,
+//                 cr.resident_name,
+//                 cm.community_name,
+//                 cm.area_name,
+//                 cr.monthly_session_allocation,
+//                 cr.kwh_allocated,
+//                 (SELECT COUNT(*)
+//                     FROM scan_charger_booking AS scb
+//                     WHERE ${bookingMatchSql}) AS session_used,
+//                 (SELECT COALESCE(SUM(scb.total_consumption), 0)
+//                     FROM scan_charger_booking AS scb
+//                     WHERE ${bookingMatchSql}) AS kwh_used
+//             FROM community_resident AS cr
+//             LEFT JOIN community_list AS cm ON cm.community_id = cr.community_id
+//             ${whereSql}
+//             ORDER BY cr.id DESC
+//             LIMIT ${offset}, ${limit}
+//         `, queryParams);
+
+//         const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
+//         const totalPage = Math.max(Math.ceil(total / limit), 1);
+
+//         return resp.json({
+//             status     : 1,
+//             code       : 200,
+//             message    : ["Community List fetch successfully!"],
+//             data       : rows,
+//             total_page : totalPage,
+//             total      : total,
+//         });
+
+//     } catch (error) {
+//         console.log('Error fetching station list:', error);
+//         tryCatchErrorHandler(req.originalUrl, error, resp );
+//     }
+// };
+
+// export const residentDetail = asyncHandler(async (req, resp) => {
+//     const { resident_id } = mergeParam(req);
+//     const { isValid, errors }      = validateFields(mergeParam(req), { 
+//         resident_id : ["required"],
+//     });
+//     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+//     const residents = await queryDB(`
+//         SELECT 
+//             resident_id, resident_name, country_code, resident_mobile, resident_email, address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, ${formatDateTimeInQuery(['rs.created_at'])}, rs.status,
+//             community_name, area_name, rs.community_id
+//         FROM community_resident as rs
+//         LEFT JOIN community_list as cm ON cm.community_id = rs.community_id
+//         WHERE resident_id = ?`, [ resident_id ]
+//     );
+//     if (!residents) return resp.json({status: 0, code:404, message: 'Resident not found.'});
+
+//     return resp.json({
+//         status  : 1,
+//         code    : 200,
+//         message : ["Resident Details fetched successfully!"],
+//         data    : residents,
+//     });
+// });
+
+// export const residentSearch = asyncHandler(async (req, resp) => {
+//     const { search, community_id } = req.body;
+//     const { isValid, errors }      = validateFields(mergeParam(req), { search : ["required"], community_id : ["required"] });
+//     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+//     const [list] = await db.execute(`
+//         SELECT resident_id, resident_name, resident_mobile
+//         FROM community_resident 
+//         WHERE community_id = ? AND ( resident_id LIKE ? OR resident_name LIKE ? OR resident_mobile LIKE ? )
+//         ORDER BY resident_name ASC`, [ community_id, `%${search}%`, `%${search}%`, `%${search}%` ]
+//     );
+//     return resp.json({status: 1, code: 200, message: '', data: list});
+// });
+
+// export const editResident = asyncHandler(async (req, resp) => {
+//     try {
+//         const {
+//             resident_id, resident_name, mobile_number, country_code = '+971', resident_email, community_id, address, monthly_session_allocation,
+//             alloted_time, kwh_allocated, per_kwh_charge, extra_charge
+//         } = req.body;
+
+//         const { isValid, errors } = validateFields(req.body, { 
+//             resident_id                : ["required"],
+//             resident_name              : ["required"],
+//             mobile_number              : ["required"],
+//             resident_email             : ["required"],
+//             community_id               : ["required"],
+//             address                    : ["required"], 
+//             monthly_session_allocation : ["required"], 
+//             alloted_time               : ["required"], 
+//             kwh_allocated              : ["required"],
+//             per_kwh_charge             : ["required"], 
+//             extra_charge               : ["required"],
+//         });
+//         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+//         const [duplicateCheck] = await db.query(`
+//             SELECT 'mobile' AS type FROM community_resident WHERE resident_mobile = ? AND resident_id != ?
+//             UNION
+//                 SELECT 'email' AS type FROM community_resident WHERE resident_email = ? AND resident_id != ?`, 
+//             [ mobile_number, resident_id, resident_email, resident_id ]
+//         );
+
+//         const types = duplicateCheck.map(row => row.type);
+//         if (types.includes('mobile') && types.includes('email')) {
+//             return resp.json({ status: 0, code: 422, message: ["Mobile number and Email already exist"] });
+
+//         } else if (types.includes('mobile')) {
+//             return resp.json({ status: 0, code: 422, message: ["Mobile number already exists"] });
+
+//         } else if (types.includes('email')) {
+//             return resp.json({ status: 0, code: 422, message: ["Email already exists"] });
+//         }
+//         const updtObj = { 
+//             resident_name,
+//             resident_email,
+//             country_code    : country_code || '+971',
+//             resident_mobile : mobile_number, 
+//             community_id, 
+//             address, 
+//             monthly_session_allocation, 
+//             alloted_time, 
+//             kwh_allocated, 
+//             per_kwh_charge, 
+//             extra_charge
+//         } ;
+//         const update = await updateRecord('community_resident', updtObj, ['resident_id'], [ resident_id ] );
+
+//         return resp.json({
+//             status  : update.affectedRows > 0 ? 1 : 0, 
+//             code    : 200, 
+//             message : update.affectedRows > 0 ? "Resident updated successfully!" : "Failed to update, Please Try Again!", 
+//         });
+
+//     } catch (error) {
+//         console.log('Something went wrong:', error);
+//         tryCatchErrorHandler(req.originalUrl, error, resp );
+//     }
+// });
+//without multi community
+
+//with multi community
+export const addResidentMulti = asyncHandler(async (req, resp) => {
+    try {
+        const {
+            resident_name, mobile_number, country_code = '+971', resident_email, community_ids,
+            address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge
+        } = req.body;
+
+        const parsedCommunityIds = parseCommunityIds(community_ids);
+
+        const { isValid, errors } = validateFields(req.body, {
+            resident_name: ["required"],
+            mobile_number: ["required"],
+            resident_email: ["required"],
+            address: ["required"],
+            monthly_session_allocation: ["required"],
+            alloted_time: ["required"],
+            kwh_allocated: ["required"],
+            per_kwh_charge: ["required"],
+            extra_charge: ["required"],
+        });
+
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const communityCheck = await validateCommunityIds(parsedCommunityIds);
+        if (!communityCheck.valid) {
+            return resp.json({ status: 0, code: 422, message: communityCheck.message });
+        }
+
+        const [duplicateCheck] = await db.query(`
+            SELECT 'mobile' AS type FROM community_resident WHERE resident_mobile = ?
+            UNION
+                SELECT 'email' AS type FROM community_resident WHERE resident_email = ? `,
+            [mobile_number, resident_email]
+        );
+
+        const types = duplicateCheck.map((row) => row.type);
+        if (types.includes('mobile') && types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Mobile number and Email already exist"] });
+        } else if (types.includes('mobile')) {
+            return resp.json({ status: 0, code: 422, message: ["Mobile number already exists"] });
+        } else if (types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Email already exists"] });
+        }
+
+        const primaryCommunityId = communityCheck.communityIds[0];
+
+        const insert = await insertRecord('community_resident',
+            [
+                'resident_id', 'community_id', 'resident_name', 'country_code', 'resident_mobile', 'resident_email',
+                'address', 'monthly_session_allocation', 'alloted_time', 'kwh_allocated', 'per_kwh_charge', 'extra_charge', 'status',
+            ], [
+            'resident_id', primaryCommunityId, resident_name, country_code || '+971', mobile_number, resident_email,
+            address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, 1,
+        ]);
+
+        if (insert.affectedRows == 0) {
+            return resp.json({ status: 0, message: "Failed to add Please try again after some time." });
+        }
+
+        const resident_id = 'RD' + String(insert.insertId).padStart(4, '0');
+        await updateRecord('community_resident', { resident_id }, ['id'], [insert.insertId]);
+        await syncResidentCommunities(resident_id, communityCheck.communityIds);
+
+        const communities = await getCommunitiesForResident(resident_id);
+
+        return resp.json({
+            status: 1,
+            message: "Resident added successfully.",
+            data: { resident_id, communities },
+        });
+
+    } catch (error) {
+        console.log('Something went wrong:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+});
+
+export const residentListMultiOld = async (req, resp) => {
+    try {
+        const { page_no = 1, search_text = '', community_id = '' } = mergeParam(req);
+
+        const limit = 10;
+        const page = (isNaN(page_no) || page_no < 1) ? 1 : parseInt(page_no, 10);
+        const offset = (page * limit) - limit;
+
+        const whereParts = ['1 = 1'];
+        const queryParams = [];
+
+        if (community_id) {
+            whereParts.push('EXISTS (SELECT 1 FROM community_resident_map AS fm WHERE fm.resident_id = cr.resident_id AND fm.community_id = ?)');
+            queryParams.push(community_id);
+        }
+
+        if (search_text && String(search_text).trim()) {
+            const like = `%${String(search_text).trim()}%`;
+            whereParts.push('(cr.resident_id LIKE ? OR cr.resident_name LIKE ? OR cr.resident_mobile LIKE ?)');
+            queryParams.push(like, like, like);
+        }
+
+        const whereSql = `WHERE ${whereParts.join(' AND ')}`;
+
+        const [rows] = await db.execute(`
+            SELECT SQL_CALC_FOUND_ROWS
+                cr.resident_id,
+                cr.resident_name,
+                cr.country_code,
+                cr.resident_mobile,
+                cr.resident_email,
+                cr.monthly_session_allocation,
+                cr.kwh_allocated,
+                '0' AS session_used,
+                '0' AS kwh_used,
+                GROUP_CONCAT(DISTINCT cl.community_name ORDER BY cl.community_name SEPARATOR ', ') AS community_names,
+                GROUP_CONCAT(DISTINCT cl.community_id ORDER BY cl.community_id SEPARATOR ',') AS community_ids
+            FROM community_resident AS cr
+            INNER JOIN community_resident_map AS m ON m.resident_id = cr.resident_id
+            INNER JOIN community_list AS cl ON cl.community_id = m.community_id
+            ${whereSql}
+            GROUP BY cr.id, cr.resident_id, cr.resident_name, cr.country_code, cr.resident_mobile, cr.resident_email, cr.monthly_session_allocation, cr.kwh_allocated
+            ORDER BY cr.id DESC
+            LIMIT ${offset}, ${limit}
+        `, queryParams);
+
+        const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
+        const totalPage = Math.max(Math.ceil(total / limit), 1);
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Resident list fetched successfully!"],
+            data: rows,
+            total_page: totalPage,
+            total,
+        });
+
+    } catch (error) {
+        console.log('Error fetching resident list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const residentListMulti = async (req, resp) => {
+    try {
+        const { page_no = 1, search_text = '', community_id = '' } = mergeParam(req);
+
+        const limit = 10;
+        const page = (isNaN(page_no) || page_no < 1) ? 1 : parseInt(page_no, 10);
+        const offset = (page * limit) - limit;
+
+        const { monthStart, monthEnd } = getCurrentMonthUsageWindow();
+        const bookingMatchSql = getResidentUsageBookingMatchSql();
+
+        const whereParts = ['1 = 1'];
+        const queryParams = [monthStart, monthEnd, monthStart, monthEnd];
+
+        if (community_id) {
+            whereParts.push('EXISTS (SELECT 1 FROM community_resident_map AS fm WHERE fm.resident_id = cr.resident_id AND fm.community_id = ?)');
+            queryParams.push(community_id);
+        }
+
+        if (search_text && String(search_text).trim()) {
+            const like = `%${String(search_text).trim()}%`;
+            whereParts.push('(cr.resident_id LIKE ? OR cr.resident_name LIKE ? OR cr.resident_mobile LIKE ?)');
+            queryParams.push(like, like, like);
+        }
+
+        const whereSql = `WHERE ${whereParts.join(' AND ')}`;
+
+        const [rows] = await db.execute(`
+            SELECT SQL_CALC_FOUND_ROWS
+                cr.resident_id,
+                cr.resident_name,
+                cr.country_code,
+                cr.resident_mobile,
+                cr.resident_email,
+                cr.monthly_session_allocation,
+                cr.kwh_allocated,
+                (SELECT COUNT(*)
+                    FROM scan_charger_booking AS scb
+                    WHERE ${bookingMatchSql}) AS session_used,
+                (SELECT COALESCE(SUM(scb.total_consumption), 0)
+                    FROM scan_charger_booking AS scb
+                    WHERE ${bookingMatchSql}) AS kwh_used,
+                GROUP_CONCAT(DISTINCT cl.community_name ORDER BY cl.community_name SEPARATOR ', ') AS community_names,
+                GROUP_CONCAT(DISTINCT cl.community_id ORDER BY cl.community_id SEPARATOR ',') AS community_ids
+            FROM community_resident AS cr
+            INNER JOIN community_resident_map AS m ON m.resident_id = cr.resident_id
+            INNER JOIN community_list AS cl ON cl.community_id = m.community_id
+            ${whereSql}
+            GROUP BY cr.id, cr.resident_id, cr.resident_name, cr.country_code, cr.resident_mobile, cr.resident_email, cr.monthly_session_allocation, cr.kwh_allocated
+            ORDER BY cr.id DESC
+            LIMIT ${offset}, ${limit}
+        `, queryParams);
+
+        const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
+        const totalPage = Math.max(Math.ceil(total / limit), 1);
+
+        const data = rows.map((row) => ({
+            ...row,
+            session_used: formatUsageToThreeDecimals(row.session_used),
+            kwh_used: formatUsageToThreeDecimals(row.kwh_used),
+        }));
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Resident list fetched successfully!"],
+            data,
+            total_page: totalPage,
+            total,
+        });
+
+    } catch (error) {
+        console.log('Error fetching resident list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const residentDetailMulti = asyncHandler(async (req, resp) => {
+    const { resident_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        resident_id: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const resident = await queryDB(`
+        SELECT
+            resident_id, resident_name, country_code, resident_mobile, resident_email, address,
+            monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge,
+            ${formatDateTimeInQuery(['rs.created_at'])}, rs.status, rs.community_id AS primary_community_id
+        FROM community_resident AS rs
+        WHERE resident_id = ?`, [resident_id]
+    );
+
+    if (!resident) return resp.json({ status: 0, code: 404, message: 'Resident not found.' });
+
+    const communities = await getCommunitiesForResident(resident_id);
+
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Resident Details fetched successfully!"],
+        data: { ...resident, communities },
+    });
+});
+
+export const residentSearchMulti = asyncHandler(async (req, resp) => {
+    const { search, community_id } = req.body;
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        search: ["required"],
+        community_id: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const [list] = await db.execute(`
+        SELECT cr.resident_id, cr.resident_name, cr.resident_mobile
+        FROM community_resident AS cr
+        INNER JOIN community_resident_map AS m ON m.resident_id = cr.resident_id
+        WHERE m.community_id = ?
+          AND (cr.resident_id LIKE ? OR cr.resident_name LIKE ? OR cr.resident_mobile LIKE ?)
+        ORDER BY cr.resident_name ASC`,
+        [community_id, `%${search}%`, `%${search}%`, `%${search}%`]
+    );
+
+    return resp.json({ status: 1, code: 200, message: '', data: list });
+});
+
+export const editResidentMulti = asyncHandler(async (req, resp) => {
+    try {
+        const {
+            resident_id, resident_name, mobile_number, country_code = '+971', resident_email, community_ids,
+            address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge
+        } = req.body;
+
+        const parsedCommunityIds = parseCommunityIds(community_ids);
+
+        const { isValid, errors } = validateFields(req.body, {
+            resident_id: ["required"],
+            resident_name: ["required"],
+            mobile_number: ["required"],
+            resident_email: ["required"],
+            address: ["required"],
+            monthly_session_allocation: ["required"],
+            alloted_time: ["required"],
+            kwh_allocated: ["required"],
+            per_kwh_charge: ["required"],
+            extra_charge: ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const communityCheck = await validateCommunityIds(parsedCommunityIds);
+        if (!communityCheck.valid) {
+            return resp.json({ status: 0, code: 422, message: communityCheck.message });
+        }
+
+        const existing = await queryDB('SELECT resident_id FROM community_resident WHERE resident_id = ?', [resident_id]);
+        if (!existing) return resp.json({ status: 0, code: 404, message: 'Resident not found.' });
+
+        const [duplicateCheck] = await db.query(`
+            SELECT 'mobile' AS type FROM community_resident WHERE resident_mobile = ? AND resident_id != ?
+            UNION
+                SELECT 'email' AS type FROM community_resident WHERE resident_email = ? AND resident_id != ?`,
+            [mobile_number, resident_id, resident_email, resident_id]
+        );
+
+        const types = duplicateCheck.map((row) => row.type);
+        if (types.includes('mobile') && types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Mobile number and Email already exist"] });
+        } else if (types.includes('mobile')) {
+            return resp.json({ status: 0, code: 422, message: ["Mobile number already exists"] });
+        } else if (types.includes('email')) {
+            return resp.json({ status: 0, code: 422, message: ["Email already exists"] });
+        }
+
+        const primaryCommunityId = communityCheck.communityIds[0];
+
+        const updtObj = {
+            resident_name,
+            resident_email,
+            country_code: country_code || '+971',
+            resident_mobile: mobile_number,
+            community_id: primaryCommunityId,
+            address,
+            monthly_session_allocation,
+            alloted_time,
+            kwh_allocated,
+            per_kwh_charge,
+            extra_charge,
+        };
+
+        const update = await updateRecord('community_resident', updtObj, ['resident_id'], [resident_id]);
+
+        if (update.affectedRows > 0) {
+            await syncResidentCommunities(resident_id, communityCheck.communityIds);
+        }
+
+        const communities = await getCommunitiesForResident(resident_id);
+
+        return resp.json({
+            status: update.affectedRows > 0 ? 1 : 0,
+            code: 200,
+            message: update.affectedRows > 0 ? "Resident updated successfully!" : "Failed to update, Please Try Again!",
+            data: { resident_id, communities },
+        });
+
+    } catch (error) {
+        console.log('Something went wrong:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+});
+
+//without multi community
+
+
+
+
+export const getInvoiceData = asyncHandler(async (req, resp) => {
+    const { resident_mobile, invoice_month } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        resident_mobile: ["required"],
+        invoice_month: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const riderData = await queryDB(`
+        SELECT rider_id 
+        FROM riders
+        WHERE rider_mobile = ?`, [resident_mobile]
+    );
+    if (!riderData) return resp.json({ status: 0, code: 404, message: 'Resident not found.' });
+
+    const date = moment(invoice_month, "YYYY-MM-DD");
+    const startDate = date.clone().startOf("month").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+    const endDate = date.clone().endOf("month").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+    const bookingData = await queryDB(`
+        SELECT
+            SUM(total_consumption) as total_consumption, SUM(extra_minutes) as extra_minutes, resident_data 
+        FROM scan_charger_booking
+        WHERE rider_id = ? AND created_at >= ? AND created_at <= ?  `, [riderData.rider_id, startDate, endDate]
+    );
+
+    const energy_price = bookingData?.resident_data?.per_kwh_charge * bookingData?.total_consumption;
+    const over_time_min_price = bookingData?.extra_minutes * bookingData?.resident_data?.extra_charge;
+    const totalAmount = parseFloat(energy_price) + parseFloat(over_time_min_price);
+
+    const returnObj = {
+        resident_name: bookingData?.resident_data?.resident_name,
+        total_consumption: (bookingData?.total_consumption || 0).toFixed(2),
+        kwh_allocated: bookingData?.resident_data?.kwh_allocated,
+
+        energy_charge: bookingData?.resident_data?.per_kwh_charge, //over_time_min
+        energy_price: (energy_price || 0).toFixed(2),
+
+        over_time_min: bookingData?.extra_minutes || 0,
+        extra_charge: (over_time_min_price || 0).toFixed(2),
+        total_amount: (totalAmount || 0).toFixed(2),
+    }
+    return resp.json({
+        status: 1,
+        code: 200,
+        message: ["Invoice Details fetched successfully!"],
+        data: returnObj,
+    });
+});
+
+export const createScanChargeInvoice = asyncHandler(async (req, resp) => {
+    try {
+        const { resident_id, resident_mobile, invoice_month, community_name, area_name } = mergeParam(req);
+        const { isValid, errors } = validateFields(mergeParam(req), {
+            resident_mobile: ["required"],
+            resident_id: ["required"],
+            invoice_month: ["required"],
+            community_name: ["required"],
+            area_name: ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const billing_month = moment(invoice_month).format('MMMM') + ' - ' + moment(invoice_month).format('YYYY');
+        // check same month bill created or not for this resident in the community
+        const riderData = await queryDB(`
+            SELECT rider_id, (
+                SELECT COUNT(*) FROM scan_charger_invoice
+                WHERE billing_month = ? AND rider_id = riders.rider_id AND community_name = ?
+            ) AS invoiceExt
+            FROM riders
+            WHERE rider_mobile = ? `, [billing_month, community_name, resident_mobile]
+        );
+        if (!riderData) return resp.json({ status: 0, code: 404, message: 'Resident not found.' });
+
+        if (riderData.invoiceExt) {
+            return resp.json({ message: "Already created invoice for this month.", status: 0 });
+        }
+        const date = moment(invoice_month, "YYYY-MM-DD");
+        const startDate = date.clone().startOf("month").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+        const endDate = date.clone().endOf("month").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+
+        const bookingData = await queryDB(`
+            SELECT
+                COUNT(*) AS total_session,
+                COALESCE(SUM(total_consumption), 0) AS total_consumption,
+                COALESCE(SUM(extra_minutes), 0) AS extra_minutes,
+                resident_data 
+            FROM scan_charger_booking
+            WHERE rider_id = ? AND created_at >= ? AND created_at <= ? AND status = ? `,
+            [riderData.rider_id, startDate, endDate, "C"]
+        );
+        if (!bookingData || bookingData.total_session == 0) {
+            return resp.json({ status: 0, code: 404, message: "No session found for selected month." });
+        }
+        const over_time_min = bookingData?.extra_minutes || 0;
+        const extra_charge_per_min = bookingData?.resident_data?.extra_charge || 0;
+        const extra_charge_total = (over_time_min * extra_charge_per_min).toFixed(2);
+
+        const total_consumption = bookingData?.total_consumption || 0;
+        const per_kwh_charge = bookingData?.resident_data?.per_kwh_charge || 0;
+        const energy_price_total = (per_kwh_charge * total_consumption).toFixed(2);
+
+        const resident_name = bookingData?.resident_data?.resident_name;
+        const resident_email = bookingData?.resident_data?.resident_email;
+        const resident_address = bookingData?.resident_data?.address;
+
+        const no_of_session = bookingData?.total_session;
+        const kwh_allocated = bookingData?.resident_data?.kwh_allocated;
+
+        const sub_total_amount = (parseFloat(energy_price_total) + parseFloat(extra_charge_total)).toFixed(2);
+        const vat_amt = (sub_total_amount * 5) / 100;
+        const total_amount = (parseFloat(sub_total_amount) + parseFloat(vat_amt)).toFixed(2);
+
+        const insert = await insertRecord('scan_charger_invoice',
+            [
+                'invoice_id', 'rider_id', 'resident_name', 'resident_email', 'resident_address',
+                'community_name', 'area_name', 'resident_id', 'billing_month',
+                'no_of_session', 'total_consumption', 'kwh_allocated', 'per_kwh_charge', 'energy_price_total',
+                'over_time_min', 'extra_charge_per_min', 'extra_charge_total',
+                'subtotal', 'vat', 'total_amount', 'invoice_status'
+            ], [
+            'invoice_id', riderData.rider_id, resident_name, resident_email, resident_address,
+            community_name, area_name, resident_id, billing_month,
+            no_of_session, total_consumption, kwh_allocated, per_kwh_charge, energy_price_total,
+            over_time_min, extra_charge_per_min, extra_charge_total,
+            sub_total_amount, (vat_amt || 0).toFixed(2), total_amount, 0
+        ]);
+
+        if (insert.affectedRows == 0) return resp.json({ status: 0, message: "Failed to add Please try again after some time." });
+
+        const invoice_id = 'INV' + String(insert.insertId).padStart(4, '0');
+        await updateRecord('scan_charger_invoice', { invoice_id: invoice_id }, ['id'], [insert.insertId]);
+        return resp.json({ status: 1, message: "Invoice Created Successfully!" });
+
+    } catch (error) {
+        console.log('Something went wrong:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+});
+
+
+
+export const scanChargeInvoiceList = async (req, resp) => {
+    try {
+        const {
+            resident_mobile = '', page_no = 1, search_text = '', start_date = '', end_date = '',
+        } = mergeParam(req);
+
+        const params = {
+            tableName: ' scan_charger_invoice',
+            columns: `invoice_id, resident_name, community_name, area_name, kwh_allocated, total_consumption, per_kwh_charge, energy_price_total, extra_charge_total, total_amount, ${formatDateTimeInQuery(['created_at'])}, CASE WHEN invoice_status = 1 THEN 'Paid' ELSE 'Pending' END AS invoice_status`,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
+            page_no,
+            liveSearchFields: ['invoice_id', 'resident_name'],
+            liveSearchTexts: [search_text, search_text],
+            limit: 10,
+            whereField: [],
+            whereValue: [],
+            whereOperator: [],
+        }
+        if (start_date && end_date) {
+
+            // const startToday = new Date(start_date);
+            // const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
+            //     .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
+
+            // const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
+            // const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
+            // const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
+            // const endToday = new Date(end_date);
+            // const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
+            //     .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
+            // const end = formattedEndDate+' 19:59:59';
+
+            //optimized code
+            const start = moment(`${start_date} 00:00:01`, "YYYY-MM-DD HH:mm:ss").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+            const end = moment(end_date, "YYYY-MM-DD").format("YYYY-MM-DD") + " 19:59:59";
+
+            params.whereField.push('created_at', 'created_at');
+            params.whereValue.push(start, end);
+            params.whereOperator.push('>=', '<=');
+        }
+
+        if (resident_mobile) {
+            const riderData = await queryDB(`
+                SELECT rider_id FROM riders WHERE rider_mobile = ? `, [resident_mobile]
+            );
+            params.whereField.push('rider_id');
+            params.whereValue.push(riderData.rider_id);
+            params.whereOperator.push('=');
+        }
+        const result = await getPaginatedData(params);
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Session List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
+        });
+
+    } catch (error) {
+        console.log('Error fetching station list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const scanChargeInvoiceDetail = async (req, resp) => {
+    try {
+        const { invoice_id } = mergeParam(req);
+        const { isValid, errors } = validateFields(mergeParam(req), {
+            invoice_id: ["required"],
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const invoiceData = await queryDB(`
+            SELECT 
+                invoice_id, resident_name, resident_email, resident_address, billing_month, resident_id, area_name, community_name, total_consumption, kwh_allocated, per_kwh_charge, energy_price_total, over_time_min, extra_charge_per_min, extra_charge_total, no_of_session, subtotal, vat, total_amount, ${formatDateTimeInQuery(['created_at'])}, 
+                CASE WHEN invoice_status = 1 THEN 'Paid' ELSE 'Pending' END AS invoice_status
+            FROM scan_charger_invoice
+            WHERE invoice_id = ? `, [invoice_id]
+        );
+        if (!invoiceData) return resp.json({ status: 0, code: 404, message: 'Invoice not found.' });
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Invoice Details fetched successfully!"],
+            data: invoiceData,
+        });
+
+    } catch (error) {
+        console.log('Error fetching station list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const sessionList = async (req, resp) => {
+    try {
+        const { resident_id, page_no = 1, search_text = '', start_date = '', end_date = '', } = mergeParam(req);
+
+        const params = {
+            tableName: ' scan_charger_booking',
+            columns: `booking_id, JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.resident_name')) AS resident_name, JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.area_name')) AS area_name, charger_id, total_consumption, total_duration, ${formatDateTimeInQuery(['created_at'])},
+            -- CASE WHEN status = 'S' THEN 'Started' WHEN status = 'C' THEN 'Completed' ELSE 'Unknown' END AS status
+            CASE WHEN status = 'S' THEN 'Started' WHEN status = 'F' THEN 'Failed' WHEN status = 'C' THEN 'Completed' ELSE 'Unknown' END AS status`,
+            sortColumn: 'id',
+            sortOrder: 'DESC',
+            page_no,
+            liveSearchFields: ['booking_id', 'charger_id'],
+            liveSearchTexts: [search_text, search_text],
+            limit: 10,
+            whereField: ["JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.resident_id'))"],
+            whereValue: [resident_id],
+            whereOperator: ["="], //resident_data -> resident_id
+        }
+        if (start_date && end_date) {
+
+            const startToday = new Date(start_date);
+            const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
+                .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
+            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
+            const endToday = new Date(end_date);
+            const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
+                .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
+            const end = formattedEndDate + ' 19:59:59';
+
+            params.whereField.push('created_at', 'created_at');
+            params.whereValue.push(start, end);
+            params.whereOperator.push('>=', '<=');
+        }
+        const result = await getPaginatedData(params);
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Session List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
+        });
+
+    } catch (error) {
+        console.log('Error fetching station list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};
+
+export const sessionDetail = async (req, resp) => {
+    try {
+        const { session_id } = mergeParam(req);
+        const { isValid, errors } = validateFields(mergeParam(req), { session_id: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const invoiceData = await queryDB(`
+            SELECT 
+                booking_id, charger_id, total_consumption, total_duration, extra_minutes, start_time, end_time, start_kwh, end_kwh, ${formatDateTimeInQuery(['created_at'])}, 
+                -- CASE WHEN status = "S" THEN 'Started' ELSE 'Completed' END AS session_status,
+                CASE WHEN status = "S" THEN 'Started' WHEN status = "F" THEN 'Failed' WHEN status = "C" THEN 'Completed' ELSE 'Unknown' END AS session_status,
+                JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.resident_name')) AS resident_name,
+                JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.resident_mobile')) AS resident_mobile,
+                JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.community_name')) AS community_name, 
+                JSON_UNQUOTE(JSON_EXTRACT(resident_data, '$.area_name')) AS area_name
+            FROM scan_charger_booking
+            WHERE booking_id = ? `, [session_id] //
+        );
+        if (!invoiceData) return resp.json({ status: 0, code: 404, message: 'Invoice not found.' });
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Session Details fetched successfully!"],
+            data: invoiceData,
+        });
+
+    } catch (error) {
+        console.log('Error fetching station list:', error);
+        
+        tryCatchErrorHandler(req.originalUrl, error, resp);
+    }
+};

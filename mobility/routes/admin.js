@@ -19,6 +19,9 @@ import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount
 
 import { addSolenoidId, assignLocker, assignLockTobooking, availableLocker } from "../controller/admin/LockerController.js";
 
+import { communityList, communityDetail, addCommunity, editCommunity, allCommunityList, addResidentMulti, editResidentMulti, residentListMulti, residentListMultiOld, residentDetailMulti, residentSearchMulti, communityAreaList, getInvoiceData, createScanChargeInvoice, scanChargeInvoiceList, scanChargeInvoiceDetail, sessionList, sessionDetail } from "../controller/admin/CommunityController.js";
+
+
 const router = Router();
 
 const adminRoutes = [
@@ -95,6 +98,30 @@ const adminRoutes = [
     { method: 'post',   path: '/add-refund-amount',         handler: addRefundAmount },
     { method: 'post',   path: '/complete-booking-by-admin', handler: bookngCompleteByadmin }, 
     { method: 'post',   path: '/incomplete-booking-by-admin', handler: bookngIncompleteByadmin }, 
+ 
+    // Community Routes
+    { method: 'post',  path: '/community-add',       handler: addCommunity },
+    { method: 'post',  path: '/community-edit',      handler: editCommunity },
+    { method: 'post',  path: '/community-list',      handler: communityList },
+    { method: 'post',  path: '/community-details',   handler: communityDetail },
+    { method: 'post',  path: '/all-community-list',  handler: allCommunityList },
+    { method: 'post',  path: '/community-area-list', handler: communityAreaList },
+ 
+    // Resident Routes -- existing routes
+    // { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    // { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    // { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    // { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    // { method: 'post',  path: '/resident-search',            handler : residentSearchMulti },
+ 
+    // Resident Routes (multi-community — CommunityControllerNew)
+    { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    { method: 'post',  path: '/resident-list-old', handler: residentListMultiOld },
+    // { method: 'post',  path: '/resident-list-single-old', handler: residentListOld }, // handler commented out in CommunityController
+    { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    { method: 'post',  path: '/resident-search',  handler: residentSearchMulti },
 ]; 
 
 const uploadRules = {
