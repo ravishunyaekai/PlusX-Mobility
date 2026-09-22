@@ -80,5 +80,6 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     router[method](path, ...middlewares, handler);
 });
 router.post('/validate-coupon', redeemCoupon);
+router.get('/rider-home', home);
 
 export default router;

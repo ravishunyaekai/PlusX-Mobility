@@ -944,16 +944,64 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     });
 });
 
-export const home = asyncHandler(async (req, resp) => {
-    const { rider_id } = mergeParam(req);
-    if (!rider_id)
-        return resp.json({
-            status: 0,
-            code: 422,
-            message: ["Rider Id is required"],
-        });
+const scanChargingDetail = async (rider_id) => {
+    try {
+        console.log("scanChargingDetail called", rider_id)
+        const chargingData = await queryDB(`
+            SELECT booking_id, start_time, start_kwh, charger_id, resident_data
+            FROM scan_charger_booking
+            WHERE rider_id = ? AND status = ?
+            ORDER BY id DESC
+            LIMIT 1 `, [rider_id, "S"]
+        );
+        if (!chargingData) return null;
+ 
+        const chargeData = await queryDB(`
+            SELECT energy, power
+            FROM community_chargers
+            WHERE charger_id = ?
+            LIMIT 1 `, [chargingData.charger_id]
+        );
+        const currentReading = chargeData?.energy || 0;
+ 
+        const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss");
+        const end_time = moment().subtract(1, "hour").subtract(30, "minutes"); // moment().add(4, 'hours');
+        const diffInMinutes = end_time.diff(start_time, "minutes");
+ 
+        const total_consumption = parseFloat(currentReading) - parseFloat(chargingData?.start_kwh);
+        const total_duration = diffInMinutes;
+        const resident_data = chargingData?.resident_data;
+ 
+        const per_kwh_charge = resident_data?.per_kwh_charge || 0;
+        const session_cost = (per_kwh_charge * total_consumption).toFixed(2)
+ 
+        const returnObj = {
+            booking_id: chargingData?.booking_id,
+            charger_id: chargingData?.charger_id,
+            reat_time_speed: (chargeData?.power / 1000) || 0,
+            energy_added: total_consumption,
+            session_time: total_duration,
+            session_cost: session_cost,
+            start_time: moment(start_time).format("YYYY-MM-DD HH:mm:ss")
+        }
+        return returnObj;
+ 
+    } catch (error) {
+        return null;
+    }
+};
 
-    const riderQuery = `
+export const home = asyncHandler(async (req, resp) => {
+    try {
+        const { rider_id } = mergeParam(req);
+        if (!rider_id)
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: ["Rider Id is required"],
+            });
+ 
+        const riderQuery = `
         SELECT 
             cn.min_wallet_price, 
             cn.min_sec_deposit, 
@@ -969,67 +1017,81 @@ export const home = asyncHandler(async (req, resp) => {
                 AND n.receive_id = r.rider_id 
                 AND status = '0'
             ) AS notification_count,
-        (SELECT COUNT(*) FROM purchase_history AS pu WHERE pu.customer_mobile = r.rider_mobile ) AS purchase_history_count,
-        (SELECT COUNT(*) FROM charge_share AS cs WHERE cs.rider_id = ? AND cs.charger_status = 1) AS charge_share_count
+            ( SELECT CASE
+                WHEN ( SELECT COUNT(DISTINCT crm.community_id)
+                    FROM community_resident cr
+                    INNER JOIN community_resident_map crm ON crm.resident_id = cr.resident_id
+                    WHERE cr.resident_mobile = r.rider_mobile ) > 0
+                THEN ( SELECT COUNT(DISTINCT crm.community_id)
+                    FROM community_resident cr
+                    INNER JOIN community_resident_map crm ON crm.resident_id = cr.resident_id
+                    WHERE cr.resident_mobile = r.rider_mobile )
+                WHEN EXISTS ( SELECT 1 FROM community_resident cr2 WHERE cr2.resident_mobile = r.rider_mobile )
+                THEN 1
+                ELSE 0
+            END
+            ) AS resident_count,
+            (SELECT COUNT(*) FROM purchase_history AS pu WHERE pu.customer_mobile = r.rider_mobile ) AS purchase_history_count,
+            (SELECT COUNT(*) FROM charge_share AS cs WHERE cs.rider_id = ? AND cs.charger_status = 1) AS charge_share_count
         FROM riders r 
         JOIN country cn 
         on cn.country_id = r.country_id
         WHERE r.rider_id =?
     `;
-    const riderData = await queryDB(riderQuery, [rider_id, rider_id]);
-
-    if (!riderData) {
-        return resp.status(404).json({ message: "Rider not found", status: 0 });
-    }
-
-    const transactions = await queryDB(
-        `
+        const riderData = await queryDB(riderQuery, [rider_id, rider_id]);
+ 
+        if (!riderData) {
+            return resp.status(404).json({ message: "Rider not found", status: 0 });
+        }
+ 
+        const transactions = await queryDB(
+            `
         SELECT
           COUNT(*) AS total_transactions
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
       `,
-        [rider_id],
-    );
-
-    console.log(
-        "[11] Transaction result:",
-        transactions,
-    );
-
-    const totalTransactions = Number(
-        transactions?.total_transactions || 0,
-    );
-
-    const isFirstPayment =
-        totalTransactions === 0;
-
-    //   const deductionAmount = Number(
-    //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
-    //   );
-    //   const refundAmount = Number(
-    //     (riderData.wallet_amount - deductionAmount).toFixed(2),
-    //   );
-    const securityDeposit = Number(riderData.security_deposit || 0);
-    const outstandingAmount = Number(riderData.out_standing_cost || 0);
-
-    // Amount left after deducting outstanding
-    const refundableAmount = Math.max(
-        0,
-        Number((securityDeposit - outstandingAmount).toFixed(2)),
-    );
-
-    // 3% processing fee
-    const deductionAmount = Number((refundableAmount * 0.03).toFixed(2));
-
-    // Final refund amount
-    const refundAmount = Math.max(
-        0,
-        Number((refundableAmount - deductionAmount).toFixed(2)),
-    );
-    const [response] = await db.execute(
-        `
+            [rider_id],
+        );
+ 
+        console.log(
+            "[11] Transaction result:",
+            transactions,
+        );
+ 
+        const totalTransactions = Number(
+            transactions?.total_transactions || 0,
+        );
+ 
+        const isFirstPayment =
+            totalTransactions === 0;
+ 
+        //   const deductionAmount = Number(
+        //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
+        //   );
+        //   const refundAmount = Number(
+        //     (riderData.wallet_amount - deductionAmount).toFixed(2),
+        //   );
+        const securityDeposit = Number(riderData.security_deposit || 0);
+        const outstandingAmount = Number(riderData.out_standing_cost || 0);
+ 
+        // Amount left after deducting outstanding
+        const refundableAmount = Math.max(
+            0,
+            Number((securityDeposit - outstandingAmount).toFixed(2)),
+        );
+ 
+        // 3% processing fee
+        const deductionAmount = Number((refundableAmount * 0.03).toFixed(2));
+ 
+        // Final refund amount
+        const refundAmount = Math.max(
+            0,
+            Number((refundableAmount - deductionAmount).toFixed(2)),
+        );
+        const [response] = await db.execute(
+            `
     SELECT content
     FROM response_content
     WHERE module_name = ?
@@ -1038,25 +1100,25 @@ export const home = asyncHandler(async (req, resp) => {
     ORDER BY created_at DESC
     LIMIT 1
     `,
-        ["refund-request", "refund-request"]
-    );
-    console.log("Response content:", response);
-
-    const purchaseHistoryCount = await queryDB(
-        `SELECT COUNT(*) as total FROM purchase_history `,
-    );
-
-    const chargeShareCount = await queryDB(
-        `
+            ["refund-request", "refund-request"]
+        );
+        console.log("Response content:", response);
+ 
+        const purchaseHistoryCount = await queryDB(
+            `SELECT COUNT(*) as total FROM purchase_history `,
+        );
+ 
+        const chargeShareCount = await queryDB(
+            `
         SELECT COUNT(*) as total 
         FROM charge_share 
         WHERE rider_id = ? 
         AND charger_status = 1`,
-        [rider_id],
-    );
-
-    const refundRequest = await queryDB(
-        `SELECT 
+            [rider_id],
+        );
+ 
+        const refundRequest = await queryDB(
+            `SELECT 
         id, 
         status,
         requested_amount
@@ -1064,45 +1126,48 @@ export const home = asyncHandler(async (req, resp) => {
     WHERE rider_id = ?
     ORDER BY id DESC 
     LIMIT 1`,
-        [rider_id],
-    );
-    let isRefundRaised = false;
-
-    if (refundRequest && ["pending"].includes(refundRequest.status)) {
-        isRefundRaised = true;
-    }
-    const isRefundEligible = refundableAmount > 0 && refundAmount >= 60;
-    const result = {
-        rider_id: riderData.rider_id,
-        rider_name: riderData.rider_name,
-        notification_count: parseFloat(riderData.notification_count),
-        wallet_amount: parseFloat(riderData.wallet_amount),
-        out_standing_cost: parseFloat(riderData.out_standing_cost),
-        min_wallet_price: parseFloat(riderData.min_wallet_price),
-        min_sec_deposit: parseFloat(riderData.min_sec_deposit),
-        sec_deposit_content_amount: parseFloat(100),
-        wallet_content_amount: parseFloat(100),
-        default_wallet_recharge_amount: isFirstPayment ? 200 : 200,
-        purchase_history_count: purchaseHistoryCount?.total || 0,
-        charge_share_count: chargeShareCount?.total || 0,
-        // refund_amount:
-        //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
-        //     ? refundAmount
-        //     : 0,
-        // deduction_amount:
-        //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
-        //     ? deductionAmount
-        //     : 0,
-        security_deposit: securityDeposit,
-        refundable_amount: refundableAmount,
-        refund_amount: refundAmount >= 60 ? refundAmount : 0,
-        deduction_amount: refundAmount >= 60 ? deductionAmount : 0,
-        is_refund_eligible: isRefundEligible ? 1 : 0,
-        is_refund_requested: isRefundRaised ? 1 : 0,
-        content: response?.[0]?.content || "",
-    };
-    const orderData = await queryDB(
-        `SELECT 
+            [rider_id],
+        );
+        let isRefundRaised = false;
+        const scanChargingData = await scanChargingDetail(rider_id);
+ 
+        if (refundRequest && ["pending"].includes(refundRequest.status)) {
+            isRefundRaised = true;
+        }
+        const isRefundEligible = refundableAmount > 0 && refundAmount >= 60;
+        const result = {
+            rider_id: riderData.rider_id,
+            rider_name: riderData.rider_name,
+            notification_count: parseFloat(riderData.notification_count),
+            wallet_amount: parseFloat(riderData.wallet_amount),
+            out_standing_cost: parseFloat(riderData.out_standing_cost),
+            min_wallet_price: parseFloat(riderData.min_wallet_price),
+            min_sec_deposit: parseFloat(riderData.min_sec_deposit),
+            sec_deposit_content_amount: parseFloat(100),
+            wallet_content_amount: parseFloat(100),
+            default_wallet_recharge_amount: isFirstPayment ? 200 : 200,
+            purchase_history_count: purchaseHistoryCount?.total || 0,
+            charge_share_count: chargeShareCount?.total || 0,
+            is_resident: riderData.resident_count,
+            scanChargingData,
+            // refund_amount:
+            //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
+            //     ? refundAmount
+            //     : 0,
+            // deduction_amount:
+            //   riderData.wallet_amount > 0 && riderData.out_standing_cost <= 0
+            //     ? deductionAmount
+            //     : 0,
+            security_deposit: securityDeposit,
+            refundable_amount: refundableAmount,
+            refund_amount: refundAmount >= 60 ? refundAmount : 0,
+            deduction_amount: refundAmount >= 60 ? deductionAmount : 0,
+            is_refund_eligible: isRefundEligible ? 1 : 0,
+            is_refund_requested: isRefundRaised ? 1 : 0,
+            content: response?.[0]?.content || "",
+        };
+        const orderData = await queryDB(
+            `SELECT 
         request_id, 
         (
             SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) 
@@ -1116,11 +1181,11 @@ export const home = asyncHandler(async (req, resp) => {
     ORDER BY id DESC 
     LIMIT 1
     `,
-        [rider_id],
-    );
-
-    const podBookingData = await queryDB(
-        `SELECT 
+            [rider_id],
+        );
+ 
+        const podBookingData = await queryDB(
+            `SELECT 
         booking_id AS request_id, 
         (
             SELECT CONCAT(rsa_name, ',', country_code, ' ', mobile) 
@@ -1134,58 +1199,61 @@ export const home = asyncHandler(async (req, resp) => {
     ORDER BY id DESC 
     LIMIT 1
     `,
-        [rider_id],
-    );
-
-    const priceQry = `
+            [rider_id],
+        );
+ 
+        const priceQry = `
     SELECT 
         roadside_assistance_price,
         portable_price 
     FROM booking_price 
     LIMIT 1`;
-    const priceData = await queryDB(priceQry, []);
-    const [responseContent] = await db.execute(
-        `
+        const priceData = await queryDB(priceQry, []);
+        const [responseContent] = await db.execute(
+            `
         SELECT content 
         FROM response_content 
         WHERE module_name = ? 
         AND status = 1
     `,
-        ["mobility-wallet"],
-    );
-
-    let contentArray = responseContent.map((row) => row.content);
-    let walletMessage = "";
-
-    const walletAmount = Number(riderData.wallet_amount || 0);
-    const minWalletBalance = Number(riderData.min_wallet_price || 0);
-
-    if (walletAmount < 0) {
-        const debtAmount = Math.abs(walletAmount);
-        const requiredAmount = debtAmount + minWalletBalance;
-
-        walletMessage =
-            `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
-            `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
-    } else if (walletAmount < minWalletBalance) {
-        walletMessage = contentArray[0] || "";
+            ["mobility-wallet"],
+        );
+ 
+        let contentArray = responseContent.map((row) => row.content);
+        let walletMessage = "";
+ 
+        const walletAmount = Number(riderData.wallet_amount || 0);
+        const minWalletBalance = Number(riderData.min_wallet_price || 0);
+ 
+        if (walletAmount < 0) {
+            const debtAmount = Math.abs(walletAmount);
+            const requiredAmount = debtAmount + minWalletBalance;
+ 
+            walletMessage =
+                `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
+                `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
+        } else if (walletAmount < minWalletBalance) {
+            walletMessage = contentArray[0] || "";
+        }
+ 
+        return resp.json({
+            message: ["Rider Home Data fetched successfully!"],
+            rider_data: result,
+            order_data: orderData || null,
+            pick_drop_order: null,
+            pod_booking: podBookingData || null,
+            roadside_assistance_price: priceData.roadside_assistance_price,
+            portable_price: priceData.portable_price,
+            pick_drop_price: 0,
+            content: walletMessage,
+            status: 1,
+            code: 200,
+        });
+ 
+    } catch (error) {
+        console.log("error", error)
     }
-
-    return resp.json({
-        message: ["Rider Home Data fetched successfully!"],
-        rider_data: result,
-        order_data: orderData || null,
-        pick_drop_order: null,
-        pod_booking: podBookingData || null,
-        roadside_assistance_price: priceData.roadside_assistance_price,
-        portable_price: priceData.portable_price,
-        pick_drop_price: 0,
-        content: walletMessage,
-        status: 1,
-        code: 200,
-    });
 });
-
 
 export const redeemCoupon = asyncHandler(async (req, resp) => {
     const { rider_id, amount, booking_type, coupon_code } = mergeParam(req);
