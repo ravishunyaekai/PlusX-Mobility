@@ -122,7 +122,7 @@ export const communityList = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching station list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -238,7 +238,7 @@ export const addCommunity = asyncHandler(async (req, resp) => {
 
     } catch (error) {
         console.log('Something went wrong:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 });
@@ -312,7 +312,7 @@ export const editCommunity = asyncHandler(async (req, resp) => {
 
     } catch (error) {
         console.log('Something went wrong:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 });
@@ -734,7 +734,7 @@ export const addResidentMulti = asyncHandler(async (req, resp) => {
 
     } catch (error) {
         console.log('Something went wrong:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 });
@@ -799,7 +799,7 @@ export const residentListMultiOld = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching resident list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -877,7 +877,7 @@ export const residentListMulti = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching resident list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -1011,7 +1011,7 @@ export const editResidentMulti = asyncHandler(async (req, resp) => {
 
     } catch (error) {
         console.log('Something went wrong:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 });
@@ -1130,7 +1130,7 @@ export const createScanChargeInvoice = asyncHandler(async (req, resp) => {
         const kwh_allocated = bookingData?.resident_data?.kwh_allocated;
 
         const sub_total_amount = (parseFloat(energy_price_total) + parseFloat(extra_charge_total)).toFixed(2);
-        const vat_amt = (sub_total_amount * 5) / 100;
+        const vat_amt = (sub_total_amount * 18) / 100;
         const total_amount = (parseFloat(sub_total_amount) + parseFloat(vat_amt)).toFixed(2);
 
         const insert = await insertRecord('scan_charger_invoice',
@@ -1156,7 +1156,7 @@ export const createScanChargeInvoice = asyncHandler(async (req, resp) => {
 
     } catch (error) {
         console.log('Something went wrong:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 });
@@ -1227,7 +1227,7 @@ export const scanChargeInvoiceList = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching station list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -1258,7 +1258,7 @@ export const scanChargeInvoiceDetail = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching station list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -1314,7 +1314,7 @@ export const sessionList = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching station list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
@@ -1348,7 +1348,7 @@ export const sessionDetail = async (req, resp) => {
 
     } catch (error) {
         console.log('Error fetching station list:', error);
-        
+
         tryCatchErrorHandler(req.originalUrl, error, resp);
     }
 };
