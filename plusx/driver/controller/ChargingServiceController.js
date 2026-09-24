@@ -438,7 +438,7 @@ const workComplete = async (req, resp) => {
         // await db.execute('UPDATE pick_drop_slot SET booking_limit = booking_limit + 1 WHERE slot_id = ?', [checkOrder.slot_id]);
 
         // csi.invoice_id, ROUND(csi.amount/100, 2) AS amount, csi.invoice_date, cs.request_id,
-        // CASE WHEN csi.currency IS NOT NULL THEN UPPER(csi.currency) ELSE 'AED' END AS currency, 
+        // CASE WHEN csi.currency IS NOT NULL THEN UPPER(csi.currency) ELSE 'INR' END AS currency, 
 
         // const invoiceId = booking_id.replace('CS', 'INVCS');
         // const data = await queryDB(`

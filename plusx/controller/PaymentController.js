@@ -572,7 +572,7 @@ export const createPortableChargerSubscription = async (req, resp) => {
 
             <p>Plan: 10 EV Charging Sessions </p>
             <p>Duration: 30 days  </p>
-            <p>Total Cost: 750 AED </p>
+            <p>Total Cost: 750 INR </p>
 
             <p>Important Information:</p>
 
@@ -654,8 +654,8 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         //         killoWatt     = hrsConsumed * 7;
         // }
         data.kw = 25;
-        data.kw_dewa_amt = data.kw * 0.44;   // AED : 11
-        data.kw_cpo_amt = data.kw * 0.26;   // AED : 6.5
+        data.kw_dewa_amt = data.kw * 0.44;   // INR : 11
+        data.kw_cpo_amt = data.kw * 0.26;   // INR : 6.5
         data.delv_charge = 30;
         data.t_vat_amt = 0.00; //Math.floor((data.kw_dewa_amt + data.kw_cpo_amt + data.delv_charge) * 5) / 100;
         data.total_amt = 0.00; //data.kw_dewa_amt + data.kw_cpo_amt + data.t_vat_amt;
@@ -699,8 +699,8 @@ export const getTotalAmountFromService = async (booking_id, booking_type) => {
         if (!data) return { success: false, message: 'No data found for the invoice.' };
 
         data.kw = 25;
-        data.kw_dewa_amt = data.kw * 0.44;   // AED : 11
-        data.kw_cpo_amt = data.kw * 0.26;   // AED : 6.5
+        data.kw_dewa_amt = data.kw * 0.44;   // INR : 11
+        data.kw_cpo_amt = data.kw * 0.26;   // INR : 6.5
         data.delv_charge = 90;
         data.t_vat_amt = 0.00;
         data.total_amt = 0.00;
