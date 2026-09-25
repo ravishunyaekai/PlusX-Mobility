@@ -43,6 +43,7 @@ import db from "../../../config/indiadb.js";
 import moment from "moment";
 import bcrypt from "bcryptjs";
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
+import client from "../../../server.js";
  
 /** Current billing month range (Dubai offset applied in legacy logic). */
 const getMonthRange = () => {
@@ -197,6 +198,7 @@ export const chargingStart = async (req, resp) => {
                 ORDER BY id DESC
                 LIMIT 1`, ["scan-charger", "offline"]
             );
+            console.log("contentData",contentData)
             return resp.json({ status: 0, code: 201, message: [contentData.content], teamContactNo: contentData.contact_no });
         }
  

@@ -25,6 +25,7 @@ import Razorpay from "razorpay";
 import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
 
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
+import emailQueue from "../../../emailQueue.js";
 
 export const addCycle = asyncHandler(async (req, resp) => {
     const {

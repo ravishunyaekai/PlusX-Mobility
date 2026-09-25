@@ -3831,6 +3831,26 @@ export const requestRefund = asyncHandler(async (req, resp) => {
             });
         }
 
+        // Check ongoing ride
+        const ongoingRide = await queryDB(
+            `SELECT booking_id
+             FROM cycle_booking
+             WHERE rider_id = ?
+             AND status = 'ON'
+             LIMIT 1`,
+            [rider_id]
+        );
+
+        if (ongoingRide) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: [
+                    "Refund request cannot be raised while rider has an ongoing trip.",
+                ],
+            });
+        }
+
         // Check if a refund request is already pending
         const pendingRequest = await queryDB(
             `
@@ -3847,7 +3867,7 @@ export const requestRefund = asyncHandler(async (req, resp) => {
             return resp.json({
                 status: 0,
                 code: 422,
-                message: [" Your refund request has already been submitted."],
+                message: ["Your refund request has already been submitted."],
             });
         }
 
@@ -3880,7 +3900,7 @@ export const requestRefund = asyncHandler(async (req, resp) => {
             );
             return resp.json({
                 status: 0,
-                code: 400,
+                code: 422,
                 message: [
                     "Refund request can only be raised when the refundable amount is greater than or equal to ₹60.",
                 ],
@@ -3904,7 +3924,7 @@ export const requestRefund = asyncHandler(async (req, resp) => {
             );
             return resp.json({
                 status: 0,
-                code: 400,
+                code: 422,
                 message: [
                     "Refund request can only be raised when the refundable amount is greater than or equal to ₹60.",
                 ],
