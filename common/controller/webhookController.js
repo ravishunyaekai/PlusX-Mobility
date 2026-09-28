@@ -453,7 +453,7 @@ export const razorpayWebhook = async (req, res) => {
 
                     await updateRecord(
                         'scan_charger_invoice',
-                        { invoice_status: 1 },
+                        { invoice_status: 1, payment_intent_id: payment.id || "" },
                         ['invoice_id', 'rider_id'],
                         [payment.notes.invoice_id, payment.notes.rider_id]
                     );
@@ -461,7 +461,7 @@ export const razorpayWebhook = async (req, res) => {
 
                     return res.json({
                         status: 1,
-                        code: 200,
+                        code: 422,
                         message: ["Invoice payment done successfully!"]
                     });
                 }

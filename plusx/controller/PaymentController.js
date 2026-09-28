@@ -52,7 +52,7 @@ export const createIntent = async (req, resp) => {
         let packageDetails = {};
         let bookingDesc = '';
         if (bookingType == 'SCI') {
-            bookingDesc = await sendDescBooking(booking_type, invoice_id);
+            bookingDesc = await sendDescBooking(booking_type, booking_id);
         }
         if (bookingType === "HEV") {
 
@@ -176,7 +176,7 @@ export const createIntent = async (req, resp) => {
             payment_capture: 1, // auto-capture payment
             notes: {
                 rider_id: rider_id.toString(),
-                invoice_id: invoice_id.toString(),
+                invoice_id: booking_id.toString(),
                 rider_name: rider_name,
                 rider_email: rider_email,
                 booking_id: booking_id.toString(),

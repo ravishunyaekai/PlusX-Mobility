@@ -11,7 +11,7 @@ import {
     podInvoiceDetails
 } from '../controller/user/PortableChargerController.js';
 import rateLimit from 'express-rate-limit';
-import { portableChargerInvoice } from "../controller/user/InvoiceController.js";
+import { portableChargerInvoice, scanChargerInvoiceNew } from "../controller/user/InvoiceController.js";
 const router = Router();
 
 // const limiter = rateLimit({
@@ -57,6 +57,7 @@ const authzAndAuthRoutes = [
     { method: 'post', path: '/feedback-portable-charger-booking', handler: userFeedbackPCBooking },
     { method: 'get', path: '/portable-charger-slot-date-list', handler: getPcSlotDateList },
     { method: 'get', path: '/portable-charger-invoice', handler: podInvoiceDetails },
+    { method: 'post', path: '/scan-charge-invoice-msg', handler: scanChargerInvoiceNew  },
 
 ];
 
