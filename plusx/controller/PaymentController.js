@@ -15,7 +15,7 @@ export const createIntent = async (req, resp) => {
     try {
         console.log("createIntent called with params:", mergeParam(req));
 
-        const { rider_id, rider_name, rider_email, package_id = "", amount = "", currency = '', booking_id = '', building_name = '', street_name = '', unit_no = '', area = '', emirate = '', booking_type = '', coupon_code = '' } = mergeParam(req);
+        const { rider_id, rider_name, rider_email, package_id = "", amount = "", currency = '', booking_id = '', building_name = '', street_name = '', unit_no = '', area = '', emirate = '', booking_type = '', coupon_code = '', invoice_id=''} = mergeParam(req);
         const bookingType = booking_type.toUpperCase();
 
         const validationRules = {
@@ -50,6 +50,10 @@ export const createIntent = async (req, resp) => {
         let gst = 0;
         let totalAmount = 0;
         let packageDetails = {};
+        let bookingDesc = '';
+        if (bookingType == 'SCI') {
+            bookingDesc = await sendDescBooking(booking_type, invoice_id);
+        }
         if (bookingType === "HEV") {
 
             const packageData = await queryDB(
@@ -115,7 +119,7 @@ export const createIntent = async (req, resp) => {
                 package_name: packageData.package_name,
                 charging_capacity: packageData.charging_capacity,
                 price_per_unit: packageData.price_per_unit,
-                
+
                 charging_cost: chargingCost,
                 service_fee: serviceFee,
                 discount,
@@ -172,12 +176,14 @@ export const createIntent = async (req, resp) => {
             payment_capture: 1, // auto-capture payment
             notes: {
                 rider_id: rider_id.toString(),
+                invoice_id: invoice_id.toString(),
                 rider_name: rider_name,
                 rider_email: rider_email,
                 booking_id: booking_id.toString(),
                 booking_type: booking_type.toUpperCase(),
                 package_id: package_id.toString(),
                 coupon_code: coupon_code.toString(),
+                bookingDesc: bookingDesc.toString()
 
             }
         };
@@ -200,6 +206,10 @@ export const createIntent = async (req, resp) => {
                 await updateRecord("home_ev_charging_packages", { order_id: order.id }, ["package_id"],
                     [package_id]);
 
+                break;
+            case 'SCI':
+            await updateRecord('scan_charger_invoice', {payment_intent_id: order.id}, ['invoice_id', 'rider_id'], [invoice_id, rider_id] );
+            
                 break;
             default:
                 return false;
@@ -906,6 +916,9 @@ const sendDescBooking = async (booking_type, booking_id,) => {
 
         case 'RSA':
             return `Roadside Assistance Service - ${booking_id}`;
+
+        case 'SCI':
+            return `Scan Charge Invoice - ${booking_id}`;
 
         default:
             console.log('Unknown booking type');

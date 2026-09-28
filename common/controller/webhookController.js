@@ -428,6 +428,43 @@ export const razorpayWebhook = async (req, res) => {
                         payment,
                     );
                 }
+                break;
+
+            case "SCI":
+
+                console.log("🔥 SCI CASE HIT");
+
+                console.log(
+                    "[SCI] Event:",
+                    event.event
+                );
+
+                if (event.event === "payment.captured") {
+
+                    console.log(
+                        "[SCI] Calling confirmCycleBookingPayment..."
+                    );
+
+                    // await confirmCycleBookingPayment(
+                    //     payment.notes.rider_id,
+                    //     payment.notes.booking_id,
+                    //     payment,
+                    // );
+
+                    await updateRecord(
+                        'scan_charger_invoice',
+                        { invoice_status: 1 },
+                        ['invoice_id', 'rider_id'],
+                        [payment.notes.invoice_id, payment.notes.rider_id]
+                    );
+
+
+                    return res.json({
+                        status: 1,
+                        code: 200,
+                        message: ["Invoice payment done successfully!"]
+                    });
+                }
 
                 break;
 
@@ -1178,7 +1215,7 @@ const addMoneywebhook = async (
 
         const mail_template =
             NOTIFICATION_CONTENT[
-                "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
+            "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
             ];
 
         if (
@@ -1656,7 +1693,7 @@ const confirmCycleBookingPayment = async (
 
         const mail_template =
             NOTIFICATION_CONTENT[
-                "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
+            "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
             ];
 
         if (
