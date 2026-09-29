@@ -69,14 +69,14 @@ cron.schedule('* * * * *', async () => {
     await mobilitynotification();
 });
 
-cron.schedule('*/5 * * * *', async () => {
-    console.log('Outstanding deduction cron started');
-    try {
-        // await deductOutstandingAmount();
-    } catch (error) {
-        console.log('Cron Error:', error.message);
-    }
-});
+// cron.schedule('*/5 * * * *', async () => {
+//     console.log('Outstanding deduction cron started');
+//     try {
+//         // await deductOutstandingAmount();
+//     } catch (error) {
+//         console.log('Cron Error:', error.message);
+//     }
+// });
 
 app.use(cors(corsOptions));
 app.post("/razorpay/webhook", bodyParser.raw({ type: "application/json" }), razorpayWebhook);

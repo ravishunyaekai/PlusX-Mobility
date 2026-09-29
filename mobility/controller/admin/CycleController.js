@@ -2085,17 +2085,17 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 })
             );
 
-            // // ---------------------------------------------------------
-            // // 21. Reject refund request
-            // // ---------------------------------------------------------
-            // await updateRecord(
-            //     "refund_requests",
-            //     {
-            //         status: "rejected",
-            //     },
-            //     ["id"],
-            //     [refund_request_id]
-            // );
+            // ---------------------------------------------------------
+            // Reject refund request
+            // ---------------------------------------------------------
+            await updateRecord(
+                "refund_requests",
+                {
+                    status: "rejected",
+                },
+                ["id"],
+                [refund_request_id]
+            );
 
             return resp.json({
                 status: 0,
@@ -2137,17 +2137,17 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 })
             );
 
-            // // ---------------------------------------------------------
-            // // 21. Reject refund request
-            // // ---------------------------------------------------------
-            // await updateRecord(
-            //     "refund_requests",
-            //     {
-            //         status: "rejected",
-            //     },
-            //     ["id"],
-            //     [refund_request_id]
-            // );
+            // ---------------------------------------------------------
+            // Reject refund request
+            // ---------------------------------------------------------
+            await updateRecord(
+                "refund_requests",
+                {
+                    status: "rejected",
+                },
+                ["id"],
+                [refund_request_id]
+            );
 
             return resp.json({
                 status: 0,
@@ -2190,7 +2190,8 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
         // ₹60     => eligible
         // ₹59.99  => not eligible
         // ---------------------------------------------------------
-        if (finalRefundAmount < 60) {
+        const MIN_SD_REFUND_AMOUNT = 60;
+        if (finalRefundAmount < MIN_SD_REFUND_AMOUNT) {
             const rider_mail_template =
                 NOTIFICATION_CONTENT["MOBILITY_REFUND_REQ_CANCELLED"];
 
@@ -2202,13 +2203,122 @@ export const approveRefundRequest = asyncHandler(async (req, resp) => {
                 })
             );
 
+            // Difference between minimum refundable amount
+            // and actual refundable amount
+            const securityDepositAdjustment = Number(
+                (
+                    MIN_SD_REFUND_AMOUNT - finalRefundAmount
+                ).toFixed(2)
+            );
+
+            // Security deposit after settling outstanding
+            // and applying the minimum refund threshold
+            //
+            // Example:
+            // security deposit = 100
+            // outstanding     = 70
+            // minimum refund  = 60
+            //
+            // 100 - 70 - 60 = -30
+            const updatedSecurityDeposit = Number(
+                (
+                    currentSecurityDeposit -
+                    currentOutstandingAmount -
+                    MIN_SD_REFUND_AMOUNT
+                ).toFixed(2)
+            );
+
+            console.log("SECURITY DEPOSIT ADJUSTMENT =>", {
+                currentSecurityDeposit,
+                currentOutstandingAmount,
+                finalRefundAmount,
+                MIN_SD_REFUND_AMOUNT,
+                securityDepositAdjustment,
+                updatedSecurityDeposit,
+            });
+
+            // ---------------------------------------------------------
+            // Update rider
+            // ---------------------------------------------------------
+            await updateRecord(
+                "riders",
+                {
+                    security_deposit: updatedSecurityDeposit,
+                    out_standing_cost: 0,
+                    amount: 0,
+                },
+                ["rider_id"],
+                [refundRequest.rider_id]
+            );
+
+            // ---------------------------------------------------------
+            // Update refund request
+            // ---------------------------------------------------------
+            await updateRecord(
+                "refund_requests",
+                {
+                    status: "rejected",
+                },
+                ["id"],
+                [refund_request_id]
+            );
+
+            // ---------------------------------------------------------
+            // Add transaction history
+            // ---------------------------------------------------------
+            await insertRecord(
+                "transaction_history",
+                [
+                    "rider_id",
+                    "amount",
+                    "payment_type",
+                    "outstanding",
+                    "current_balance",
+                    "prev_balance",
+                    "status",
+                    "payment_id",
+                ],
+                [
+                    refundRequest.rider_id,
+
+                    // Negative security deposit adjustment
+                    updatedSecurityDeposit,
+
+                    // Identify this transaction
+                    "sd_refund",
+
+                    // Outstanding has been settled
+                    0,
+
+                    // Current balance remains unchanged
+                    currentWalletAmount,
+
+                    // Previous wallet balance
+                    currentWalletAmount,
+
+                    // Confirmed adjustment
+                    "CNF",
+
+                    // No Razorpay refund/payment was created
+                    null,
+                ]
+            );
+
             return resp.json({
                 status: 0,
                 code: 400,
                 message: [
-                    "Refund request can only be approved when the refundable amount is greater than or equal to ₹60.",
+                    `Refund request rejected because the refundable amount of ₹${finalRefundAmount.toFixed(
+                        2
+                    )} is below the minimum required amount of ₹${MIN_SD_REFUND_AMOUNT}. The security deposit has been adjusted accordingly.`
                 ],
+                data: {
+                    refundable_amount: finalRefundAmount,
+                    minimum_refundable_amount: MIN_SD_REFUND_AMOUNT,
+                    security_deposit: updatedSecurityDeposit,
+                },
             });
+
         }
 
         // ---------------------------------------------------------
