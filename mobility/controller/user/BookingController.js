@@ -2058,7 +2058,9 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
             final_amount,
         );
 
-        const total_taken_time = `${min_before_add}:${remainingSeconds}`;
+        const total_taken_time = `${min_before_add}:${String(
+            remainingSeconds,
+        ).padStart(2, "0")}`;
 
         // =========================================================
         // PAYMENT CALCULATION
@@ -2927,6 +2929,10 @@ const completeride = async (
         if (remainingSeconds > 14) {
             diffInMinutes += 1;
         }
+
+        const total_taken_time = `${min_before_add}:${String(
+            remainingSeconds,
+        ).padStart(2, "0")}`;
 
         let total_cost;
 
