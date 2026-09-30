@@ -481,11 +481,29 @@ export const chargingHistory = async (req, resp) => {
         const totalPage = Math.max(Math.ceil(total / limit), 1);
         const pending_session = Math.max(residentData.monthly_session_allocation - residentData.used_session, 0);
 
+        const [invoiceData] = await db.execute(`
+            SELECT SQL_CALC_FOUND_ROWS
+                sci.invoice_id,
+                sci.invoice_status,
+                sci.no_of_session,
+                sci.total_consumption,
+                sci.total_amount,
+                sci.community_name,
+                sci.area_name,
+                ${formatDateTimeInQuery(['sci.created_at'])}
+            FROM scan_charger_invoice sci
+            WHERE sci.rider_id = ?
+            ORDER BY sci.id DESC
+            LIMIT ${Number(limit)} OFFSET ${Number(offset)}`, [rider_id]
+        );
+
         return resp.json({
             status: 1,
             code: 200,
             message: ["Charging Data"],
             data: {
+                // 1 if invoice exists, otherwise 0
+                isInvoiceCreated: invoiceData.length > 0 ? 1 : 0,
                 total_session: residentData.monthly_session_allocation,
                 used_session: residentData.used_session,
                 pending_session: pending_session.toFixed(0),
