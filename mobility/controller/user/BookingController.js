@@ -162,7 +162,7 @@ export const validateRideStart = async ({
 
     // Station Time
     // const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-      const currTime = moment()
+    const currTime = moment()
         .add(5, "hours")
         .add(30, "minutes")
         .format("HH:mm:ss");
@@ -395,7 +395,7 @@ export const startScanCycleQrOld = asyncHandler(async (req, resp) => {
     }
 
     // const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-      const currTime = moment()
+    const currTime = moment()
         .add(5, "hours")
         .add(30, "minutes")
         .format("HH:mm:ss");
@@ -1180,7 +1180,9 @@ export const stopeRide = asyncHandler(async (req, resp) => {
         "Asia/Kolkata",
     );
 
-    const nowMoment = moment();
+    const nowMoment = moment()
+        .add(5, "hours")
+        .add(30, "minutes");
 
     const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
     let diffInMinutes = nowMoment.diff(pickMoment, "minutes");
@@ -1974,7 +1976,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
             "Asia/Kolkata",
         );
 
-        const nowMoment = moment();
+        const nowMoment = moment().add(5, "hours").add(30, "minutes");;
 
         const diffInSeconds = nowMoment.diff(
             pickMoment,
@@ -2903,7 +2905,7 @@ const completeride = async (
             "Asia/Kolkata",
         );
 
-        const nowMoment = moment();
+        const nowMoment = moment().add(5, "hours").add(30, "minutes");
 
         // difference
         const diffInSeconds = nowMoment.diff(

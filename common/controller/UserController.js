@@ -1,4 +1,4 @@
-import moment from "moment";
+import moment from "moment-timezone";
 import db from "../../config/indiadb.js";
 import { queryDB, updateRecord, insertRecord } from "../../dbUtils.js";
 import { tryCatchErrorHandler } from "../../middleware/errorHandler.js";
@@ -955,7 +955,7 @@ const scanChargingDetail = async (rider_id) => {
             LIMIT 1 `, [rider_id, "S"]
         );
         if (!chargingData) return null;
- 
+
         const chargeData = await queryDB(`
             SELECT energy, power
             FROM community_chargers
@@ -963,18 +963,20 @@ const scanChargingDetail = async (rider_id) => {
             LIMIT 1 `, [chargingData.charger_id]
         );
         const currentReading = chargeData?.energy || 0;
- 
-        const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss");
-        const end_time = moment().subtract(1, "hour").subtract(30, "minutes"); // moment().add(4, 'hours');
+
+        const start_time = moment(chargingData?.start_time,
+            "YYYY-MM-DD HH:mm:ss",
+            "Asia/Kolkata",);
+        const end_time = moment().add(5, "hours").add(30, "minutes");
         const diffInMinutes = end_time.diff(start_time, "minutes");
- 
+
         const total_consumption = parseFloat(currentReading) - parseFloat(chargingData?.start_kwh);
         const total_duration = diffInMinutes;
         const resident_data = chargingData?.resident_data;
- 
+
         const per_kwh_charge = resident_data?.per_kwh_charge || 0;
         const session_cost = (per_kwh_charge * total_consumption).toFixed(2)
- 
+
         const returnObj = {
             booking_id: chargingData?.booking_id,
             charger_id: chargingData?.charger_id,
@@ -985,7 +987,7 @@ const scanChargingDetail = async (rider_id) => {
             start_time: moment(start_time).format("YYYY-MM-DD HH:mm:ss")
         }
         return returnObj;
- 
+
     } catch (error) {
         return null;
     }
@@ -1000,7 +1002,7 @@ export const home = asyncHandler(async (req, resp) => {
                 code: 422,
                 message: ["Rider Id is required"],
             });
- 
+
         const riderQuery = `
         SELECT 
             cn.new_min_wallet_price as min_wallet_price, 
@@ -1039,11 +1041,11 @@ export const home = asyncHandler(async (req, resp) => {
         WHERE r.rider_id =?
     `;
         const riderData = await queryDB(riderQuery, [rider_id, rider_id]);
- 
+
         if (!riderData) {
             return resp.status(404).json({ message: "Rider not found", status: 0 });
         }
- 
+
         const transactions = await queryDB(
             `
         SELECT
@@ -1054,19 +1056,19 @@ export const home = asyncHandler(async (req, resp) => {
       `,
             [rider_id],
         );
- 
+
         console.log(
             "[11] Transaction result:",
             transactions,
         );
- 
+
         const totalTransactions = Number(
             transactions?.total_transactions || 0,
         );
- 
+
         const isFirstPayment =
             totalTransactions === 0;
- 
+
         //   const deductionAmount = Number(
         //     ((riderData.wallet_amount * 2) / 100).toFixed(2),
         //   );
@@ -1075,16 +1077,16 @@ export const home = asyncHandler(async (req, resp) => {
         //   );
         const securityDeposit = Number(riderData.security_deposit || 0);
         const outstandingAmount = Number(riderData.out_standing_cost || 0);
- 
+
         // Amount left after deducting outstanding
         const refundableAmount = Math.max(
             0,
             Number((securityDeposit - outstandingAmount).toFixed(2)),
         );
- 
+
         // 3% processing fee
         const deductionAmount = Number((refundableAmount * 0.03).toFixed(2));
- 
+
         // Final refund amount
         const refundAmount = Math.max(
             0,
@@ -1103,11 +1105,11 @@ export const home = asyncHandler(async (req, resp) => {
             ["refund-request", "refund-request"]
         );
         console.log("Response content:", response);
- 
+
         const purchaseHistoryCount = await queryDB(
             `SELECT COUNT(*) as total FROM purchase_history `,
         );
- 
+
         const chargeShareCount = await queryDB(
             `
         SELECT COUNT(*) as total 
@@ -1116,7 +1118,7 @@ export const home = asyncHandler(async (req, resp) => {
         AND charger_status = 1`,
             [rider_id],
         );
- 
+
         const refundRequest = await queryDB(
             `SELECT 
         id, 
@@ -1130,7 +1132,7 @@ export const home = asyncHandler(async (req, resp) => {
         );
         let isRefundRaised = false;
         const scanChargingData = await scanChargingDetail(rider_id);
- 
+
         if (refundRequest && ["pending"].includes(refundRequest.status)) {
             isRefundRaised = true;
         }
@@ -1183,7 +1185,7 @@ export const home = asyncHandler(async (req, resp) => {
     `,
             [rider_id],
         );
- 
+
         const podBookingData = await queryDB(
             `SELECT 
         booking_id AS request_id, 
@@ -1201,7 +1203,7 @@ export const home = asyncHandler(async (req, resp) => {
     `,
             [rider_id],
         );
- 
+
         const priceQry = `
     SELECT 
         roadside_assistance_price,
@@ -1218,24 +1220,24 @@ export const home = asyncHandler(async (req, resp) => {
     `,
             ["mobility-wallet"],
         );
- 
+
         let contentArray = responseContent.map((row) => row.content);
         let walletMessage = "";
- 
+
         const walletAmount = Number(riderData.wallet_amount || 0);
         const minWalletBalance = Number(riderData.min_wallet_price || 0);
- 
+
         if (walletAmount < 0) {
             const debtAmount = Math.abs(walletAmount);
             const requiredAmount = debtAmount + minWalletBalance;
- 
+
             walletMessage =
                 `INR ${debtAmount.toFixed(2)} is outstanding from your last ride. ` +
                 `Please recharge INR ${requiredAmount.toFixed(2)} to start a new ride.`;
         } else if (walletAmount < minWalletBalance) {
             walletMessage = contentArray[0] || "";
         }
- 
+
         return resp.json({
             message: ["Rider Home Data fetched successfully!"],
             rider_data: result,
@@ -1249,7 +1251,7 @@ export const home = asyncHandler(async (req, resp) => {
             status: 1,
             code: 200,
         });
- 
+
     } catch (error) {
         console.log("error", error)
     }
