@@ -202,7 +202,7 @@ export const chargingStart = async (req, resp) => {
             return resp.json({ status: 0, code: 201, message: [contentData.content], teamContactNo: contentData.contact_no });
         }
 
-        const start_time = moment().tz('Asia/Dubai').format("YYYY-MM-DD HH:mm:ss");
+        const start_time = moment().tz('Asia/Kolkata').format("YYYY-MM-DD HH:mm:ss");
         // Snapshot resident config + charger community (for display on this session only)
         const resident_data = {
             community_id: chargeData.community_id,
@@ -274,8 +274,8 @@ export const startChargingCheck = async (charger_id, booking_id) => {
         const total_consumption = parseFloat(currentReading) - parseFloat(charging_start_kwh);
 
         if (total_consumption == 0) {
-            const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss", "Asia/Dubai");
-            const end_time = moment().subtract(1, "hour").subtract(30, "minutes");
+            const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
+            const end_time = moment();//.subtract(1, "hour").subtract(30, "minutes");
             const diffInMinutes = end_time.diff(start_time, "minutes");
 
             await updateRecord('scan_charger_booking', {
@@ -327,8 +327,8 @@ export const stopCharge = async (req, resp) => {
         );
 
         const currentReading = chargeData?.energy || 0;
-        const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss", "Asia/Dubai");
-        const end_time = moment().subtract(1, "hour").subtract(30, "minutes");
+        const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
+        const end_time = moment();//.subtract(1, "hour").subtract(30, "minutes");
         const diffInMinutes = end_time.diff(start_time, "minutes");
         const resident_data = chargingData?.resident_data;
         const alloted_time = resident_data.alloted_time;
@@ -404,7 +404,7 @@ export const chargingDetail = async (req, resp) => {
 
         const currentReading = chargeData?.energy || 0;
         const start_time = moment(chargingData?.start_time, "YYYY-MM-DD HH:mm:ss");
-        const end_time = moment().subtract(1, "hour").subtract(30, "minutes");
+        const end_time = moment();//.subtract(1, "hour").subtract(30, "minutes");
         const diffInMinutes = end_time.diff(start_time, "minutes");
         const total_consumption = parseFloat(currentReading) - parseFloat(chargingData?.start_kwh);
         const per_kwh_charge = chargingData?.per_kwh_charge || 0;
