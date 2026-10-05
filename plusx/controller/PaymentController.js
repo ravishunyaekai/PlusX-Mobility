@@ -28,7 +28,7 @@ export const createIntent = async (req, resp) => {
 
         if (bookingType === "HEV") {
             validationRules.package_id = ["required"];
-        } else {
+        } else if (bookingType !== "CSL") {
             validationRules.amount = ["required"];
         }
         const { isValid, errors } = validateFields(
@@ -50,9 +50,10 @@ export const createIntent = async (req, resp) => {
         let gst = 0;
         let totalAmount = 0;
         let packageDetails = {};
+        let chargeShareInvoice = {};
         let bookingDesc = '';
-        if (bookingType == 'SCI') {
-            bookingDesc = await sendDescBooking(booking_type, booking_id);
+        if (bookingType == 'SCI' || bookingType == 'CSL') {
+            bookingDesc = await sendDescBooking(bookingType, booking_id);
         }
         if (bookingType === "HEV") {
 
@@ -144,6 +145,24 @@ export const createIntent = async (req, resp) => {
             };
             console.log(`Charging Cost: ${chargingCost}, Service Fee: ${serviceFee}, Discount: ${discount}, GST: ${gst}, Total Amount: ${totalAmount}`);
 
+        } else if (bookingType === "CSL") {
+
+            chargeShareInvoice = await queryDB(
+                `SELECT csi.invoice_id, csi.base_amount, csi.gst_percent, csi.gst_amount, csi.total_amount, csi.invoice_status, cs.charger_status
+                FROM charge_share_invoice AS csi
+                JOIN charge_share AS cs ON cs.charger_id = csi.charger_id
+                WHERE csi.charger_id = ? AND csi.rider_id = ?
+                LIMIT 1`,
+                [booking_id, rider_id]
+            );
+            if (!chargeShareInvoice) {
+                return resp.json({ status: 0, code: 404, message: ["Charge share listing not found."] });
+            }
+            if (chargeShareInvoice.invoice_status == 1 || ![3, 4].includes(Number(chargeShareInvoice.charger_status))) {
+                return resp.json({ status: 0, code: 422, message: ["Payment for this listing is already completed."] });
+            }
+            totalAmount = Number(chargeShareInvoice.total_amount);
+
         } else {
             totalAmount = Number(amount);
             if (totalAmount <= 0) {
@@ -211,8 +230,17 @@ export const createIntent = async (req, resp) => {
             await updateRecord('scan_charger_invoice', {payment_intent_id: order.id}, ['invoice_id', 'rider_id'], [invoice_id, rider_id] );
             
                 break;
+            case 'CSL':
+                await updateRecord('charge_share_invoice', { order_id: order.id, invoice_status: 0 }, ['charger_id', 'rider_id'], [booking_id, rider_id]);
+                await updateRecord('charge_share', { charger_status: 3 }, ['charger_id', 'rider_id'], [booking_id, rider_id]);
+                await insertRecord('transaction_history',
+                    ['rider_id', 'amount', 'payment_type', 'order_id', 'status', 'reference_id'],
+                    [rider_id, totalAmount, 'charge_share', order.id, 'PNR', booking_id]
+                );
+
+                break;
             default:
-                return false;
+                return resp.json({ status: 0, code: 422, message: ["Invalid booking type."] });
         }
 
         const customer_id = await createCustomer(rider_id);
@@ -226,9 +254,17 @@ export const createIntent = async (req, resp) => {
             key_id: process.env.RAZORPAY_KEY_ID,
             payment_summary: bookingType === "HEV"
                 ? packageDetails
-                : {
-                    total_amount: totalAmount
-                }
+                : bookingType === "CSL"
+                    ? {
+                        invoice_id   : chargeShareInvoice.invoice_id,
+                        listing_fee  : Number(chargeShareInvoice.base_amount),
+                        gst_percent  : Number(chargeShareInvoice.gst_percent),
+                        gst_amount   : Number(chargeShareInvoice.gst_amount),
+                        total_amount : totalAmount
+                    }
+                    : {
+                        total_amount: totalAmount
+                    }
 
         });
 
@@ -919,6 +955,9 @@ const sendDescBooking = async (booking_type, booking_id,) => {
 
         case 'SCI':
             return `Scan Charge Invoice - ${booking_id}`;
+
+        case 'CSL':
+            return `Charge Share Listing Fee - ${booking_id}`;
 
         default:
             console.log('Unknown booking type');

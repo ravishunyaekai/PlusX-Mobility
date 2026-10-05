@@ -32,9 +32,9 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
             limit: limit == "" ? 10 : limit,
             liveSearchFields: [],
             liveSearchTexts: [],
-            whereField: ["rider_id"],
-            whereValue: [rider_id],
-            whereOperator: ["="],
+            whereField: ["rider_id", "COALESCE(payment_type, '')"],
+            whereValue: [rider_id, "charge_share"],
+            whereOperator: ["=", "<>"],
         };
         if (start_date) {
             const startDate = moment(start_date, "YYYY-MM-DD", "Asia/Kolkata")

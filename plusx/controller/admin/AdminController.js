@@ -31,7 +31,7 @@ export const getDashboardData = async (req, resp) => {
             (SELECT COUNT(*) FROM ev_accessories_booiking WHERE created_at >= ?) AS total_accessories_booking,
             (SELECT COUNT(*) FROM ev_charger_booiking WHERE created_at >= ?) AS total_charger_booking,
             (SELECT COUNT(*) FROM portable_charger_booking WHERE created_at >= ?) AS total_pod_booking,
-            (SELECT COUNT(*) FROM charge_share WHERE created_at >= ?) AS total_charge_share,
+            (SELECT COUNT(*) FROM charge_share WHERE created_at >= ? AND charger_status NOT IN (3, 4)) AS total_charge_share,
 
             (SELECT COUNT(*) FROM failed_portable_charger_booking WHERE created_at >= ?) AS total_ev_cancel_booking,
 

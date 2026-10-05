@@ -3,6 +3,16 @@ import { asyncHandler, createNotification, formatDateTimeInQuery, mergeParam, pu
 import validateFields from "../../../validation.js";
 import { getPaginatedData, insertRecord, queryDB, updateRecord } from "../../../dbUtils.js";
 import db from '../../../config/indiadb.js';
+import { refundChargeShareListing } from "../../../mobility/controller/razorpay/razorpay.js";
+
+const getListingWithInvoice = (charger_id) => queryDB(
+    `SELECT cs.charger_id, cs.charger_name, cs.charger_status, csi.invoice_id, csi.invoice_status, csi.total_amount, csi.payment_intent_id, csi.refund_id
+    FROM charge_share AS cs
+    LEFT JOIN charge_share_invoice AS csi ON csi.charger_id = cs.charger_id
+    WHERE cs.charger_id = ?
+    LIMIT 1`,
+    [charger_id]
+);
 
 export const addChargShare = async (req, resp) => {
     try {
@@ -159,8 +169,14 @@ export const editChargShare = async (req, resp) => {
 
 
 
-        const chargeShareCheck = await queryDB(`SELECT id from charge_share where  charger_id=?`, [charger_id]);
-        if (!chargeShareCheck) return resp.json({ status: 0, message: "Invailed charger " });
+        const chargeShareCheck = await getListingWithInvoice(charger_id);
+        if (!chargeShareCheck) return resp.json({ status: 0, message: "Invalid charger " });
+        if ([3, 4].includes(Number(chargeShareCheck.charger_status))) {
+            return resp.json({ status: 0, code: 422, message: ["Listing fee is not paid for this listing yet."] });
+        }
+        if (Number(chargeShareCheck.invoice_status) === 3 || chargeShareCheck.refund_id) {
+            return resp.json({ status: 0, code: 422, message: ["Listing fee has been refunded for this listing, it cannot be approved."] });
+        }
         let updates = {
             charger_name,
             description,
@@ -231,14 +247,22 @@ export const acceptChargShare = async (req, resp) => {
         const { charger_id, charger_name } = req.body;
 
 
-        const charger_details = await queryDB(`SELECT charger_name from charge_share where charger_id=? `, [charger_id]
-        );
+        const charger_details = await getListingWithInvoice(charger_id);
+        if (!charger_details) return resp.json({ status: 0, code: 404, message: ["Charge share listing not found."] });
+
+        if ([3, 4].includes(Number(charger_details.charger_status))) {
+            return resp.json({ status: 0, code: 422, message: ["Listing fee is not paid for this listing yet."] });
+        }
 
 
         const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`, [charger_id]
         );
 
 
+
+        if (Number(charger_details.invoice_status) === 3 || charger_details.refund_id) {
+            return resp.json({ status: 0, code: 422, message: ["Listing fee has been refunded for this listing, it cannot be approved."] });
+        }
 
         await updateRecord('charge_share', { charger_status: 1 }, ['charger_id'], [charger_id]);
 
@@ -271,8 +295,12 @@ export const rejectChargShare = async (req, resp) => {
         const { charger_id, charger_name } = req.body;
 
 
-        const charger_details = await queryDB(`SELECT charger_name from charge_share where charger_id=? `, [charger_id]
-        );
+        const charger_details = await getListingWithInvoice(charger_id);
+        if (!charger_details) return resp.json({ status: 0, code: 404, message: ["Charge share listing not found."] });
+
+        if ([3, 4].includes(Number(charger_details.charger_status))) {
+            return resp.json({ status: 0, code: 422, message: ["Listing fee is not paid for this listing yet."] });
+        }
 
 
         const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`, [charger_id]
@@ -280,13 +308,31 @@ export const rejectChargShare = async (req, resp) => {
 
 
 
-        await updateRecord('charge_share', { charger_status: 0 }, ['charger_id'], [charger_id]);
+        if (Number(charger_details.charger_status) === 2) {
+            return resp.json({ status: 0, code: 422, message: ["Listing is already rejected."] });
+        }
+
+        let refundInitiated = false;
+        if (Number(charger_details.invoice_status) === 1 && !charger_details.refund_id && charger_details.payment_intent_id) {
+            try {
+                await refundChargeShareListing(charger_id);
+                refundInitiated = true;
+            } catch (refundError) {
+                console.error('Charge share listing refund failed', refundError);
+                const reason = refundError?.error?.description || refundError?.description || refundError?.message || 'Something went wrong';
+                return resp.json({ status: 0, code: 500, message: [`Refund of the listing fee failed, so the listing was not rejected. ${reason}`] });
+            }
+        }
+
+        await updateRecord('charge_share', { charger_status: 2 }, ['charger_id'], [charger_id]);
 
 
 
         const href = 'charge_share_reject/' + charger_id;
         const heading = `${charger_details.charger_name}`;
-        const desc = `Your listing has been rejected as it does not meet our guidelines.`;
+        const desc = refundInitiated
+            ? `Your listing has been rejected as it does not meet our guidelines. Your listing fee of ₹${Number(charger_details.total_amount).toFixed(2)} will be refunded to your original payment method.`
+            : `Your listing has been rejected as it does not meet our guidelines.`;
         await pushNotification(user_details.fcm_token, heading, desc, 'RDRFCM', href);
 
 
@@ -332,23 +378,26 @@ CASE
     WHEN charger_status = 2 THEN 'Rejected'
     ELSE 'In-Active'
 END AS charger_status,
-     charger_id, charger_name,  charger_type, compatible,  address_data->>'$.city' as city`,
+     charger_id, charger_name,  charger_type, compatible,  address_data->>'$.city' as city,
+     (SELECT CASE csi.invoice_status WHEN 0 THEN 'Pending' WHEN 1 THEN 'Paid' WHEN 2 THEN 'Failed' WHEN 3 THEN 'Refunded' END
+        FROM charge_share_invoice AS csi WHERE csi.charger_id = charge_share.charger_id LIMIT 1) AS payment_status,
+     (SELECT csi.refund_status FROM charge_share_invoice AS csi WHERE csi.charger_id = charge_share.charger_id LIMIT 1) AS refund_status`,
             sortColumn: '(charger_status = 1) DESC,id DESC',
             sortOrder: '',
             page_no,
             liveSearchFields: ['compatible', 'rider_name', 'charger_name', 'city'],
             liveSearchTexts: [search_text, search_text, search_text, search_text],
             limit: 10,
-            whereField: [],
-            whereValue: [],
-            whereOperator: [],
+            whereField: ['charger_status'],
+            whereValue: [[3, 4]],
+            whereOperator: ['NOT IN'],
 
 
 
         }
 
 
-        if (charger_status === 0 || charger_status === 1) {
+        if (charger_status === 0 || charger_status === 1 || charger_status === 2) {
             params.whereField.push('charger_status');
             params.whereValue.push(charger_status);
             params.whereOperator.push('=');
@@ -384,7 +433,14 @@ export const chargeShareDetail = asyncHandler(async (req, resp) => {
     const { isValid, errors } = validateFields(mergeParam(req), { charger_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const charger = await queryDB(`SELECT ct.city_id, ct.state_id,cs.compatible as compatible_type, cs.charger_name,CASE WHEN cs.charger_status =1 THEN 'Active' ELSE 'In-Active' end AS charger_status,
+    const charger = await queryDB(`SELECT ct.city_id, ct.state_id,cs.compatible as compatible_type, cs.charger_name,
+        CASE cs.charger_status
+            WHEN 1 THEN 'Active'
+            WHEN 2 THEN 'Rejected'
+            WHEN 3 THEN 'Awaiting Payment'
+            WHEN 4 THEN 'Payment Failed'
+            ELSE 'In-Active'
+        END AS charger_status, cs.charger_status AS charger_status_code,
         cs.address_data->>'$.building_name' AS building_name,cs.charger_id,cs.rider_name,cs.email, cs.mobile, cs.charger_name, cs.description,
          cs.charger_type, cs.output, cs.connector_type,
          cs.address_data->>'$.building_name' AS building_name,
@@ -407,6 +463,14 @@ cs.address_data->>'$.pincode'       AS pincode,
         WHERE cs.charger_id = ?`, [charger_id]);
 
     if (!charger) return resp.status(404).json({ status: 0, code: 404, message: 'Charge share Product not found.' });
+
+    const invoice = await queryDB(`SELECT invoice_id, base_amount AS listing_fee, gst_percent, gst_amount, total_amount, currency,
+        invoice_status,
+        CASE invoice_status WHEN 0 THEN 'Pending' WHEN 1 THEN 'Paid' WHEN 2 THEN 'Failed' WHEN 3 THEN 'Refunded' END AS payment_status,
+        order_id, payment_intent_id, payment_type, refund_id, refund_status, refund_amount,
+        ${formatDateTimeInQuery(['invoice_date', 'refunded_at'])}
+        FROM charge_share_invoice WHERE charger_id = ? LIMIT 1`, [charger_id]);
+
     const [connector_raw] = await db.execute(`SELECT value FROM output_connector where status='connector' order by id asc `);
     const [compatible_raw] = await db.execute(`SELECT DISTINCT make as value FROM vehicle_brand_list where status=1 ORDER BY  make ASC`);
     const connector = connector_raw.map(item => ({
@@ -430,7 +494,7 @@ cs.address_data->>'$.pincode'       AS pincode,
         status: 1,
         code: 200,
         message: ["Charge share Details fetched successfully!"],
-        data: { ...charger, connector, compatible },
+        data: { ...charger, connector, compatible, invoice },
         base_url: `${process.env.DIR_UPLOADS}charge-share-images/`,
     });
 });
@@ -440,8 +504,15 @@ export const chargeShareDelete = asyncHandler(async (req, resp) => {
     const { isValid, errors } = validateFields(mergeParam(req), { charger_id: ["required"], rider_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const charger = await db.execute(`DELETE FROM charge_share WHERE charger_id = ? and rider_id=?`, [charger_id, rider_id]);
-    if (!charger) return resp.status(404).json({ status: 0, code: 404, message: 'Charge share could not deleted.' });
+    const listing = await getListingWithInvoice(charger_id);
+    if (!listing) return resp.status(404).json({ status: 0, code: 404, message: 'Charge share not found.' });
+
+    if (Number(listing.charger_status) === 0 && Number(listing.invoice_status) === 1 && !listing.refund_id) {
+        return resp.json({ status: 0, code: 422, message: ["Listing fee is paid and the listing is under review. Please reject the listing first so the fee is refunded."] });
+    }
+
+    const [charger] = await db.execute(`DELETE FROM charge_share WHERE charger_id = ? and rider_id=?`, [charger_id, rider_id]);
+    if (charger.affectedRows == 0) return resp.status(404).json({ status: 0, code: 404, message: 'Charge share could not deleted.' });
 
     return resp.json({
         status: 1,
@@ -522,6 +593,8 @@ export const chargeshareForMap = asyncHandler(async (req, resp) => {
             address,charger_id, charger_name,latitude, longitude 
         FROM 
             charge_share 
+        WHERE 
+            charger_status NOT IN (3, 4)
         ORDER BY 
             id ASC 
         LIMIT 20

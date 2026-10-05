@@ -7,7 +7,7 @@ import db from "../../config/indiadb.js";
 import emailQueue from "../../emailQueue.js";
 import { formatFloatInQuery, insertRecord, queryDB, updateRecord } from "../../dbUtils.js";
 import { NOTIFICATION_CONTENT } from "../../common/controller/notificationContent.js";
-import { verifyPayment } from "../../mobility/controller/razorpay/razorpay.js";
+import { verifyPayment, completeChargeShareRefund, failChargeShareRefund } from "../../mobility/controller/razorpay/razorpay.js";
 import dotenv from "dotenv";
 dotenv.config();
 import { createNotification, pushNotification, sendNotification } from "../../utils.js";
@@ -130,6 +130,11 @@ export const razorpayWebhook = async (req, res) => {
 
             const refund = event.payload.refund.entity;
 
+            if (refund.notes?.booking_type === "CSL") {
+                await completeChargeShareRefund(refund);
+                return res.status(200).send("ok");
+            }
+
             console.log("[REFUND] Refund data:", {
                 refundId: refund.id,
                 paymentId: refund.payment_id,
@@ -223,6 +228,11 @@ export const razorpayWebhook = async (req, res) => {
             console.log("🔥 REFUND.FAILED EVENT");
 
             const refund = event.payload.refund.entity;
+
+            if (refund.notes?.booking_type === "CSL") {
+                await failChargeShareRefund(refund);
+                return res.status(200).send("ok");
+            }
 
             console.log("[REFUND FAILED] Data:", refund);
 
@@ -464,6 +474,26 @@ export const razorpayWebhook = async (req, res) => {
                         code: 422,
                         message: ["Invoice payment done successfully!"]
                     });
+                }
+
+                break;
+
+            case "CSL":
+
+                console.log("🔥 CSL CASE HIT", event.event);
+
+                if (event.event === "payment.captured") {
+                    await chargeShareListingConfirm(
+                        payment.notes.booking_id,
+                        payment.notes.rider_id,
+                        payment,
+                    );
+                } else if (event.event === "payment.failed") {
+                    await chargeShareListingFailed(
+                        payment.notes.booking_id,
+                        payment.notes.rider_id,
+                        payment,
+                    );
                 }
 
                 break;
@@ -1284,6 +1314,108 @@ const addMoneywebhook = async (
 };
 
 
+
+const chargeShareListingConfirm = async (charger_id, rider_id, payment) => {
+    try {
+        await db.execute(
+            `UPDATE charge_share_invoice 
+            SET invoice_status = 1, order_id = ?, payment_intent_id = ?, payment_type = ?, card_data = ?, invoice_date = ? 
+            WHERE charger_id = ? AND rider_id = ? AND invoice_status IN (0, 2)`,
+            [
+                payment.order_id,
+                payment.id,
+                payment.method || "",
+                JSON.stringify(payment),
+                moment.unix(payment.created_at).utc().format("YYYY-MM-DD HH:mm:ss"),
+                charger_id,
+                rider_id,
+            ],
+        );
+
+        await updateRecord(
+            "transaction_history",
+            { status: "CNF", payment_id: payment.id },
+            ["order_id", "rider_id"],
+            [payment.order_id, rider_id],
+        );
+
+        const [claim] = await db.execute(
+            `UPDATE charge_share SET charger_status = 0 WHERE charger_id = ? AND rider_id = ? AND charger_status IN (3, 4)`,
+            [charger_id, rider_id],
+        );
+        if (claim.affectedRows == 0) {
+            console.log("[CSL] Payment recorded but listing not awaiting payment (deleted or already processed):", charger_id, payment.id);
+            return false;
+        }
+
+        const listing = await queryDB(
+            `SELECT cs.charger_name, rd.rider_name, rd.rider_email, rd.fcm_token
+            FROM charge_share AS cs
+            LEFT JOIN riders AS rd ON rd.rider_id = cs.rider_id
+            WHERE cs.charger_id = ?
+            LIMIT 1`,
+            [charger_id],
+        );
+
+        const href = `/electric/charge-share/charge-share-details/${charger_id}`;
+        await createNotification(listing.charger_name, "Charge Share Listing", "charge share", "Admin", "Rider", rider_id, "", href);
+        io.emit("plusx-notification-list", { msCount: 1 });
+
+        if (listing.fcm_token) {
+            await pushNotification(
+                listing.fcm_token,
+                listing.charger_name,
+                "Payment received! Your listing has been submitted and is under review.",
+                "RDRFCM",
+                "charge_share_payment/" + charger_id,
+            );
+        }
+
+        if (listing.rider_email) {
+            const paidAmount = (Number(payment.amount) / 100).toFixed(2);
+            const htmlUser = `<html>
+                <body>
+                    <h4>Dear ${listing.rider_name},</h4>
+                    <p>We have received your payment for the charge share listing "${listing.charger_name}". Your listing has been submitted and you will be notified once it is approved.</p>
+                    <p>Listing ID : ${charger_id}</p>
+                    <p>Invoice ID : INV${charger_id}</p>
+                    <p>Amount Paid : ${paidAmount} INR (incl. 18% GST)</p>
+                    <p>If your listing is not approved, the full amount will be refunded.</p>
+                    <p>Best regards,<br/> PlusX Electric Team </p>
+                </body>
+            </html>`;
+            emailQueue.addEmail(listing.rider_email, "PlusX Electric App: Charge Share Listing Payment Received", htmlUser);
+        }
+
+        return true;
+    } catch (err) {
+        console.error("[CSL] Charge share listing confirm failed:", err);
+        webHooktryCatchErrorHandler("Charge share listing webhook error", err);
+        return false;
+    }
+};
+
+const chargeShareListingFailed = async (charger_id, rider_id, payment) => {
+    try {
+        await db.execute(
+            `UPDATE charge_share SET charger_status = 4 WHERE charger_id = ? AND rider_id = ? AND charger_status = 3`,
+            [charger_id, rider_id],
+        );
+        await db.execute(
+            `UPDATE charge_share_invoice SET invoice_status = 2 WHERE charger_id = ? AND rider_id = ? AND invoice_status = 0`,
+            [charger_id, rider_id],
+        );
+        await db.execute(
+            `UPDATE transaction_history SET status = 'FLD', payment_id = ? WHERE order_id = ? AND rider_id = ? AND status = 'PNR'`,
+            [payment.id, payment.order_id, rider_id],
+        );
+        return true;
+    } catch (err) {
+        console.error("[CSL] Charge share listing failed-payment update failed:", err);
+        webHooktryCatchErrorHandler("Charge share listing failed webhook error", err);
+        return false;
+    }
+};
 
 export const webHooktryCatchErrorHandler = (action, err) => {
     try {

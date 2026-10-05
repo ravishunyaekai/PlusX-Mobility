@@ -454,9 +454,9 @@ export const userTransactionList = async (req, resp) => {
       limit: 10,
       liveSearchFields: [],
       liveSearchTexts: [],
-      whereField: ["rider_id"],
-      whereValue: [riderId],
-      whereOperator: ["="],
+      whereField: ["rider_id", "COALESCE(payment_type, '')"],
+      whereValue: [riderId, "charge_share"],
+      whereOperator: ["=", "<>"],
     };
     if (start_date && end_date) {
       const startToday = new Date(start_date);

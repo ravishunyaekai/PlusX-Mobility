@@ -851,6 +851,7 @@ export const getRiderData = asyncHandler(async (req, resp) => {
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
+          AND (payment_type IS NULL OR payment_type <> 'charge_share')
       `,
         [rider_id],
     );
@@ -1051,6 +1052,7 @@ export const home = asyncHandler(async (req, resp) => {
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
+          AND (payment_type IS NULL OR payment_type <> 'charge_share')
       `,
             [rider_id],
         );

@@ -5,6 +5,17 @@ import { getPaginatedData, insertRecord, queryDB, updateRecord } from "../../../
 import db from '../../../config/indiadb.js';
 import { io } from "../../../server.js";
 
+const CHARGE_SHARE_GST_PERCENT = 18;
+
+const getListingFee = async () => {
+    const price        = await queryDB(`SELECT charge_share_listing_price FROM booking_price LIMIT 1`, []);
+    const listing_fee  = Number(price?.charge_share_listing_price || 0);
+    const gst_amount   = Number((listing_fee * CHARGE_SHARE_GST_PERCENT / 100).toFixed(2));
+    const total_amount = Number((listing_fee + gst_amount).toFixed(2));
+
+    return { listing_fee, gst_percent: CHARGE_SHARE_GST_PERCENT, gst_amount, total_amount };
+};
+
 export const addChargShare = async (req, resp) => {
     try {
        const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude, accessPermit = 0, chargeRecomendRate = null }=mergeParam(req);
@@ -78,26 +89,44 @@ export const addChargShare = async (req, resp) => {
     'state',          COALESCE(state, ''),
     'pincode',        COALESCE(pincode, '')
 ) AS  address_data  FROM rider_address WHERE address_id =  ?`,[address_id]);
-        
+        if (!address_check) return resp.json({ status: 0, code: 422, message: ["Address Id not valid!"] });
+
+        const fee = await getListingFee();
+        if (fee.total_amount < 1) return resp.json({ status: 0, code: 422, message: ["Charge share listing fee is not configured. Please try again later."] });
 
     const charger_id = `MCS-${generateUniqueId({ length:4 })}`;  
+    const invoice_id = `INV${charger_id}`;
         console.log(rider_id,rider_name,email,charger_id, mobile, charger_name, description, charger_type, output, connector_type, compatible, address, park_no, park_floor,formattedOpenDays, 
         formattedOpenTiming, charger_image,latitude,longitude)
          const insert = await insertRecord('charge_share',
         ['rider_id','rider_name','email','charger_id', 'mobile', 'charger_name', 'description', 'charger_type', 'output','connector_type', 'compatible', 'park_no', 'park_floor','open_days',
-        'open_timing', 'charger_image','latitude','longitude','city','state','address_data','accessPermit', 'chargeRecomendRate'], 
+        'open_timing', 'charger_image','latitude','longitude','city','state','address_data','accessPermit', 'chargeRecomendRate', 'charger_status'], 
              [ rider_id,rider_name,email,charger_id, mobile, charger_name, description, charger_type, output, connector_type, formatted_compatible, park_no, park_floor,formattedOpenDays, 
-        formattedOpenTiming, charger_image,latitude,longitude,city,state,address_check.address_data, accessPermit, chargeRecomendRate]);
+        formattedOpenTiming, charger_image,latitude,longitude,city,state,address_check.address_data, accessPermit, chargeRecomendRate, 3]);
 
         if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add Charge share! Please try again after some time."});
 
        //
         // await pushNotification(user_details.fcm_token, charger_details.charger_name, 'Your EV share listing has been Rejected', 'RDRFCM', href );
-       const href=`/electric/charge-share/charge-share-details/${charger_id}`
-              await createNotification(charger_name, "Charge Share Listing",'charge share' , 'Admin', 'Rider', rider_id, "", href);
-         io.emit('plusx-notification-list', {msCount : 1});
+    //    const href=`/electric/charge-share/charge-share-details/${charger_id}`
+    //           await createNotification(charger_name, "Charge Share Listing",'charge share' , 'Admin', 'Rider', rider_id, "", href);
+    //      io.emit('plusx-notification-list', {msCount : 1});
 
-        return resp.json({ status  : 1,code:200, message :[ "Your listing has been submitted successfully. You will be notified once your listing is approved."] });
+        await insertRecord('charge_share_invoice',
+            ['invoice_id', 'charger_id', 'rider_id', 'base_amount', 'gst_percent', 'gst_amount', 'total_amount', 'currency', 'invoice_status'],
+            [invoice_id, charger_id, rider_id, fee.listing_fee, fee.gst_percent, fee.gst_amount, fee.total_amount, 'INR', 0]);
+
+        return resp.json({
+            status       : 1,
+            code         : 200,
+            message      : ["Please complete the payment to submit your listing."],
+            charger_id,
+            invoice_id,
+            listing_fee  : fee.listing_fee,
+            gst_percent  : fee.gst_percent,
+            gst_amount   : fee.gst_amount,
+            total_amount : fee.total_amount,
+        });
 
     } catch (error) {
         console.error('Something went wrong in add charge share', error);
@@ -163,6 +192,7 @@ export const editChargShare = async (req, resp) => {
         'state',          COALESCE(state, ''),
         'pincode',        COALESCE(pincode, '')
         ) AS  address_data  FROM rider_address WHERE address_id =  ?`,[address_id]);
+        if (!address_check) return resp.json({ status: 0, code: 422, message: ["Address Id not valid!"] });
      
 
 const chargeShareCheck=await queryDB(`SELECT id from charge_share where  charger_id=? and rider_id=?`,[charger_id,rider_id]);
@@ -171,14 +201,15 @@ const chargeShareCheck=await queryDB(`SELECT id from charge_share where  charger
         charger_name, description, charger_type, output, 
         connector_type, 
         compatible:formatted_compatible, 
-        address,
          park_no, 
          park_floor,
          open_days:formattedOpenDays, 
         open_timing:formattedOpenTiming, 
-        charger_image,latitude,longitude,city,state,
+        latitude,longitude,city,state,
         address_data:address_check.address_data
      };
+     if (charger_image) updates.charger_image = charger_image;
+     Object.keys(updates).forEach((key) => updates[key] === undefined && delete updates[key]);
     //  (rider.rider_email!==rider_email ) ? updates.rider_email=rider_email : null;
     //    (first_name!==rider.rider_name)? updates.rider_name=first_name:null;
        
@@ -199,7 +230,7 @@ const chargeShareCheck=await queryDB(`SELECT id from charge_share where  charger
                 await updateRecord('charge_share', updates, ['rider_id','charger_id'], [rider_id,charger_id]);
 
        
-        return resp.json({ status  : 0,code:200, message :[ "Charge details updated successfully."] });
+        return resp.json({ status  : 1,code:200, message :[ "Charge details updated successfully."] });
 
     } catch (error) {
         console.error('Something went wrong in add charge share', error);
@@ -253,9 +284,20 @@ export const chargeShareList = async (req, resp) => {
 
 
         if(requirement==1){
-            params.whereField.push('rider_id');
-            params.whereValue.push(rider_id);
-            params.whereOperator.push('=');
+            params.columns += `, charger_status,
+            CASE charger_status
+                WHEN 3 THEN 'Awaiting Payment'
+                WHEN 4 THEN 'Payment Failed'
+                WHEN 0 THEN 'Under Review'
+                WHEN 1 THEN 'Approved'
+                WHEN 2 THEN 'Rejected'
+            END AS listing_status,
+            (SELECT csi.invoice_id FROM charge_share_invoice AS csi WHERE csi.charger_id = charge_share.charger_id LIMIT 1) AS invoice_id,
+            (SELECT csi.total_amount FROM charge_share_invoice AS csi WHERE csi.charger_id = charge_share.charger_id LIMIT 1) AS total_amount,
+            (SELECT csi.invoice_status FROM charge_share_invoice AS csi WHERE csi.charger_id = charge_share.charger_id LIMIT 1) AS invoice_status`;
+            params.whereField    = ['rider_id'];
+            params.whereValue    = [rider_id];
+            params.whereOperator = ['='];
         //    own_charge_share=1
         }
         const result = await getPaginatedData(params);
@@ -288,7 +330,7 @@ export const chargeShareDetail = asyncHandler(async (req, resp) => {
     const { isValid, errors } = validateFields(mergeParam(req), { charger_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     
-    const charger = await queryDB(`SELECT address_data->>'$.building_name' AS building_name,charger_id,rider_name,email, mobile, charger_name, description,
+    const charger = await queryDB(`SELECT rider_id, charger_status, address_data->>'$.building_name' AS building_name,charger_id,rider_name,email, mobile, charger_name, description,
         charger_type, output, connector_type, compatible,
         CONCAT_WS(', ',
    
@@ -301,11 +343,24 @@ export const chargeShareDetail = asyncHandler(async (req, resp) => {
 ) AS address, park_no, park_floor, open_days,
         open_timing, term_condition,charger_image, latitude, longitude, chargeRecomendRate,accessPermit , ${formatDateTimeInQuery(['created_at', 'updated_at'])} FROM charge_share WHERE charger_id = ?`, [charger_id]); 
     if (!charger) return resp.status(404).json({status: 0, code: 404, message: 'Charge share Product not found.'});
+
+    const { rider_id: owner_id, ...chargerData } = charger;
+    const isOwner = owner_id == rider_id;
+    if (!isOwner && [3, 4].includes(Number(charger.charger_status))) {
+        return resp.status(404).json({status: 0, code: 404, message: 'Charge share Product not found.'});
+    }
+
+    let invoice = null;
+    if (isOwner) {
+        invoice = await queryDB(`SELECT invoice_id, base_amount AS listing_fee, gst_percent, gst_amount, total_amount, invoice_status, refund_status, 
+            ${formatDateTimeInQuery(['invoice_date'])} FROM charge_share_invoice WHERE charger_id = ? LIMIT 1`, [charger_id]);
+    }
+
     return resp.json({
         status       : 1,
         code         : 200,
         message      : ["Charge share Details fetched successfully!"],
-        data         : charger,
+        data         : { ...chargerData, invoice },
      
       base_url    : `${process.env.DIR_UPLOADS}charge-share-images/`,
     });
@@ -315,9 +370,19 @@ export const chargeShareDelete = asyncHandler(async (req, resp) => {
     const { charger_id ,rider_id}      = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), { charger_id: ["required"],rider_id :["required"]});
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const listing = await queryDB(`SELECT cs.charger_status, csi.invoice_status 
+        FROM charge_share AS cs 
+        LEFT JOIN charge_share_invoice AS csi ON csi.charger_id = cs.charger_id 
+        WHERE cs.charger_id = ? AND cs.rider_id = ? LIMIT 1`, [charger_id, rider_id]);
+    if (!listing) return resp.status(404).json({status: 0, code: 404, message: 'Charge share not found.'});
+
+    if (Number(listing.charger_status) === 0 && Number(listing.invoice_status) === 1) {
+        return resp.json({ status: 0, code: 422, message: ["Your listing is under review and cannot be deleted. Please contact support."] });
+    }
     
-    const charger = await db.execute(`DELETE FROM charge_share WHERE charger_id = ? and rider_id=?`, [charger_id,rider_id]); 
-    if (!charger) return resp.status(404).json({status: 0, code: 404, message: 'Charge share could not deleted.'});
+    const [charger] = await db.execute(`DELETE FROM charge_share WHERE charger_id = ? and rider_id=?`, [charger_id,rider_id]); 
+    if (charger.affectedRows == 0) return resp.status(404).json({status: 0, code: 404, message: 'Charge share could not deleted.'});
     
     return resp.json({
         status       : 1,
@@ -345,6 +410,7 @@ export const outputAndConnector = asyncHandler(async (req, resp) => {
   ...makes.map(m => ({ make: m })),
   { make: 'Other' }
 ];
+    const fee = await getListingFee();
    
     return resp.json({
         status       : 1,
@@ -356,6 +422,10 @@ export const outputAndConnector = asyncHandler(async (req, resp) => {
         connector,
         make_list:finalMakeList,
         weeks : ["All Days","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+        listing_fee  : fee.listing_fee,
+        gst_percent  : fee.gst_percent,
+        gst_amount   : fee.gst_amount,
+        total_amount : fee.total_amount,
        
 
     });    
@@ -375,6 +445,8 @@ export const chargeshareForMap = asyncHandler(async (req, resp) => {
             address,charger_id, charger_name,latitude, longitude 
         FROM 
             charge_share 
+        WHERE 
+            charger_status = 1
         ORDER BY 
             id ASC 
         LIMIT 20

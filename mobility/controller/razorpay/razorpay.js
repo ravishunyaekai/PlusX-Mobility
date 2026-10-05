@@ -965,6 +965,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
+          AND (payment_type IS NULL OR payment_type <> 'charge_share')
       `,
       [rider_id],
     );
@@ -1768,6 +1769,97 @@ export const completeRefundProcess = async ({
     template.desc({ amount: refundAmount }),
     "RDRFCM",
     template.href({ rider_id: riderId }),
+  );
+};
+
+export const refundChargeShareListing = async (charger_id) => {
+  const invoice = await queryDB(
+    `SELECT invoice_id, rider_id, total_amount, invoice_status, payment_intent_id, refund_id
+     FROM charge_share_invoice
+     WHERE charger_id = ?
+     LIMIT 1`,
+    [charger_id],
+  );
+
+  if (!invoice) {
+    throw new Error("Invoice not found for this listing");
+  }
+  if (invoice.refund_id || Number(invoice.invoice_status) === 3) {
+    throw new Error("Listing fee is already refunded");
+  }
+  if (Number(invoice.invoice_status) !== 1 || !invoice.payment_intent_id) {
+    throw new Error("Listing fee is not paid");
+  }
+
+  const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+
+  const payment = await razorpay.payments.fetch(invoice.payment_intent_id);
+  if (payment.status !== "captured") {
+    throw new Error("Payment is not captured");
+  }
+
+  const refundAmount = Math.round(Number(invoice.total_amount) * 100);
+  if (refundAmount <= 0) {
+    throw new Error("Invalid refund amount");
+  }
+
+  const razorpayRefundableAmount = payment.amount - Number(payment.amount_refunded || 0);
+  if (refundAmount > razorpayRefundableAmount) {
+    throw new Error(`Only ₹${(razorpayRefundableAmount / 100).toFixed(2)} can be refunded.`);
+  }
+
+  const refund = await razorpay.payments.refund(invoice.payment_intent_id, {
+    amount: refundAmount,
+    notes: {
+      booking_type: "CSL",
+      booking_id: String(charger_id),
+      invoice_id: String(invoice.invoice_id),
+      rider_id: String(invoice.rider_id),
+      refund_amount: String(refundAmount / 100),
+    },
+  });
+
+  await updateRecord(
+    "charge_share_invoice",
+    {
+      refund_id: refund.id,
+      refund_status: refund.status || "initiated",
+      refund_amount: Number(refund.amount) / 100,
+    },
+    ["charger_id"],
+    [charger_id],
+  );
+
+  return {
+    refund_id: refund.id,
+    refund_status: refund.status,
+    refund_amount: Number(refund.amount) / 100,
+  };
+};
+
+export const completeChargeShareRefund = async (refund) => {
+  await db.execute(
+    `UPDATE charge_share_invoice
+     SET invoice_status = 3, refund_id = ?, refund_status = 'processed', refund_amount = ?, refunded_at = ?
+     WHERE payment_intent_id = ? AND invoice_status <> 3`,
+    [
+      refund.id,
+      refund.amount / 100,
+      moment().utc().format("YYYY-MM-DD HH:mm:ss"),
+      refund.payment_id,
+    ],
+  );
+};
+
+export const failChargeShareRefund = async (refund) => {
+  await updateRecord(
+    "charge_share_invoice",
+    { refund_id: refund.id, refund_status: "failed" },
+    ["payment_intent_id"],
+    [refund.payment_id],
   );
 };
 
@@ -2931,7 +3023,8 @@ export const addMoneyForCycleBookingOLD111 = asyncHandler(async (req, resp) => {
       `SELECT COUNT(*) AS total_transactions
          FROM transaction_history
          WHERE rider_id = ?
-         AND status = 'CNF'`,
+         AND status = 'CNF'
+         AND (payment_type IS NULL OR payment_type <> 'charge_share')`,
       [rider_id],
       // ['rider_id'],
     );
@@ -3537,6 +3630,7 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
         FROM transaction_history
         WHERE rider_id = ?
           AND status = 'CNF'
+          AND (payment_type IS NULL OR payment_type <> 'charge_share')
       `,
       [rider_id],
     );
