@@ -358,7 +358,7 @@ export const addmoneyINWalletOld = asyncHandler(async (req, resp) => {
     `SELECT 
             r.amount, 
             r.out_standing_cost, 
-            ${formatFloatInQuery("cn.min_wallet_price ")} as min_wallet_price
+            ${formatFloatInQuery("cn.new_min_wallet_price ")} as min_wallet_price
         FROM riders r
         JOIN country cn 
         ON cn.country_id = r.country_id   
@@ -497,7 +497,7 @@ export const addmoneyINWalletOld = asyncHandler(async (req, resp) => {
 //           r.amount,
 //           r.security_deposit,
 //           r.out_standing_cost,
-//           ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+//           ${formatFloatInQuery("cn.new_min_wallet_price")} AS min_wallet_price,
 //           ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit
 //         FROM riders r
 //         JOIN country cn 
@@ -911,7 +911,7 @@ export const addmoneyINWallet = asyncHandler(async (req, resp) => {
           r.out_standing_cost,
 
           ${formatFloatInQuery(
-            "cn.min_wallet_price",
+            "cn.new_min_wallet_price",
           )} AS min_wallet_price,
 
           ${formatFloatInQuery(
@@ -1830,7 +1830,7 @@ export const Paymentsucceed = asyncHandler(async (req, resp) => {
   }
   const riders = await queryDB(
     `
-        SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.min_wallet_price, c.min_wallet_price,
+        SELECT r.amount, r.out_standing_cost, r.rider_name, r.rider_email, c.new_min_wallet_price as min_wallet_price, 
             cb.cycle_id, cb.booking_id, cb.time_taken
         FROM riders r 
         JOIN country c ON r.country_code = c.country_code
@@ -2794,7 +2794,7 @@ export const addMoneyForCycleBookingOld = asyncHandler(async (req, resp) => {
         SELECT 
             r.amount,
             r.out_standing_cost,
-            ${formatFloatInQuery("cn.min_wallet_price")} as min_wallet_price,
+            ${formatFloatInQuery("cn.new_min_wallet_price")} as min_wallet_price,
             cb.booking_id
         FROM riders r
         JOIN country cn 
@@ -2899,7 +2899,7 @@ export const addMoneyForCycleBookingOLD111 = asyncHandler(async (req, resp) => {
                r.amount,
                r.security_deposit,
                r.out_standing_cost,
-               ${formatFloatInQuery("cn.min_wallet_price")} as min_wallet_price,
+               ${formatFloatInQuery("cn.new_min_wallet_price")} as min_wallet_price,
                ${formatFloatInQuery("cn.min_sec_deposit")} as min_sec_deposit,
                cb.booking_id
            FROM riders r
@@ -3087,7 +3087,7 @@ export const addMoneyForCycleBookingOLD111 = asyncHandler(async (req, resp) => {
 //             r.security_deposit,
 //             r.out_standing_cost,
 
-//             ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+//             ${formatFloatInQuery("cn.new_min_wallet_price")} AS min_wallet_price,
 //             ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit,
 
 //             cb.booking_id
@@ -3493,7 +3493,7 @@ export const addMoneyForCycleBooking = asyncHandler(async (req, resp) => {
             r.security_deposit,
             r.out_standing_cost,
 
-            ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+            ${formatFloatInQuery("cn.new_min_wallet_price")} AS min_wallet_price,
             ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit,
 
             cb.booking_id

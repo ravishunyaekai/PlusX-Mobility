@@ -939,7 +939,7 @@ const addMoneywebhook = async (
                     r.rider_name,
                     r.rider_email,
 
-                    ${formatFloatInQuery("cn.min_wallet_price")} AS min_wallet_price,
+                    ${formatFloatInQuery("cn.new_min_wallet_price")} AS min_wallet_price,
                     ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit
 
                 FROM riders r
@@ -1432,7 +1432,7 @@ const confirmCycleBookingPayment = async (
                 cb.booking_id,
                 cb.time_taken,
 
-                c.min_wallet_price,
+                c.new_min_wallet_price as min_wallet_price,
                 c.min_sec_deposit
 
             FROM riders r

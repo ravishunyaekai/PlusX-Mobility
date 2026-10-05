@@ -663,7 +663,7 @@ const completeride = async (
       "Asia/Kolkata",
     );
 
-    const nowMoment = moment(); //.add(5, "hours").add(30, "minutes");
+    const nowMoment = moment().add(5, "hours").add(30, "minutes");
 
     // difference
     const diffInSeconds = nowMoment.diff(

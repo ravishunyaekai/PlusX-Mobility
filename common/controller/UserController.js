@@ -576,7 +576,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     </html>`;
     emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
 
-    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
+    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
 
     sendOtp(fullMobile, 35, otp)
         .then(result => {
@@ -725,7 +725,7 @@ export const createOTP = asyncHandler(async (req, resp) => {
     </html>`;
     emailQueue.addEmail(riderData.rider_email, `Your OTP for Signin - PlusX Electric`, html);
 
-    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 
     sendOtp(fullMobile, 34, otp)
         .then(result => {
@@ -808,7 +808,7 @@ export const getRiderData = asyncHandler(async (req, resp) => {
     const rider = await queryDB(
         `
         SELECT
-            cn.min_wallet_price, 
+            cn.new_min_wallet_price as min_wallet_price, 
             cn.min_sec_deposit,
             r.* ,
              (
@@ -1003,7 +1003,7 @@ export const home = asyncHandler(async (req, resp) => {
  
         const riderQuery = `
         SELECT 
-            cn.min_wallet_price, 
+            cn.new_min_wallet_price as min_wallet_price, 
             cn.min_sec_deposit, 
             r.out_standing_cost, 
             r.security_deposit, 
