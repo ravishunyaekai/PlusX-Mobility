@@ -13,6 +13,74 @@ import moment from 'moment';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export const riderBookingLists = async (req, resp) => {
+    const { riderId, service_type, page_no = 1 } = req.body;
+ 
+    if (!riderId) {
+        return resp.json({ status: 0, code: 400, message: ['Rider ID is required'] });
+    }
+    if (!service_type) {
+        return resp.json({ status: 0, code: 400, message: ['Service Type is required'] });
+    }
+    try {
+        let data         = []; 
+        const limit      = 10;
+        const startIndex = parseInt((page_no * limit) - limit, 10);
+        let query        = '';
+        if (service_type === "Mobile EV Charging") {
+            query =  `
+                SELECT SQL_CALC_FOUND_ROWS
+                    pcb.booking_id, rsa.rsa_name, pcb.vehicle_id, pcb.service_name, pcb.status, pcb.service_type,
+                    ROUND(pcb.service_price / 100, 2) AS service_price, pcb.slot_date, pcb.slot_time,
+                    ${formatDateTimeInQuery(['pcb.created_at'])} 
+                FROM portable_charger_booking pcb
+                LEFT JOIN rsa ON pcb.rsa_id = rsa.rsa_id
+                WHERE pcb.rider_id = ?
+                ORDER BY pcb.created_at DESC
+                LIMIT ${startIndex}, ${parseInt(limit, 10)} ` 
+            ;         
+        }
+        // else if (service_type == "Valet") {
+        //     query =  `
+        //         SELECT SQL_CALC_FOUND_ROWS
+        //             cs.request_id, rsa.rsa_name, cs.vehicle_id, cs.order_status,
+        //             DATE_FORMAT(cs.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time,
+        //             ROUND(cs.price / 100, 2) AS price, ${formatDateTimeInQuery(['cs.created_at'])}
+        //         FROM charging_service cs
+        //         LEFT JOIN rsa ON cs.rsa_id = rsa.rsa_id
+        //         WHERE cs.rider_id = ?
+        //         ORDER BY cs.created_at DESC
+        //         LIMIT ${startIndex}, ${parseInt(limit, 10)} `
+        //     ;
+        // }
+        else if (service_type == "RSA") {
+            query =  `
+                SELECT SQL_CALC_FOUND_ROWS
+                    ra.request_id, ra.vehicle_id, ROUND(ra.price / 100, 2) AS price, ra.order_status, 
+                    ${formatDateTimeInQuery(['ra.created_at'])}, rsa.rsa_name
+                FROM road_assistance ra
+                LEFT JOIN rsa ON ra.rsa_id = rsa.rsa_id
+                WHERE ra.rider_id = ?
+                ORDER BY ra.created_at DESC
+                LIMIT ${startIndex}, ${parseInt(limit, 10)} ` 
+            ;
+        }
+        const [result]      = await db.execute(query, [riderId]);
+        const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
+        const totalPage     = Math.max(Math.ceil(total / limit), 1);
+        return resp.json({
+            status : 1,
+            code   : 200,
+            data   : result,
+            total,
+            totalPage,
+        });
+    } catch (error) {
+        console.log('Error fetching rider details:', error);
+        return resp.json({ status : 0, code : 500, message : ['Error fetching rider details'], });
+    }
+};
+
 export const rsaList = asyncHandler(async (req, resp) => {
     const { rsa_id, rsa_name, rsa_email, rsa_mobile, page_no = 1, list, service_type, start_date, end_date, search_text = '' } = req.body;
 

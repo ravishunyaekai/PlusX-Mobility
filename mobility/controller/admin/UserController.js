@@ -111,6 +111,68 @@ export const riderList = async (req, resp) => {
   }
 };
 
+export const riderDetailsElectricDB = async (req, resp) => {
+    const { riderId } = req.body;
+ 
+    if (!riderId) {
+        return resp.json({ status: 0, code: 400, message: ['Rider ID is required'] });
+    }
+    try {
+        // Fetch rider details
+        let [riderRows] = await db.execute(`
+            SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, "India" as emirates
+            FROM riders
+            WHERE rider_id = ? `, [ riderId ]
+        );
+        // Check deleted riders if not found
+        if (!riderRows.length) {
+            [riderRows] = await db.execute(`
+                SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, "India" as emirates
+                FROM deleted_riders
+                WHERE rider_id = ? `, [ riderId ]
+            );
+        }
+        if (!riderRows.length) {
+            return resp.json({ status: 0, code: 404, message: 'Rider not found' });
+        }
+        const rider = riderRows[0];
+        // Execute all remaining queries in parallel
+        const [ [riderAddress], [riderVehicles], ] = await Promise.all([
+            db.execute(`
+                SELECT 
+                    address_id, street_name, "India" as emirate, area, building_name, unit_no, landmark, nick_name, latitude, longitude
+                FROM rider_address
+                WHERE rider_id = ? `, [riderId]
+            ),
+            db.execute(`
+                SELECT
+                    vehicle_id, vehicle_type, vehicle_number, vehicle_code, vehicle_model, vehicle_make,
+                    vehicle_specification, "India" as emirates
+                FROM riders_vehicles
+                WHERE rider_id = ? `, [riderId]
+            )
+        ]);
+        return resp.json({
+            status : 1,
+            code   : 200,
+            data   : {
+                rider_id     : rider.rider_id,
+                rider_name   : rider.rider_name,
+                rider_email  : rider.rider_email,
+                rider_mobile : rider.rider_mobile,
+                country_code : rider.country_code,
+                emirates     : "India",
+ 
+                riderAddress,
+                riderVehicles,
+            }
+        });
+    } catch (error) {
+        console.log('Error fetching rider details:', error);
+        return resp.json({ status : 0, code : 500, message : ['Error fetching rider details'], });
+    }
+};
+
 export const riderDetails = async (req, resp) => {
   const { riderId } = req.body;
 

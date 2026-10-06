@@ -13,7 +13,7 @@ import { mobilityDashboardData, DeletedRiderList, addUsers, RiderList, usersList
 
 import { addUnversity, universityListSelect,universityList, addstudent, studentList, universitydetail, universityStudent, editStudent, editUniversity } from "../controller/admin/UninversityController.js";
 
-import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin, bookngIncompleteByadmin } from "../controller/admin/UserController.js"; 
+import { riderDetails, riderDetailsElectricDB, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin, bookngIncompleteByadmin } from "../controller/admin/UserController.js"; 
 
 // import { stateCountry } from "../../common/controller/UserController.js";
 
@@ -31,6 +31,7 @@ const adminRoutes = [
     { method: 'post',   path: '/mobility-deleted-rider-list',  handler: DeletedRiderList},
     { method: 'post',   path: '/mobility-rider-list',          handler: RiderList},
     { method: 'post',   path: '/rider-details',                handler: riderDetails},
+    { method: 'post',   path: '/rider-details-electric-dashboard',                handler: riderDetailsElectricDB},
 
     // mobility station add,list, detail
     { method: 'post',   path: '/add-mobility-station',     handler: AddMobilityStation },

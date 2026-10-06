@@ -20,7 +20,7 @@ import {
     storeList, storeData, storeAdd, storeView, storeUpdate, storeDelete, serviceList, serviceCreate, serviceUpdate, serviceDelete, brandList, brandCreate, brandUpdate, brandDelete,
     deleteStoreGallery
 } from "../controller/admin/ShopController.js";
-import { rsaList, rsaData, rsaAdd, rsaUpdate, rsaDelete, rsaStatusChange, driverBookingList, allRsaList, driverLocationList } from "../controller/admin/RsaController.js";
+import { rsaList, rsaData, rsaAdd, rsaUpdate, rsaDelete, rsaStatusChange, driverBookingList, allRsaList, driverLocationList, riderBookingLists } from "../controller/admin/RsaController.js";
 import { clubList, clubData, clubCreate, clubUpdate, clubDelete, clubDeleteImg } from "../controller/admin/RiderClubController.js"
 import { carsList, carDetail, carAdd, carEdit, carDelete, carGalleryDelete } from "../controller/admin/ElectriCarLeasingController.js";
 import { bikeDetail, bikesList, bikeAdd, bikeEdit, bikeDelete, bikeGalleryDelete } from "../controller/admin/ElectricBikeRentalController.js";
@@ -85,6 +85,7 @@ const adminRoutes = [
 
 
     /* RSA Routes */
+    { method: 'post', path: '/rider-booking-list', handler: riderBookingLists },
     { method: 'post', path: '/rsa-list', handler: rsaList },
     { method: 'post', path: '/rsa-data', handler: rsaData },
 
