@@ -120,7 +120,9 @@ export const riderDetailsElectricDB = async (req, resp) => {
     try {
         // Fetch rider details
         let [riderRows] = await db.execute(`
-            SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, "India" as emirates
+            SELECT 
+                concat (added_from,'-',device_name) as added_from_data,
+                (SELECT name from cities where city_id = riders.city_id ) as city, rider_id, rider_name, last_name, rider_email, country_code, state, rider_mobile, ${formatDateTimeInQuery(["created_at", "updated_at"])}, "India" as emirates
             FROM riders
             WHERE rider_id = ? `, [ riderId ]
         );
@@ -161,8 +163,11 @@ export const riderDetailsElectricDB = async (req, resp) => {
                 rider_email  : rider.rider_email,
                 rider_mobile : rider.rider_mobile,
                 country_code : rider.country_code,
+                created_at   : rider.created_at,
+                updated_at   : rider.updated_at,
+                state        : rider.state,
+                city         : rider.city,
                 emirates     : "India",
- 
                 riderAddress,
                 riderVehicles,
             }
