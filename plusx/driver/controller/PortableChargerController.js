@@ -484,7 +484,7 @@ const chargerPickedUp = async (req, resp) => {
         //     rider_name   : bookingData.data.rider_name,
         //     invoice_date : moment().utcOffset('+04:00').format('MMM D, YYYY'),
         //     kw          : bookingData.data.kw,
-        //     currency    : 'AED',
+        //     currency    : 'INR',
         //     kw_dewa_amt : bookingData.data.kw_dewa_amt,
         //     kw_cpo_amt  : bookingData.data.kw_cpo_amt,
         //     delv_charge : (bookingData.data.delv_charge - (bookingData.data.kw_dewa_amt + bookingData.data.kw_cpo_amt) ),

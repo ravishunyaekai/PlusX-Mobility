@@ -1,7 +1,7 @@
 import db from '../../../config/indiadb.js';
 import dotenv from 'dotenv';
 import generateUniqueId from 'generate-unique-id';
-import { formatDateTimeInQuery, asyncHandler, deleteFile, formatDateInQuery} from '../../../utils.js';
+import { formatDateTimeInQuery, asyncHandler, deleteFile, formatDateInQuery } from '../../../utils.js';
 import { getPaginatedData, insertRecord, updateRecord, queryDB } from '../../../dbUtils.js';
 import validateFields from "../../../validation.js";
 dotenv.config();
@@ -12,37 +12,37 @@ import { tryCatchErrorHandler } from '../../../middleware/errorHandler.js';
 
 export const chargerInstallationList = asyncHandler(async (req, resp) => {
     try {
-        const { page_no=1, booking_type, search_text='', start_date, end_date} = req.body;
-        
-        const { isValid, errors } = validateFields(req.body, { booking_type: ["required"] });
-        if (!isValid)  return resp.json({ status: 0, code: 422, message: errors }); 
+        const { page_no = 1, booking_type, search_text = '', start_date, end_date } = req.body;
 
-        const limit      = 10;
+        const { isValid, errors } = validateFields(req.body, { booking_type: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const limit = 10;
         const startIndex = parseInt((page_no * limit) - limit, 10);
 
         const tableObj = {
-            FCB : "ev_charger_booiking", 
-            AB  : "ev_accessories_booiking",
-            CIS : "charging_installation_service"
-        }    
-        let whereQry =  booking_type == "CIS" ?  ' (charger_id IS NULL OR charger_id = "" ) ' : ' id > 0 ';
+            FCB: "ev_charger_booiking",
+            AB: "ev_accessories_booiking",
+            CIS: "charging_installation_service"
+        }
+        let whereQry = booking_type == "CIS" ? ' (charger_id IS NULL OR charger_id = "" ) ' : ' id > 0 ';
         if (start_date && end_date) {
 
             const startToday = new Date(start_date);
-            const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString() .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                    
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; // Replace with your datetime string
+            const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString().padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01'; // Replace with your datetime string
             const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); // Subtract 4 hours
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
-            
+            const end = formattedEndDate + ' 19:59:59';
+
             whereQry += ` and created_at >= "${start}" AND created_at <= "${end}" `;
-        }  
-        if(search_text){
+        }
+        if (search_text) {
             whereQry += ` and (request_id LIKE "%${search_text}%" OR name LIKE "%${search_text}%" ) `;
         }
         const query = `
@@ -57,45 +57,45 @@ export const chargerInstallationList = asyncHandler(async (req, resp) => {
             LIMIT ${startIndex}, ${parseInt(limit, 10)}
         `;
         const [rows] = await db.execute(query, []);
-        
+
         const [[{ total }]] = await db.query('SELECT FOUND_ROWS() AS total');
         const totalPage = Math.max(Math.ceil(total / limit), 1);
 
         return resp.json({
-            status     : 1,
-            code       : 200,
-            message    : ["Booking List fetch successfully!"],
-            data       : rows,
-            total_page : totalPage,
-            total      : total,
+            status: 1,
+            code: 200,
+            message: ["Booking List fetch successfully!"],
+            data: rows,
+            total_page: totalPage,
+            total: total,
         });
-        
+
     } catch (error) {
         console.error('Error fetching charger Offer history:', error);
         return resp.status(500).json({ status: 0, message: 'Error fetching charger booking lists' });
     }
 });
 
-export const chargerInstallationDetails = asyncHandler(async (req, resp) => {     
+export const chargerInstallationDetails = asyncHandler(async (req, resp) => {
     const { request_id, booking_type } = req.body;
-    const { isValid, errors } = validateFields(req.body, { request_id : ["required"] });
+    const { isValid, errors } = validateFields(req.body, { request_id: ["required"] });
     if (!isValid) {
         return resp.json({ status: 0, code: 422, message: errors });
     }
     const table = {
-        FCB : "ev_charger_booiking", 
-        AB  : "ev_accessories_booiking",
-        CIS : "charging_installation_service"
-    } 
+        FCB: "ev_charger_booiking",
+        AB: "ev_accessories_booiking",
+        CIS: "charging_installation_service"
+    }
     // console.log("table",table)
     const historytable = {
-        FCB : "ev_charger_booiking_history", 
-        AB  : "ev_accessories_booiking_history",
-        CIS : "charging_installation_service_history"
-    } 
+        FCB: "ev_charger_booiking_history",
+        AB: "ev_accessories_booiking_history",
+        CIS: "charging_installation_service_history"
+    }
     // console.log("historytable",historytable)
 
-    const chargerQuery = (booking_type != "CIS" ) ? ', (SELECT charger_name FROM ev_charger as ch WHERE ch.charger_id = chi.charger_id) as charger_name' : '';
+    const chargerQuery = (booking_type != "CIS") ? ', (SELECT charger_name FROM ev_charger as ch WHERE ch.charger_id = chi.charger_id) as charger_name' : '';
 
     const orderData = await queryDB(`
         SELECT 
@@ -105,19 +105,19 @@ export const chargerInstallationDetails = asyncHandler(async (req, resp) => {
         FROM 
             ${table[booking_type]} as chi
         WHERE 
-            request_id = ? LIMIT 1`, 
-    [request_id]);
+            request_id = ? LIMIT 1`,
+        [request_id]);
 
     const [history] = await db.execute(`SELECT order_status, ${formatDateTimeInQuery(['created_at'])} FROM ${historytable[booking_type]} WHERE service_id = ?`, [request_id]);
 
     return resp.json({
-        message       : ["Booking Details fetched successfully!"],
-        service_data  : orderData,
-        order_history : history,
-        status        : 1,
-        code          : 200,
+        message: ["Booking Details fetched successfully!"],
+        service_data: orderData,
+        order_history: history,
+        status: 1,
+        code: 200,
     });
-} );
+});
 
 
 
@@ -127,53 +127,53 @@ export const chargerInstallationDetails = asyncHandler(async (req, resp) => {
 export const chargerBrandList = asyncHandler(async (req, resp) => {
     const { search_text, page_no } = req.body;
     const result = await getPaginatedData({
-        tableName        : 'charger_brands',
-        columns          : `brand_id, brand_name`,
-        liveSearchFields : ['brand_name', 'brand_id'],
-        liveSearchTexts  : [search_text, search_text],
-        sortColumn       : 'id',
-        sortOrder        : 'DESC',
+        tableName: 'charger_brands',
+        columns: `brand_id, brand_name`,
+        liveSearchFields: ['brand_name', 'brand_id'],
+        liveSearchTexts: [search_text, search_text],
+        sortColumn: 'id',
+        sortOrder: 'DESC',
         page_no,
-        limit            : 10,
+        limit: 10,
     });
     return resp.json({
-        status     : 1,
-        code       : 200,
-        message    : ["Charger Brand List fetch successfully!"],
-        data       : result.data,
-        total_page : result.totalPage,
-        total      : result.total,
+        status: 1,
+        code: 200,
+        message: ["Charger Brand List fetch successfully!"],
+        data: result.data,
+        total_page: result.totalPage,
+        total: result.total,
     });
 });
 export const chargerBrandCreate = asyncHandler(async (req, resp) => {
-    const { brand_name }      = req.body;
+    const { brand_name } = req.body;
     const { isValid, errors } = validateFields(req.body, { brand_name: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const insert = await insertRecord('charger_brands', ['brand_id', 'brand_name'], [`STB${generateUniqueId({length:6})}`, brand_name]);
+    const insert = await insertRecord('charger_brands', ['brand_id', 'brand_name'], [`STB${generateUniqueId({ length: 6 })}`, brand_name]);
 
     return resp.json({
-        status: insert.affectedRows > 0 ? 1 : 0 ,
-        code: 200 ,
-        message: insert.affectedRows > 0 ? "Charger Brand Added successfully." : "Failed to insert, Please Try Again." ,
+        status: insert.affectedRows > 0 ? 1 : 0,
+        code: 200,
+        message: insert.affectedRows > 0 ? "Charger Brand Added successfully." : "Failed to insert, Please Try Again.",
     });
 });
 export const chargerBrandUpdate = asyncHandler(async (req, resp) => {
     const { brand_name, brand_id } = req.body;
-    const { isValid, errors }      = validateFields(req.body, { brand_name: ["required"], brand_id: ["required"] });
+    const { isValid, errors } = validateFields(req.body, { brand_name: ["required"], brand_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    const update = await updateRecord('charger_brands', {brand_name}, ['brand_id'], [brand_id]);
+    const update = await updateRecord('charger_brands', { brand_name }, ['brand_id'], [brand_id]);
 
     return resp.json({
-        status: update.affectedRows > 0 ? 1 : 0 ,
-        code: 200 ,
-        message: update.affectedRows > 0 ? "Charger Brand Updated successfully." : "Failed to update, Please Try Again." ,
+        status: update.affectedRows > 0 ? 1 : 0,
+        code: 200,
+        message: update.affectedRows > 0 ? "Charger Brand Updated successfully." : "Failed to update, Please Try Again.",
     });
 });
 
 export const allChargerBrand = asyncHandler(async (req, resp) => {
-    
+
     // const firstBrands = [{ value: "Works with all brands", label: "Works with all brands" }] ;
 
     const [brandData] = await db.execute(`
@@ -181,8 +181,8 @@ export const allChargerBrand = asyncHandler(async (req, resp) => {
             brand_id as value, brand_name as label
         FROM 
             charger_brands 
-        Order By brand_name ASC`, 
-    []);    
+        Order By brand_name ASC`,
+        []);
     const [vehicleData] = await db.execute(`
         SELECT 
             make as brand, model
@@ -191,58 +191,59 @@ export const allChargerBrand = asyncHandler(async (req, resp) => {
         WHERE 
             status = ?   
         
-        Order By brand ASC`, 
-    [1]);   //GROUP By brand
+        Order By brand ASC`,
+        [1]);   //GROUP By brand
     // const allBrands = [...firstBrands, ...brandData];
-    return resp.json({status: 1, code: 200, data: brandData, vehicleData});
+    return resp.json({ status: 1, code: 200, data: brandData, vehicleData });
 });
 
 // EV Charger  
 export const eVChargerAddold = async (req, resp) => {
     try {
-        
-        const { charger_name, compatible, outputPower, warrantyType, charger_feature, description,
-            vehicleSpecification='', vehicleBrand='', vehicleModal='', price, usedFor, propertyType, baseprice=''
-        } = req.body;
-       
 
-        const charger_image     = req.files['charger_image']     ? req.files['charger_image'][0].filename : null;
+        const { charger_name, compatible, outputPower, warrantyType, charger_feature, description,
+            vehicleSpecification = '', vehicleBrand = '', vehicleModal = '', price, usedFor, propertyType, baseprice = ''
+        } = req.body;
+
+
+        const charger_image = req.files['charger_image'] ? req.files['charger_image'][0].filename : null;
         const specification_pdf = req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : null;
 
-        const { isValid, errors } = validateFields({ charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
+        const { isValid, errors } = validateFields({
+            charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
             vehicleSpecification, vehicleBrand, vehicleModal, price, usedFor, propertyType
         }, {
-            charger_name      : ["required"],
-            compatible        : ["required"],
-            outputPower       : ["required"],
-            warrantyType      : ["required"], 
-            charger_feature   : ["required"],
-            description       : ["required"],
+            charger_name: ["required"],
+            compatible: ["required"],
+            outputPower: ["required"],
+            warrantyType: ["required"],
+            charger_feature: ["required"],
+            description: ["required"],
             // charger_image     : ["required"],
             // specification_pdf : ["required"],
 
             // vehicleSpecification : ["required"],
-            vehicleBrand         : ["required"],
-            vehicleModal         : ["required"], 
-            price                : ["required"],
-            usedFor              : ["required"],
-            propertyType         : ["required"],
+            vehicleBrand: ["required"],
+            vehicleModal: ["required"],
+            price: ["required"],
+            usedFor: ["required"],
+            propertyType: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    console.log(    'CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, 
+        console.log('CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
             vehicleSpecification, vehicleBrand, vehicleModal, price, usedFor, propertyType, 1, 'C'
         )
         const insert = await insertRecord('ev_charger', [
-            'charger_id', 'charger_name', 'compatible', 'outputPower', 'warrantyType', 'charger_feature', 'description', 'charger_image', 'specification_pdf', 
+            'charger_id', 'charger_name', 'compatible', 'outputPower', 'warrantyType', 'charger_feature', 'description', 'charger_image', 'specification_pdf',
             'vehicle_specification', 'vehicle_brand', 'vehicle_modal', 'price', 'used_for', 'property_type',
             'status', 'data_type'
-        ],[
-            'CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, 
+        ], [
+            'CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
             vehicleSpecification, vehicleBrand, vehicleModal, price, usedFor, propertyType, 1, 'C'
         ]);
-        const lastId     = insert.insertId;
+        const lastId = insert.insertId;
         const charger_id = `CHR-${String(lastId).padStart(4, "0")}`;
-        await updateRecord('ev_charger', {charger_id}, ['id'], [lastId]);
+        await updateRecord('ev_charger', { charger_id }, ['id'], [lastId]);
         return resp.json({
             code: 200,
             message: insert.affectedRows > 0 ? 'EV Charger added successfully!' : 'Oops! Something went wrong. Please try again.',
@@ -250,57 +251,58 @@ export const eVChargerAddold = async (req, resp) => {
         });
     } catch (error) {
         console.error('Something went wrong:', error);
-        resp.json({ status:0, code: 500, message: 'Something went wrong' });
+        resp.json({ status: 0, code: 500, message: 'Something went wrong' });
     }
 };
-       
+
 export const eVChargerAdd = asyncHandler(async (req, resp) => {
     try {
-        
+
         const { charger_name, compatible, outputPower, warrantyType, charger_feature, description,
-            vehicleSpecification='', vehicleBrand='', vehicleModal='', price, usedFor, propertyType
+            vehicleSpecification = '', vehicleBrand = '', vehicleModal = '', price, usedFor, propertyType
         } = req.body;
         console.log(" req.body", req.body)
 
-        const charger_image     = req.files['charger_image']     ? req.files['charger_image'][0].filename : null;
+        const charger_image = req.files['charger_image'] ? req.files['charger_image'][0].filename : null;
         const specification_pdf = req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : null;
-        const chargerGallery    = req.files['charger_gallery']?.map(file => file.filename) || [];
+        const chargerGallery = req.files['charger_gallery']?.map(file => file.filename) || [];
 
-        const { isValid, errors } = validateFields({ charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
+        const { isValid, errors } = validateFields({
+            charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
             vehicleSpecification, price, usedFor, propertyType
         }, {
-            charger_name      : ["required"],
-            compatible        : ["required"],
-            outputPower       : ["required"],
-            warrantyType      : ["required"], 
-            charger_feature   : ["required"],
-            description       : ["required"],
+            charger_name: ["required"],
+            compatible: ["required"],
+            outputPower: ["required"],
+            warrantyType: ["required"],
+            charger_feature: ["required"],
+            description: ["required"],
             // charger_image     : ["required"],
             // specification_pdf : ["required"],
 
             // vehicleSpecification : ["required"],
             // vehicleBrand         : ["required"],
             // vehicleModal         : ["required"], 
-            price                : ["required"],
-            usedFor              : ["required"],
-            propertyType         : ["required"],
+            price: ["required"],
+            usedFor: ["required"],
+            propertyType: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
         //'vehicle_brand', 'vehicle_modal', vehicleBrand, vehicleModal,
-      
-        const insert = await insertRecord('ev_charger', [
-            'charger_id', 'charger_name', 'compatible', 'outputPower', 'warrantyType', 'charger_feature', 'description', 'charger_image', 'specification_pdf', 
-            'vehicle_specification',  'price', 'used_for', 'property_type',
-            'status', 'data_type','vehicle_brand','vehicle_modal'
-        ],[
-            'CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, vehicleSpecification, price, usedFor, propertyType, 1, 'C',vehicleBrand, vehicleModal
-        ]);
-        const lastId     = insert.insertId;
-        const charger_id = `CHR-${String(lastId).padStart(4, "0")}`;
-        await updateRecord('ev_charger', {charger_id}, ['id'], [lastId]);
 
-        if(chargerGallery.length > 0){
-            const values       = chargerGallery.map(filename => [charger_id, filename]);
+        const insert = await insertRecord('ev_charger', [
+            'charger_id', 'charger_name', 'compatible', 'outputPower', 'warrantyType', 'charger_feature', 'description', 'charger_image', 'specification_pdf',
+            'vehicle_specification', 'price', 'used_for', 'property_type',
+            'status', 'data_type', 'vehicle_brand', 'vehicle_modal'
+        ], [
+            'CHI', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, vehicleSpecification, price, usedFor, propertyType, 1, 'C', vehicleBrand, vehicleModal
+        ]);
+        const lastId = insert.insertId;
+        const charger_id = `CHR-${String(lastId).padStart(4, "0")}`;
+        await updateRecord('ev_charger', { charger_id }, ['id'], [lastId]);
+
+        if (chargerGallery.length > 0) {
+            const values = chargerGallery.map(filename => [charger_id, filename]);
             const placeholders = values.map(() => '(?, ?)').join(', ');
             await db.execute(`INSERT INTO ev_charger_gallery (charger_id, image_name) VALUES ${placeholders}`, values.flat());
         }
@@ -318,57 +320,57 @@ export const eVChargerAdd = asyncHandler(async (req, resp) => {
 
 export const eVChargerList = async (req, resp) => {
     try {
-        const { page_no = 1, search_text = '', start_date, end_date} = req.body;
+        const { page_no = 1, search_text = '', start_date, end_date } = req.body;
 
         const params = {
-            tableName  : 'ev_charger',
-            columns    : `charger_id, charger_name, outputPower, price, CASE WHEN status = 1 THEN 'Active' ELSE 'Inactive' END AS status_lable`,
-            sortColumn : 'status = 1 DESC, id',
-            sortOrder  : 'DESC',
+            tableName: 'ev_charger',
+            columns: `charger_id, charger_name, outputPower, price, CASE WHEN status = 1 THEN 'Active' ELSE 'Inactive' END AS status_lable`,
+            sortColumn: 'status = 1 DESC, id',
+            sortOrder: 'DESC',
             page_no,
-            liveSearchFields : ['charger_id', 'charger_name' ],
-            liveSearchTexts  : [search_text, search_text],
-            limit            : 10,
-            whereField       : ['data_type'],
-            whereValue       : ['C'],
-            whereOperator    : ["="]
+            liveSearchFields: ['charger_id', 'charger_name'],
+            liveSearchTexts: [search_text, search_text],
+            limit: 10,
+            whereField: ['data_type'],
+            whereValue: ['C'],
+            whereOperator: ["="]
         }
         if (start_date && end_date) {
-                    
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                        
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
-            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
+            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
         }
         const result = await getPaginatedData(params);
-        
-        
+
+
         return resp.json({
-            status     : 1,
-            message    : ["EV Charger List fetch successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            message: ["EV Charger List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
 
     } catch (error) {
         console.error('Error fetching station list:', error);
         return resp.json({
-            status  : 0,
-            code    : 500,
-            message : 'Error fetching station list'
+            status: 0,
+            code: 500,
+            message: 'Error fetching station list'
         });
     }
 };
@@ -390,20 +392,20 @@ export const evChargerDetails = async (req, resp) => {
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ? AND data_type= 'C'`, 
+                charger_id = ? AND data_type= 'C'`,
             [charger_id]
         );
-        
-        let allBrand       = [];
+
+        let allBrand = [];
         let brandModelData = []
-        if(brand_data) {
+        if (brand_data) {
             const [brandData] = await db.execute(`
                 SELECT 
                     brand_id as value, brand_name as label
                 FROM 
                     charger_brands 
-                Order By brand_name ASC`, 
-            []); 
+                Order By brand_name ASC`,
+                []);
             const [vehicleData] = await db.execute(`
                 SELECT 
                     make as brand, model
@@ -412,35 +414,35 @@ export const evChargerDetails = async (req, resp) => {
                 WHERE 
                     status = ?   
                 
-                Order By brand ASC`, 
-            [1]); 
-            allBrand       = brandData;
+                Order By brand ASC`,
+                [1]);
+            allBrand = brandData;
             brandModelData = vehicleData;
-        } 
+        }
         else {
-            const compatible          =  chargerDetails.compatible.map(item => item.label);
-            chargerDetails.compatible = (compatible.length == chargerDetails.brand_total) ? 'Works with all EVs' : compatible.join(", "); 
-        }  
+            const compatible = chargerDetails.compatible.map(item => item.label);
+            chargerDetails.compatible = (compatible.length == chargerDetails.brand_total) ? 'Works with all EVs' : compatible.join(", ");
+        }
         const [gallery] = await db.execute(`SELECT id, image_name FROM ev_charger_gallery WHERE charger_id = ? ORDER BY id DESC `, [charger_id]);
         const imgName = gallery.map(row => row.image_name);
-        const imgId   = gallery.map(row => row.id);   
+        const imgId = gallery.map(row => row.id);
         const image_data = gallery.map(row => ({
-                            id: row.id,
-                            image: row.image_name
-                        }));
+            id: row.id,
+            image: row.image_name
+        }));
 
 
         return resp.json({
-            status    : 1,
-            code      : 200,
-            message   : ["EV  Charger Details fetched successfully!"],
-            data      : chargerDetails,
-            brandData : allBrand,
-            vehicleData : brandModelData,
-            gallery_data : imgName,
-            gallery_id   : imgId,
+            status: 1,
+            code: 200,
+            message: ["EV  Charger Details fetched successfully!"],
+            data: chargerDetails,
+            brandData: allBrand,
+            vehicleData: brandModelData,
+            gallery_data: imgName,
+            gallery_id: imgId,
             image_data,
-            base_url  : `${process.env.DIR_UPLOADS}charger-installation/`,
+            base_url: `${process.env.DIR_UPLOADS}charger-installation/`,
         });
     } catch (error) {
         console.error('Error fetching charger details:', error);
@@ -451,51 +453,53 @@ export const evChargerDetails = async (req, resp) => {
 export const getOpenAndCloseTimings = async (req, resp) => {
     try {
         const { charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, status,
-            vehicleSpecification='', vehicleBrand, vehicleModal, price, usedFor, propertyType
+            vehicleSpecification = '', vehicleBrand, vehicleModal, price, usedFor, propertyType
         } = req.body;
-        console.log("req.body",req.body)
-        
-        const { isValid, errors } = validateFields({ charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, vehicleBrand, vehicleModal, price, usedFor, propertyType
+        console.log("req.body", req.body)
+
+        const { isValid, errors } = validateFields({
+            charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, vehicleBrand, vehicleModal, price, usedFor, propertyType
         }, {
-            charger_id      : ["required"],
-            charger_name    : ["required"],
-            compatible      : ["required"],
-            outputPower     : ["required"],
-            warrantyType    : ["required"], 
-            charger_feature : ["required"],
-            description     : ["required"],
+            charger_id: ["required"],
+            charger_name: ["required"],
+            compatible: ["required"],
+            outputPower: ["required"],
+            warrantyType: ["required"],
+            charger_feature: ["required"],
+            description: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
         const charger = await queryDB(`
             SELECT 
                 charger_image, specification_pdf 
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ?`, 
-        [charger_id]);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not edit, or invalid charger Id"});
+                charger_id = ?`,
+            [charger_id]);
+        if (!charger) return resp.json({ status: 0, message: "Charger Data can not edit, or invalid charger Id" });
 
         const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
         const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
 
-        const updates = { charger_name, outputPower, warrantyType, description, charger_image, 
+        const updates = {
+            charger_name, outputPower, warrantyType, description, charger_image,
             specification_pdf, status, compatible, charger_feature,
-            vehicle_specification : vehicleSpecification,   
-            vehicle_brand         : vehicleBrand,
-            vehicle_modal         : vehicleModal,
-            price                 : price, 
-            used_for              : usedFor, 
-            property_type         : propertyType,
+            vehicle_specification: vehicleSpecification,
+            vehicle_brand: vehicleBrand,
+            vehicle_modal: vehicleModal,
+            price: price,
+            used_for: usedFor,
+            property_type: propertyType,
         };
         const update = await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
 
-        if(req.files && req.files['charger_image']){
+        if (req.files && req.files['charger_image']) {
             deleteFile('charger-installation', charger.charger_image);
         }
-        if(req.files && req.files['specification_pdf']){ 
-            deleteFile('charger-installation', charger.specification_pdf); 
+        if (req.files && req.files['specification_pdf']) {
+            deleteFile('charger-installation', charger.specification_pdf);
         }
         return resp.json({
             code: 200,
@@ -504,74 +508,75 @@ export const getOpenAndCloseTimings = async (req, resp) => {
         });
     } catch (error) {
         console.error('Something went wrong:', error);
-        resp.json({ status:0, code: 500, message: 'Something went wrong' });
+        resp.json({ status: 0, code: 500, message: 'Something went wrong' });
     }
 };
 
 export const eVChargerEdit = asyncHandler(async (req, resp) => {
     // try {
-        const { charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, status,
-            vehicleSpecification, vehicleBrand="", vehicleModal="", price, usedFor, propertyType
-        } = req.body;
-        
-        
-        const { isValid, errors } = validateFields({ charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, price, usedFor, propertyType
-        }, {
-            charger_id      : ["required"],
-            charger_name    : ["required"],
-            compatible      : ["required"],
-            outputPower     : ["required"],
-            warrantyType    : ["required"], 
-            charger_feature : ["required"],
-            description     : ["required"],
-        });
-        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        
-        const charger = await queryDB(`
+    const { charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, status,
+        vehicleSpecification, vehicleBrand = "", vehicleModal = "", price, usedFor, propertyType
+    } = req.body;
+
+
+    const { isValid, errors } = validateFields({
+        charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, price, usedFor, propertyType
+    }, {
+        charger_id: ["required"],
+        charger_name: ["required"],
+        compatible: ["required"],
+        outputPower: ["required"],
+        warrantyType: ["required"],
+        charger_feature: ["required"],
+        description: ["required"],
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const charger = await queryDB(`
             SELECT 
                 charger_image, specification_pdf 
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ?`, 
+                charger_id = ?`,
         [charger_id]);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not edit, or invalid charger Id"});
+    if (!charger) return resp.json({ status: 0, message: "Charger Data can not edit, or invalid charger Id" });
 
-        const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
-        const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
+    const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
+    const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
 
-        const uploadedFiles  = req.files;
-        const chargerGallery = uploadedFiles['charger_gallery']?.map(file => file.filename) || [];
+    const uploadedFiles = req.files;
+    const chargerGallery = uploadedFiles['charger_gallery']?.map(file => file.filename) || [];
 
-        const updates = { 
-            charger_name, outputPower, warrantyType, description, charger_image, 
-            specification_pdf,  compatible, charger_feature,
-            status                : status == 'true' ? 1 : 0, 
-            // vehicle_specification : vehicleSpecification,   
-            vehicle_brand         : vehicleBrand,
-            vehicle_modal         : vehicleModal,
-            price                 : price, 
-            used_for              : usedFor, 
-            property_type         : propertyType,
-        };
-        const update = await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
+    const updates = {
+        charger_name, outputPower, warrantyType, description, charger_image,
+        specification_pdf, compatible, charger_feature,
+        status: status == 'true' ? 1 : 0,
+        // vehicle_specification : vehicleSpecification,   
+        vehicle_brand: vehicleBrand,
+        vehicle_modal: vehicleModal,
+        price: price,
+        used_for: usedFor,
+        property_type: propertyType,
+    };
+    const update = await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
 
-        if(req.files && req.files['charger_image']){
-            deleteFile('charger-installation', charger.charger_image);
-        }
-        if(req.files && req.files['specification_pdf']){ 
-            deleteFile('charger-installation', charger.specification_pdf); 
-        }
-        if(chargerGallery.length > 0){
-            const values = chargerGallery.map(filename => [charger_id, filename]);
-            const placeholders = values.map(() => '(?, ?)').join(', ');
-            await db.execute(`INSERT INTO ev_charger_gallery (charger_id, image_name) VALUES ${placeholders}`, values.flat());
-        }
-        return resp.json({
-            code: 200,
-            message: update.affectedRows > 0 ? 'EV Charger updated successfully!' : 'Oops! Something went wrong. Please try again.',
-            status: update.affectedRows > 0 ? 1 : 0
-        });
+    if (req.files && req.files['charger_image']) {
+        deleteFile('charger-installation', charger.charger_image);
+    }
+    if (req.files && req.files['specification_pdf']) {
+        deleteFile('charger-installation', charger.specification_pdf);
+    }
+    if (chargerGallery.length > 0) {
+        const values = chargerGallery.map(filename => [charger_id, filename]);
+        const placeholders = values.map(() => '(?, ?)').join(', ');
+        await db.execute(`INSERT INTO ev_charger_gallery (charger_id, image_name) VALUES ${placeholders}`, values.flat());
+    }
+    return resp.json({
+        code: 200,
+        message: update.affectedRows > 0 ? 'EV Charger updated successfully!' : 'Oops! Something went wrong. Please try again.',
+        status: update.affectedRows > 0 ? 1 : 0
+    });
     // } catch (error) {
     //     console.error('Something went wrong:', error);
     //     // resp.json({ status:0, code: 500, message: 'Something went wrong' });
@@ -579,51 +584,51 @@ export const eVChargerEdit = asyncHandler(async (req, resp) => {
     // }
 });
 
-export const eVChargerCoverImgDelete= asyncHandler(async (req, resp) => {
+export const eVChargerCoverImgDelete = asyncHandler(async (req, resp) => {
     // try {
-        const { charger_id, requirement
-        } = req.body;
-        
-        
-        const { isValid, errors } = validateFields({ charger_id }, {
-            charger_id      : ["required"]
-        });
-        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-        
-        const charger = await queryDB(`
+    const { charger_id, requirement
+    } = req.body;
+
+
+    const { isValid, errors } = validateFields({ charger_id }, {
+        charger_id: ["required"]
+    });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    const charger = await queryDB(`
             SELECT 
                id
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ?`, 
+                charger_id = ?`,
         [charger_id]);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not edit, or invalid charger Id"});
+    if (!charger) return resp.json({ status: 0, message: "Charger Data can not edit, or invalid charger Id" });
 
-        // const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
-        // const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
-        let updates={};
-        if(requirement==="pdf"){
-         updates = { 
-             specification_pdf:"", 
-
-        };
-
-       }else{
-         updates = { 
-             charger_image:"", 
+    // const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
+    // const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
+    let updates = {};
+    if (requirement === "pdf") {
+        updates = {
+            specification_pdf: "",
 
         };
-       }
-    
-         await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
 
-       
-        return resp.json({
-            code: 200,
-            message:  'Cover Image removed successfully.',
-            status:  1 
-        });
+    } else {
+        updates = {
+            charger_image: "",
+
+        };
+    }
+
+    await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
+
+
+    return resp.json({
+        code: 200,
+        message: 'Cover Image removed successfully.',
+        status: 1
+    });
     // } catch (error) {
     //     console.error('Something went wrong:', error);
     //     // resp.json({ status:0, code: 500, message: 'Something went wrong' });
@@ -633,50 +638,51 @@ export const eVChargerCoverImgDelete= asyncHandler(async (req, resp) => {
 
 // Accessroies Func
 export const AccessoriesAdd = async (req, resp) => {
-   
+
     try {
-        
+
         const { charger_name, compatible, outputPower, warrantyType, charger_feature, description,
-            vehicleSpecification='', vehicleBrand='', vehicleModal='', price, chargerType, connectorType
+            vehicleSpecification = '', vehicleBrand = '', vehicleModal = '', price, chargerType, connectorType
         } = req.body;
 
-        const charger_image     = req.files['charger_image']     ? req.files['charger_image'][0].filename : null;
+        const charger_image = req.files['charger_image'] ? req.files['charger_image'][0].filename : null;
         const specification_pdf = req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : null;
-        const chargerGallery    = req.files['charger_gallery']?.map(file => file.filename) || [];
+        const chargerGallery = req.files['charger_gallery']?.map(file => file.filename) || [];
 
 
-        const { isValid, errors } = validateFields({ charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
+        const { isValid, errors } = validateFields({
+            charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf,
             vehicleSpecification, vehicleBrand, vehicleModal, price, chargerType
         }, {
-            charger_name      : ["required"],
-            compatible        : ["required"],
+            charger_name: ["required"],
+            compatible: ["required"],
             // outputPower       : ["required"],
             // warrantyType      : ["required"], 
-            charger_feature   : ["required"],
-            description       : ["required"],
+            charger_feature: ["required"],
+            description: ["required"],
             // charger_image     : ["required"],
             // specification_pdf : ["required"],
 
             // vehicleSpecification : ["required"],
             // vehicleBrand         : ["required"],
             // vehicleModal         : ["required"], 
-            price                : ["required"],
-            chargerType         : ["required"],
+            price: ["required"],
+            chargerType: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
         if (!req.files || !req.files['charger_image']) return resp.json({ message: "Cover Image is required", status: 0, code: 405, error: true });
 
-    
+
         const insert = await insertRecord('ev_charger', [
             'charger_id', 'charger_name', 'compatible', 'outputPower', 'warrantyType', 'charger_feature', 'description', 'charger_image', 'specification_pdf', 'vehicle_specification', 'vehicle_brand', 'vehicle_modal', 'price', 'charger_type', 'connector_type', 'status', 'data_type'
-        ],[
-            'CHA', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, vehicleSpecification, vehicleBrand, vehicleModal, price, chargerType, connectorType, 1, 'A', 
+        ], [
+            'CHA', charger_name, compatible, outputPower, warrantyType, charger_feature, description, charger_image, specification_pdf, vehicleSpecification, vehicleBrand, vehicleModal, price, chargerType, connectorType, 1, 'A',
         ]);
-        const lastId     = insert.insertId;
+        const lastId = insert.insertId;
         const charger_id = `CHA-${String(lastId).padStart(4, "0")}`;
-        await updateRecord('ev_charger', {charger_id}, ['id'], [lastId]);
-         if(chargerGallery.length > 0){
-            const values       = chargerGallery.map(filename => [charger_id, filename]);
+        await updateRecord('ev_charger', { charger_id }, ['id'], [lastId]);
+        if (chargerGallery.length > 0) {
+            const values = chargerGallery.map(filename => [charger_id, filename]);
             const placeholders = values.map(() => '(?, ?)').join(', ');
             await db.execute(`INSERT INTO ev_charger_gallery (charger_id, image_name) VALUES ${placeholders}`, values.flat());
         }
@@ -688,44 +694,44 @@ export const AccessoriesAdd = async (req, resp) => {
         });
     } catch (error) {
         console.error('Something went wrong:', error);
-        resp.json({ status:0, code: 500, message: 'Something went wrong' });
+        resp.json({ status: 0, code: 500, message: 'Something went wrong' });
     }
 };
 
 export const AccessoriesList = async (req, resp) => {
     try {
-        const { page_no = 1, search_text = '', start_date, end_date} = req.body;
-        
+        const { page_no = 1, search_text = '', start_date, end_date } = req.body;
+
         const params = {
-            tableName  : 'ev_charger',
-            columns    : `charger_id, charger_name, outputPower, price, charger_type,  CASE 
+            tableName: 'ev_charger',
+            columns: `charger_id, charger_name, outputPower, price, charger_type,  CASE 
     WHEN status = 1 THEN 'Active'
     ELSE 'Inactive'
   END AS status_lable`,
-            sortColumn : 'status = 1 DESC, id',
-            sortOrder  : 'DESC',
+            sortColumn: 'status = 1 DESC, id',
+            sortOrder: 'DESC',
             page_no,
-            liveSearchFields : ['charger_id', 'charger_name' ],
-            liveSearchTexts  : [search_text, search_text],
-            limit            : 10,
-            whereField       : ['data_type'],
-            whereValue       : ['A'],
-            whereOperator    : ["="]
+            liveSearchFields: ['charger_id', 'charger_name'],
+            liveSearchTexts: [search_text, search_text],
+            limit: 10,
+            whereField: ['data_type'],
+            whereValue: ['A'],
+            whereOperator: ["="]
         }
         if (start_date && end_date) {
-                    
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                        
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
-            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
+            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
@@ -733,26 +739,26 @@ export const AccessoriesList = async (req, resp) => {
         }
         const result = await getPaginatedData(params);
         return resp.json({
-            status     : 1,
-            message    : ["EV Accessories List fetch successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            message: ["EV Accessories List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
 
     } catch (error) {
         console.error('Error fetching list:', error);
         return resp.json({
-            status  : 0,
-            code    : 500,
-            message : 'Error fetching list'
+            status: 0,
+            code: 500,
+            message: 'Error fetching list'
         });
     }
 };
 
 export const AccessoriesDetails = async (req, resp) => {
     try {
-        
+
         const { charger_id, brand_data = 0 } = req.body;
 
         const { isValid, errors } = validateFields(req.body, {
@@ -768,20 +774,20 @@ export const AccessoriesDetails = async (req, resp) => {
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ? AND data_type= ?`, 
-            [charger_id, 'A' ]
+                charger_id = ? AND data_type= ?`,
+            [charger_id, 'A']
         );
-        
-        let allBrand       = [];
+
+        let allBrand = [];
         let brandModelData = []
-        if(brand_data) {
+        if (brand_data) {
             const [brandData] = await db.execute(`
                 SELECT 
                     brand_id as value, brand_name as label
                 FROM 
                     charger_brands 
-                Order By brand_name ASC`, 
-            []); 
+                Order By brand_name ASC`,
+                []);
             const [vehicleData] = await db.execute(`
                 SELECT 
                     make as brand, model
@@ -790,34 +796,34 @@ export const AccessoriesDetails = async (req, resp) => {
                 WHERE 
                     status = ?   
                 
-                Order By brand ASC`, 
-            [1]); 
-            allBrand       = brandData;
+                Order By brand ASC`,
+                [1]);
+            allBrand = brandData;
             brandModelData = vehicleData;
-        } 
+        }
         else {
-            const compatible          =  chargerDetails.compatible.map(item => item.label);
-            chargerDetails.compatible = (compatible.length == chargerDetails.brand_total) ? 'Works with all EVs' : compatible.join(", "); 
+            const compatible = chargerDetails.compatible.map(item => item.label);
+            chargerDetails.compatible = (compatible.length == chargerDetails.brand_total) ? 'Works with all EVs' : compatible.join(", ");
         }
         const [gallery] = await db.execute(`SELECT id, image_name FROM ev_charger_gallery WHERE charger_id = ? ORDER BY id DESC `, [charger_id]);
         const imgName = gallery.map(row => row.image_name);
-        const imgId   = gallery.map(row => row.id);
+        const imgId = gallery.map(row => row.id);
         const image_data = gallery.map(row => ({
-                            id: row.id,
-                            image: row.image_name
-                        }));
+            id: row.id,
+            image: row.image_name
+        }));
 
         return resp.json({
-            status    : 1,
-            code      : 200,
-            message   : ["Accessories Details fetched successfully!"],
-            data      : chargerDetails,
-            brandData : allBrand,
-            vehicleData : brandModelData,
-             gallery_data : imgName,
-            gallery_id   : imgId,
+            status: 1,
+            code: 200,
+            message: ["Accessories Details fetched successfully!"],
+            data: chargerDetails,
+            brandData: allBrand,
+            vehicleData: brandModelData,
+            gallery_data: imgName,
+            gallery_id: imgId,
             image_data,
-            base_url  : `${process.env.DIR_UPLOADS}charger-installation/`,
+            base_url: `${process.env.DIR_UPLOADS}charger-installation/`,
         });
     } catch (error) {
         console.error('Error fetching Accessories details:', error);
@@ -828,61 +834,63 @@ export const AccessoriesDetails = async (req, resp) => {
 export const AccessoriesEdit = async (req, resp) => {
     try {
         const { charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, status,
-            vehicleSpecification='', vehicleBrand='', vehicleModal='', price, chargerType, connectorType
+            vehicleSpecification = '', vehicleBrand = '', vehicleModal = '', price, chargerType, connectorType
         } = req.body;
-        
-        const { isValid, errors } = validateFields({ charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, vehicleBrand, vehicleModal, price, chargerType
+
+        const { isValid, errors } = validateFields({
+            charger_id, charger_name, compatible, outputPower, warrantyType, charger_feature, description, vehicleSpecification, vehicleBrand, vehicleModal, price, chargerType
         }, {
-            charger_id      : ["required"],
-            charger_name    : ["required"],
-            compatible      : ["required"],
+            charger_id: ["required"],
+            charger_name: ["required"],
+            compatible: ["required"],
             // outputPower     : ["required"],
             // warrantyType    : ["required"], 
-            charger_feature : ["required"],
-            description     : ["required"],
+            charger_feature: ["required"],
+            description: ["required"],
             // vehicleSpecification : ["required"],
             // vehicleBrand         : ["required"],
             // vehicleModal         : ["required"], 
-            price                : ["required"],
-            chargerType          : ["required"],
+            price: ["required"],
+            chargerType: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
         const charger = await queryDB(`
             SELECT 
                 charger_image, specification_pdf 
             FROM 
                 ev_charger 
             WHERE 
-                charger_id = ? AND data_type= ?`, 
-        [charger_id, 'A']);
-        if(!charger) return resp.json({status:0, message: "Charger Data can not edit, or invalid charger Id"});
+                charger_id = ? AND data_type= ?`,
+            [charger_id, 'A']);
+        if (!charger) return resp.json({ status: 0, message: "Charger Data can not edit, or invalid charger Id" });
 
         const charger_image = req.files && req.files['charger_image'] ? req.files['charger_image'][0].filename : charger.charger_image;
         const specification_pdf = req.files && req.files['specification_pdf'] ? req.files['specification_pdf'][0].filename : charger.specification_pdf;
         const uploadedFiles = req.files;
         const chargerGallery = uploadedFiles['charger_gallery']?.map(file => file.filename) || [];
-      const statusInput=status?'true':1 ?'false':0;
-        console.log("status",req.body.status,'statusInput',statusInput,typeof(status))
-        const updates = { charger_name, outputPower, warrantyType, description, charger_image, 
+        const statusInput = status ? 'true' : 1 ? 'false' : 0;
+        console.log("status", req.body.status, 'statusInput', statusInput, typeof (status))
+        const updates = {
+            charger_name, outputPower, warrantyType, description, charger_image,
             specification_pdf, status, compatible, charger_feature,
-            vehicle_specification : vehicleSpecification,   
-            vehicle_brand         : vehicleBrand,
-            vehicle_modal         : vehicleModal,
-            price                 : price, 
-            charger_type          : chargerType, 
-            connector_type        : connectorType,
-           status                : status == 'true' ? 1 : 0, 
+            vehicle_specification: vehicleSpecification,
+            vehicle_brand: vehicleBrand,
+            vehicle_modal: vehicleModal,
+            price: price,
+            charger_type: chargerType,
+            connector_type: connectorType,
+            status: status == 'true' ? 1 : 0,
         };
         const update = await updateRecord('ev_charger', updates, ['charger_id'], [charger_id]);
 
-        if(req.files && req.files['charger_image']){
+        if (req.files && req.files['charger_image']) {
             deleteFile('charger-installation', charger.charger_image);
         }
-        if(req.files && req.files['specification_pdf']){ 
-            deleteFile('charger-installation', charger.specification_pdf); 
+        if (req.files && req.files['specification_pdf']) {
+            deleteFile('charger-installation', charger.specification_pdf);
         }
-        if(chargerGallery.length > 0){
+        if (chargerGallery.length > 0) {
             const values = chargerGallery.map(filename => [charger_id, filename]);
             const placeholders = values.map(() => '(?, ?)').join(', ');
             await db.execute(`INSERT INTO ev_charger_gallery (charger_id, image_name) VALUES ${placeholders}`, values.flat());
@@ -895,25 +903,25 @@ export const AccessoriesEdit = async (req, resp) => {
         });
     } catch (error) {
         console.error('Something went wrong:', error);
-        return resp.json({ status:0, code: 500, message: 'Something went wrong' });
+        return resp.json({ status: 0, code: 500, message: 'Something went wrong' });
     }
 };
 //deleteEVChargerGallery
 
 export const deleteEVChargerGallery = asyncHandler(async (req, resp) => {
-    const { gallery_id, charger_id} = req.body;
-    if(!gallery_id) return resp.json({status:0, message: "Gallery Id is required"});
+    const { gallery_id, charger_id } = req.body;
+    if (!gallery_id) return resp.json({ status: 0, message: "Gallery Id is required" });
 
     const galleryData = await queryDB(`SELECT image_name FROM ev_charger_gallery WHERE id = ? LIMIT 1`, [gallery_id]);
-    
-    if(galleryData){
+
+    if (galleryData) {
         // deleteFile('charger-installation', galleryData.image_name);
-        const deleted=await db.execute('DELETE FROM ev_charger_gallery WHERE id = ? and charger_id=?', [gallery_id,charger_id]);
-       if(!deleted){  return resp.json({status: 1, code: 200,  message: "Gallery image was not deleted "}); }
-      return resp.json({status: 1, code: 200,  message: "Gallery image deleted successfully"});   
+        const deleted = await db.execute('DELETE FROM ev_charger_gallery WHERE id = ? and charger_id=?', [gallery_id, charger_id]);
+        if (!deleted) { return resp.json({ status: 1, code: 200, message: "Gallery image was not deleted " }); }
+        return resp.json({ status: 1, code: 200, message: "Gallery image deleted successfully" });
     }
-    
-    
+
+
 });
 
 
@@ -921,52 +929,53 @@ export const deleteEVChargerGallery = asyncHandler(async (req, resp) => {
 // Purchase history Func
 export const PurchaseHistoryAdd = asyncHandler(async (req, resp) => {
     try {
-        
-        const { customer_name, customer_email, customer_mobile, customer_address=null, product_name, output_Power=null, price=0, type_of_service, purchase_date=null, warranty_expiry_date=null, installation_date=null } = req.body;
+
+        const { customer_name, customer_email, customer_mobile, customer_address = null, product_name, output_Power = null, price = 0, type_of_service, purchase_date = null, warranty_expiry_date = null, installation_date = null, country_code = "+91" } = req.body;
 
         const purchase_pdf = req.files['purchase_invoice_pdf'] ? req.files['purchase_invoice_pdf'][0].filename : null;
 
         const installation_pdf = req.files['installation_invoice_pdf'] ? req.files['installation_invoice_pdf'][0].filename : null;
 
         const completion_pdf = req.files['completion_certificate_pdf'] ? req.files['completion_certificate_pdf'][0].filename : null;
-        
+
         const { isValid, errors } = validateFields({ customer_name, customer_email, customer_mobile, product_name, type_of_service },
-        {
-            customer_name        : ["required"],
-            customer_email       : ["required"],
-            customer_mobile      : ["required"],
-            // customer_address     : ["required"],
-            product_name         : ["required"],
-            // output_Power         : ["required"],
-            // price                : ["required"], 
-            type_of_service      : ["required"],
-            // purchase_date        : ["required"],
-            // warranty_expiry_date : ["required"],
-        });
+            {
+                customer_name: ["required"],
+                customer_email: ["required"],
+                customer_mobile: ["required"],
+                country_code: ["required"],
+                // customer_address     : ["required"],
+                product_name: ["required"],
+                // output_Power         : ["required"],
+                // price                : ["required"], 
+                type_of_service: ["required"],
+                // purchase_date        : ["required"],
+                // warranty_expiry_date : ["required"],
+            });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
         // if (!req.files || !req.files['charger_image']) return resp.json({ message: "Cover Image is required", status: 0, code: 405, error: true });
 
-        const purchaseDate    = purchase_date ? moment(purchase_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
+        const purchaseDate = purchase_date ? moment(purchase_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
         const warrantyExpDate = warranty_expiry_date ? moment(warranty_expiry_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
- 
-        const installationDate = installation_date ? moment(installation_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null; 
+
+        const installationDate = installation_date ? moment(installation_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
 
         const insert = await insertRecord('purchase_history', [
-            'purchase_id', 'customer_name', 'customer_email', 'customer_mobile', 'customer_address', 'product_name', 'output_Power', 'price', 'type_of_service', 
-            'purchase_date', 'warranty_expiry_date', 'installation_date', 
+            'purchase_id', 'customer_name', 'customer_email', 'customer_mobile', 'country_code', 'customer_address', 'product_name', 'output_Power', 'price', 'type_of_service',
+            'purchase_date', 'warranty_expiry_date', 'installation_date',
             'purchase_invoice_pdf', 'installation_invoice_pdf', 'completion_certificate_pdf'
-        ],[
-            'PRH', customer_name, customer_email, customer_mobile, customer_address, 
-            product_name, output_Power, price, type_of_service, 
+        ], [
+            'PRH', customer_name, customer_email, customer_mobile, country_code, customer_address,
+            product_name, output_Power, price, type_of_service,
             purchaseDate, warrantyExpDate, installationDate,
             purchase_pdf, installation_pdf, completion_pdf
         ]);
-        if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add public charger! Please try again after some time."});
+        if (insert.affectedRows == 0) return resp.json({ status: 0, message: "Failed to add public charger! Please try again after some time." });
 
-        const lastId      = insert.insertId;
+        const lastId = insert.insertId;
         const purchase_id = `PRH-${String(lastId).padStart(4, "0")}`;
-        await updateRecord('purchase_history', {purchase_id}, ['id'], [lastId]);
+        await updateRecord('purchase_history', { purchase_id }, ['id'], [lastId]);
 
         return resp.json({
             code: 200,
@@ -983,56 +992,56 @@ export const PurchaseHistoryAdd = asyncHandler(async (req, resp) => {
 
 export const PurchaseHistoryList = asyncHandler(async (req, resp) => {
     try {
-        const { page_no = 1, search_text = '', start_date, end_date} = req.body;
-        
+        const { page_no = 1, search_text = '', start_date, end_date } = req.body;
+
         const params = {
-            tableName  : 'purchase_history',
-            columns    : `purchase_date, customer_name, customer_mobile, product_name, type_of_service, purchase_id`,
-            sortColumn : 'id DESC',
-            sortOrder  : '',
+            tableName: 'purchase_history',
+            columns: `purchase_date, customer_name, customer_mobile, product_name, type_of_service, purchase_id`,
+            sortColumn: 'id DESC',
+            sortOrder: '',
             page_no,
-            liveSearchFields : ['customer_name','customer_mobile', 'product_name' ],
-            liveSearchTexts  : [search_text,search_text, search_text],
-            limit            : 10,
-            whereField       : [],
-            whereValue       : [],
-            whereOperator    : []
+            liveSearchFields: ['customer_name', 'customer_mobile', 'product_name'],
+            liveSearchTexts: [search_text, search_text, search_text],
+            limit: 10,
+            whereField: [],
+            whereValue: [],
+            whereOperator: []
         }
         if (start_date && end_date) {
-                    
+
             const startToday = new Date(start_date);
             const startFormattedDate = `${startToday.getFullYear()}-${(startToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${startToday.getDate().toString().padStart(2, '0')}`;
-                        
-            const givenStartDateTime    = startFormattedDate+' 00:00:01'; 
-            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours'); 
-            const start        = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
-            
+
+            const givenStartDateTime = startFormattedDate + ' 00:00:01';
+            const modifiedStartDateTime = moment(givenStartDateTime).subtract(4, 'hours');
+            const start = modifiedStartDateTime.format('YYYY-MM-DD HH:mm:ss')
+
             const endToday = new Date(end_date);
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
-            const end = formattedEndDate+' 19:59:59';
+            const end = formattedEndDate + ' 19:59:59';
 
             params.whereField.push('purchase_date', 'purchase_date');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
         }
         const result = await getPaginatedData(params);
-        
+
         return resp.json({
-            status     : 1,
-            message    : ["Purchase History List fetch successfully!"],
-            data       : result.data,
-            total_page : result.totalPage,
-            total      : result.total,
+            status: 1,
+            message: ["Purchase History List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
         });
 
     } catch (error) {
         console.error('Error fetching list:', error);
         return resp.json({
-            status  : 0,
-            code    : 500,
-            message : 'Error fetching list'
+            status: 0,
+            code: 500,
+            message: 'Error fetching list'
         });
     }
 });
@@ -1040,32 +1049,32 @@ export const PurchaseHistoryList = asyncHandler(async (req, resp) => {
 export const PurchaseHistoryDetails = asyncHandler(async (req, resp) => {
     try {
         const { purchase_id } = req.body;
-        const { isValid, errors } = validateFields(req.body, { purchase_id : ["required"] });
+        const { isValid, errors } = validateFields(req.body, { purchase_id: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-         
+
         const purchaseDetails = await queryDB(`
             SELECT 
-                purchase_id, customer_name, customer_email, customer_mobile, customer_address, 
+                purchase_id, customer_name, customer_email, customer_mobile, country_code, customer_address, 
                 product_name, output_Power, price, type_of_service, purchase_invoice_pdf, installation_invoice_pdf, completion_certificate_pdf, created_at,
                 ${formatDateInQuery(['purchase_date'])}, ${formatDateInQuery(['warranty_expiry_date'])}, ${formatDateInQuery(['installation_date'])}
             FROM 
                 purchase_history 
             WHERE 
-                purchase_id = ?`, 
-            [ purchase_id ]
-        ); 
-        const outputPower           = purchaseDetails.output_Power.map(item => item.label);
-        purchaseDetails.outputPower = outputPower.join(", "); 
+                purchase_id = ?`,
+            [purchase_id]
+        );
+        const outputPower = purchaseDetails.output_Power.map(item => item.label);
+        purchaseDetails.outputPower = outputPower.join(", ");
 
-        const typeOfService           = purchaseDetails.type_of_service.map(item => item.label);
-        purchaseDetails.typeOfService = typeOfService.join(", "); 
-        
+        const typeOfService = purchaseDetails.type_of_service.map(item => item.label);
+        purchaseDetails.typeOfService = typeOfService.join(", ");
+
         return resp.json({
-            status    : 1,
-            code      : 200,
-            message   : ["Purchase history Details fetched successfully!"],
-            data      : purchaseDetails,
-            base_url  : `${process.env.DIR_UPLOADS}charger-installation/`
+            status: 1,
+            code: 200,
+            message: ["Purchase history Details fetched successfully!"],
+            data: purchaseDetails,
+            base_url: `${process.env.DIR_UPLOADS}charger-installation/`
         });
     } catch (error) {
         console.error('Error fetching Purchase details:', error);
@@ -1075,63 +1084,63 @@ export const PurchaseHistoryDetails = asyncHandler(async (req, resp) => {
 
 export const PurchaseHistoryEdit = asyncHandler(async (req, resp) => {
     try {
-        const { purchase_id, customer_name, customer_email, customer_mobile, customer_address=null, product_name, output_Power=null, price=0, type_of_service, purchase_date=null, warranty_expiry_date=null, installation_date=null 
+        const { purchase_id, customer_name, customer_email, customer_mobile, customer_address = null, product_name, output_Power = null, price = 0, type_of_service, purchase_date = null, warranty_expiry_date = null, installation_date = null
         } = req.body;
-        
-        const { isValid, errors } = validateFields({ 
+
+        const { isValid, errors } = validateFields({
             purchase_id, customer_name, customer_email, customer_mobile, product_name, type_of_service
         }, {
-            purchase_id      : ["required"],
-            customer_name    : ["required"],
-            customer_email   : ["required"],
-            customer_mobile  : ["required"],
-            product_name     : ["required"],
-            type_of_service  : ["required"],
+            purchase_id: ["required"],
+            customer_name: ["required"],
+            customer_email: ["required"],
+            customer_mobile: ["required"],
+            product_name: ["required"],
+            type_of_service: ["required"],
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
         const purchaseData = await queryDB(`
             SELECT 
                 purchase_invoice_pdf, installation_invoice_pdf, completion_certificate_pdf 
             FROM 
                 purchase_history 
             WHERE 
-                purchase_id = ?`, 
-        [ purchase_id ]);
-        if(!purchaseData) return resp.json({status:0, message: "Purchase Data can not edit, or invalid purchase Id"});
+                purchase_id = ?`,
+            [purchase_id]);
+        if (!purchaseData) return resp.json({ status: 0, message: "Purchase Data can not edit, or invalid purchase Id" });
 
-       const purchase_pdf = req.files['purchase_invoice_pdf'] ? req.files['purchase_invoice_pdf'][0].filename : purchaseData.purchase_invoice_pdf;
+        const purchase_pdf = req.files['purchase_invoice_pdf'] ? req.files['purchase_invoice_pdf'][0].filename : purchaseData.purchase_invoice_pdf;
 
         const installation_pdf = req.files['installation_invoice_pdf'] ? req.files['installation_invoice_pdf'][0].filename : purchaseData.installation_invoice_pdf;
 
         const completion_pdf = req.files['completion_certificate_pdf'] ? req.files['completion_certificate_pdf'][0].filename : purchaseData.completion_certificate_pdf;
 
-        const purchaseDate    = purchase_date ? moment(purchase_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
+        const purchaseDate = purchase_date ? moment(purchase_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
         const warrantyExpDate = warranty_expiry_date ? moment(warranty_expiry_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
- 
-        const installationDate = installation_date ? moment(installation_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null; 
- 
-        const updates = { 
-            customer_name, customer_email, customer_mobile, customer_address, 
-            product_name, output_Power, price, type_of_service, 
-        
-            purchase_date              : purchaseDate,
-            warranty_expiry_date       : warrantyExpDate,
-            installation_date          : installationDate,
-            purchase_invoice_pdf       : purchase_pdf,
-            installation_invoice_pdf   : installation_pdf, 
-            completion_certificate_pdf : completion_pdf,
+
+        const installationDate = installation_date ? moment(installation_date, "DD-MM-YYYY").format("YYYY-MM-DD") : null;
+
+        const updates = {
+            customer_name, customer_email, customer_mobile, customer_address,
+            product_name, output_Power, price, type_of_service,
+
+            purchase_date: purchaseDate,
+            warranty_expiry_date: warrantyExpDate,
+            installation_date: installationDate,
+            purchase_invoice_pdf: purchase_pdf,
+            installation_invoice_pdf: installation_pdf,
+            completion_certificate_pdf: completion_pdf,
         };
         const update = await updateRecord('purchase_history', updates, ['purchase_id'], [purchase_id]);
 
-        if(req.files && req.files['purchase_invoice_pdf']){
+        if (req.files && req.files['purchase_invoice_pdf']) {
             deleteFile('charger-installation', purchaseData.purchase_invoice_pdf);
         }
-        if(req.files && req.files['installation_invoice_pdf']){ 
-            deleteFile('charger-installation', purchaseData.installation_invoice_pdf); 
+        if (req.files && req.files['installation_invoice_pdf']) {
+            deleteFile('charger-installation', purchaseData.installation_invoice_pdf);
         }
-        if(req.files && req.files['completion_certificate_pdf']){ 
-            deleteFile('charger-installation', purchaseData.completion_certificate_pdf); 
+        if (req.files && req.files['completion_certificate_pdf']) {
+            deleteFile('charger-installation', purchaseData.completion_certificate_pdf);
         }
         return resp.json({
             code: 200,

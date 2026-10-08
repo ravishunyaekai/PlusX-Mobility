@@ -6,69 +6,69 @@ import db from '../../../config/indiadb.js';
 
 export const addChargShare = async (req, resp) => {
     try {
-       const  { city,state,rider_name,rider_id,email, mobile, charger_name, description, charger_type, output, connector_type, compatible,address_id ,address, park_no, park_floor, open_days, open_timing,latitude,longitude}=mergeParam(req);
-       
-        const uploadedFiles = req.files;
-        let charger_image      = '';
-       
+        const { city, state, rider_name, rider_id, email, mobile, charger_name, description, charger_type, output, connector_type, compatible, address_id, address, park_no, park_floor, open_days, open_timing, latitude, longitude } = mergeParam(req);
 
-        if(req.files && req.files['charger_image']) { 
+        const uploadedFiles = req.files;
+        let charger_image = '';
+
+
+        if (req.files && req.files['charger_image']) {
             charger_image = uploadedFiles ? uploadedFiles['charger_image'][0].filename : '';
         }
 
-        
-        const { isValid, errors } = validateFields(mergeParam(req), { 
-            rider_id         : ["required"], 
-            mobile           : ["required"], 
-            charger_name     : ["required"], 
-            description      : ["required"], 
-            charger_type     : ["required"], 
-            output           : ["required"], 
-            connector_type   : ["required"], 
+
+        const { isValid, errors } = validateFields(mergeParam(req), {
+            rider_id: ["required"],
+            mobile: ["required"],
+            charger_name: ["required"],
+            description: ["required"],
+            charger_type: ["required"],
+            output: ["required"],
+            connector_type: ["required"],
             // address          : ["required"],
             // park_no          : ["required"], 
             // park_floor       : ["required"], 
-            open_days        : ["required"], //array
-            open_timing      : ["required"], //array
-            compatible       : ["required"],//array
-            latitude         : ["required"],
-            longitude        : ["required"],
-            email            :['required'],
-            rider_name       :['required'],
-            city             :['required'],
-            state            :['required'],
-            address_id       :['required']
-            
+            open_days: ["required"], //array
+            open_timing: ["required"], //array
+            compatible: ["required"],//array
+            latitude: ["required"],
+            longitude: ["required"],
+            email: ['required'],
+            rider_name: ['required'],
+            city: ['required'],
+            state: ['required'],
+            address_id: ['required']
+
 
 
         });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-         if ( open_days.length === 0 || open_timing.length === 0|| compatible.length === 0) {
-      return resp.json({
-    status: 0, 
-    code: 422,
-    message: "open_days ,open_timing, compatible is required and must be a non-empty array"
-    });
-    }
+        if (open_days.length === 0 || open_timing.length === 0 || compatible.length === 0) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: "open_days ,open_timing, compatible is required and must be a non-empty array"
+            });
+        }
 
 
-//         if (!Array.isArray(open_days) || !Array.isArray(open_timing)) {
-//     return resp.json({
-//         status: 0,
-//         code:200,
-//         message: ['open_days and open_timing must be arrays']
-//     });
-// }
+        //         if (!Array.isArray(open_days) || !Array.isArray(open_timing)) {
+        //     return resp.json({
+        //         status: 0,
+        //         code:200,
+        //         message: ['open_days and open_timing must be arrays']
+        //     });
+        // }
 
-    const formattedOpenDays = Array.isArray(open_days)? JSON.stringify(open_days): open_days;
-    const formattedOpenTiming = Array.isArray(open_timing)? JSON.stringify(open_timing): open_timing;
-    const formatted_compatible = Array.isArray(compatible)? JSON.stringify(compatible): compatible;
+        const formattedOpenDays = Array.isArray(open_days) ? JSON.stringify(open_days) : open_days;
+        const formattedOpenTiming = Array.isArray(open_timing) ? JSON.stringify(open_timing) : open_timing;
+        const formatted_compatible = Array.isArray(compatible) ? JSON.stringify(compatible) : compatible;
 
-// const formatted_compatible = normalizeJsonArray(compatible);
-// const formattedOpenDays = normalizeJsonArray(open_days);
-// const formattedOpenTiming = normalizeJsonArray(open_timing);
+        // const formatted_compatible = normalizeJsonArray(compatible);
+        // const formattedOpenDays = normalizeJsonArray(open_days);
+        // const formattedOpenTiming = normalizeJsonArray(open_timing);
 
-       const address_check= await queryDB(`SELECT JSON_OBJECT(
+        const address_check = await queryDB(`SELECT JSON_OBJECT(
 
     'building_name',  COALESCE(building_name, ''),
     'street_name',    COALESCE(street_name, ''),
@@ -76,22 +76,22 @@ export const addChargShare = async (req, resp) => {
     'city',           COALESCE(city, ''),
     'state',          COALESCE(state, ''),
     'pincode',        COALESCE(pincode, '')
-) AS  address_data  FROM rider_address WHERE address_id =  ?`,[address_id]);
-        
+) AS  address_data  FROM rider_address WHERE address_id =  ?`, [address_id]);
 
-    const charger_id = `CS-${generateUniqueId({ length:6 })}`;  
-        console.log(rider_id,rider_name,email,charger_id, mobile, charger_name, description, charger_type, output, connector_type, compatible, address, park_no, park_floor,formattedOpenDays, 
-        formattedOpenTiming, charger_image,latitude,longitude)
-         const insert = await insertRecord('charge_share',
-        ['rider_id','rider_name','email','charger_id', 'mobile', 'charger_name', 'description', 'charger_type', 'output','connector_type', 'compatible', 'park_no', 'park_floor','open_days',
-        'open_timing', 'charger_image','latitude','longitude','city','state','address_data'], 
-             [ rider_id,rider_name,email,charger_id, mobile, charger_name, description, charger_type, output, connector_type, formatted_compatible, park_no, park_floor,formattedOpenDays, 
-        formattedOpenTiming, charger_image,latitude,longitude,city,state,address_check.address_data]);
 
-        if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add Charge share! Please try again after some time."});
+        const charger_id = `CS-${generateUniqueId({ length: 6 })}`;
+        console.log(rider_id, rider_name, email, charger_id, mobile, charger_name, description, charger_type, output, connector_type, compatible, address, park_no, park_floor, formattedOpenDays,
+            formattedOpenTiming, charger_image, latitude, longitude)
+        const insert = await insertRecord('charge_share',
+            ['rider_id', 'rider_name', 'email', 'charger_id', 'mobile', 'charger_name', 'description', 'charger_type', 'output', 'connector_type', 'compatible', 'park_no', 'park_floor', 'open_days',
+                'open_timing', 'charger_image', 'latitude', 'longitude', 'city', 'state', 'address_data'],
+            [rider_id, rider_name, email, charger_id, mobile, charger_name, description, charger_type, output, connector_type, formatted_compatible, park_no, park_floor, formattedOpenDays,
+                formattedOpenTiming, charger_image, latitude, longitude, city, state, address_check.address_data]);
 
-       
-        return resp.json({ status  : 1,code:200, message :[ "Charge share product added successfully."] });
+        if (insert.affectedRows == 0) return resp.json({ status: 0, message: "Failed to add Charge share! Please try again after some time." });
+
+
+        return resp.json({ status: 1, code: 200, message: ["Charge share product added successfully."] });
 
     } catch (error) {
         console.error('Something went wrong in add charge share', error);
@@ -102,25 +102,25 @@ export const addChargShare = async (req, resp) => {
 export const editChargShare = async (req, resp) => {
     try {
 
-        
 
-   const {userId,charger_id,charger_name,latitude,longitude,description,street_number,landmark,city,state,parkingNumber,compatible,Connector,open_days,outputcharger
-    ,open_timing,charger_type,parking_floor, bulding_name
-   }=req.body;
+
+        const { userId, charger_id, charger_name, latitude, longitude, description, street_number, landmark, city, state, parkingNumber, compatible, Connector, open_days, outputcharger
+            , open_timing, charger_type, parking_floor, bulding_name
+        } = req.body;
 
         const uploadedFiles = req.files;
-        let charger_image      = '';
-       
+        let charger_image = '';
 
-        if(req.files && req.files['charger_image']) { 
+
+        if (req.files && req.files['charger_image']) {
             charger_image = uploadedFiles ? uploadedFiles['charger_image'][0].filename : '';
         }
         // console.log("charger_image",charger_image)
-//  return resp.json({status:0, message: "Failed to edit Charge share! Please try again after some time."});
- const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`,  [charger_id]
-);
-     
-        
+        //  return resp.json({status:0, message: "Failed to edit Charge share! Please try again after some time."});
+        const user_details = await queryDB(`SELECT rider_id,fcm_token FROM riders WHERE rider_id = (SELECT rider_id FROM charge_share WHERE charger_id = ? )`, [charger_id]
+        );
+
+
         // const { isValid, errors } = validateFields(mergeParam(req), { 
         //     // rider_id         : ["required"], 
         //     // mobile           : ["required"], 
@@ -145,17 +145,19 @@ export const editChargShare = async (req, resp) => {
 
         // });
         // if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    //      if ( open_days.length === 0 || open_timing.length === 0|| compatible.length === 0) {
-    //   return resp.json({
-    // status: 0, 
-    // code: 422,
-    // message: "open_days ,open_timing, compatible is required and must be a non-empty array"
-    // });
-    // }
+        //      if ( open_days.length === 0 || open_timing.length === 0|| compatible.length === 0) {
+        //   return resp.json({
+        // status: 0, 
+        // code: 422,
+        // message: "open_days ,open_timing, compatible is required and must be a non-empty array"
+        // });
+        // }
 
-    const formattedOpenDays = Array.isArray(open_days)? JSON.stringify(open_days): open_days;
-    const formattedOpenTiming = Array.isArray(open_timing)? JSON.stringify(open_timing): open_timing;
-    const formatted_compatible = Array.isArray(compatible)? JSON.stringify(compatible): compatible;
+        const formattedOpenDays = Array.isArray(open_days) ? JSON.stringify(open_days) : open_days;
+        const formattedOpenTiming = Array.isArray(open_timing) ? JSON.stringify(open_timing) : open_timing;
+        const formatted_compatible = Array.isArray(compatible) ? JSON.stringify(compatible) : compatible;
+
+
 
         const chargeShareCheck = await queryDB(`SELECT id from charge_share where  charger_id=?`, [charger_id]);
         if (!chargeShareCheck) return resp.json({ status: 0, message: "Invailed charger " });

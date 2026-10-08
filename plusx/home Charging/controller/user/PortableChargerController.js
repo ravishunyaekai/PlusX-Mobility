@@ -142,6 +142,37 @@ export const getPcSlotList = asyncHandler(async (req, resp) => {
         booking_price: 1
     });
 });
+export const getPcSlotListOld = asyncHandler(async (req, resp) => {
+    const { slot_date, rider_id } = mergeParam(req);
+    if (!slot_date) return resp.json({ status: 0, code: 422, message: ['slot date is required'] });
+
+    const fSlotDate = moment(slot_date, 'YYYY-MM-DD').format('YYYY-MM-DD');
+
+    let query = `SELECT slot_id, ${formatDateInQuery([('slot_date')])}, start_time, end_time, booking_limit`;
+
+    if (fSlotDate >= moment().format('YYYY-MM-DD')) {
+        query += `, (SELECT COUNT(id) FROM portable_charger_booking AS pod WHERE pod.slot_time = portable_charger_slot.start_time AND pod.slot_date = '${slot_date}' AND status NOT IN ("C")) AS slot_booking_count`;
+    } //"PU", "RO" 
+    query += ` FROM portable_charger_slot WHERE status = ? AND slot_date = ? ORDER BY start_time ASC`;
+    const [slot] = await db.execute(query, [1, fSlotDate]);
+
+    if (moment(fSlotDate).day() === 0 || rider_id == 'ER0654') {
+        slot.forEach((val) => {
+            val.booking_limit = 0;
+            val.slot_booking_count = 0;
+        })
+    }
+    return resp.json({
+        message: "Slot List fetch successfully!",
+        data: slot,
+        is_booking: 0,
+        status: 1,
+        code: 200,
+        alert2: "The slots for the selected date are fully booked. Please select another date to book the POD for your EV.",
+        alert: "",
+        booking_price: 1
+    });
+});
 
 export const chargerBooking = asyncHandler(async (req, resp) => {
 

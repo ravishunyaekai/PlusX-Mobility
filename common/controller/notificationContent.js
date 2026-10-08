@@ -249,6 +249,87 @@ export const NOTIFICATION_CONTENT = {
         `,
   },
 
+  MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL: {
+    subject: () =>
+      `PlusX Mobility Payment Confirmation`,
+
+    content: ({
+      rider_name = "",
+      amount = 0,
+    }) => `
+    <html>
+      <body
+        style="
+          margin: 0;
+          padding: 0;
+          background-color: #f5f7fa;
+          font-family: Arial, Helvetica, sans-serif;
+          color: #333333;
+        "
+      >
+        <div
+          style="
+            max-width: 650px;
+            margin: 30px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-sizing: border-box;
+          "
+        >
+
+          <h2
+            style="
+              color: #1a1a1a;
+              margin-top: 0;
+            "
+          >
+            Payment Confirmation
+          </h2>
+
+          <p>
+            Dear ${rider_name},
+          </p>
+
+          <p>
+            Thank you for your payment.
+          </p>
+
+          <p>
+            We are pleased to confirm that we have successfully received
+            your payment of
+            <strong>
+              INR ${Number(amount || 0).toFixed(2)}
+            </strong>
+            for PlusX Mobility.
+          </p>
+
+          <p>
+            Your payment has been recorded successfully, and you can
+            continue using PlusX Mobility services through the app.
+          </p>
+
+          <p>
+            If you have any questions or require any assistance, please
+            contact our support team.
+          </p>
+
+          <p>
+            Thank you for choosing PlusX Mobility.
+          </p>
+
+          <p>
+            Best regards,<br />
+            Team PlusX Mobility
+          </p>
+
+        </div>
+      </body>
+    </html>
+  `,
+  },
+
+
   SECURITY_DEPOSIT_DEDUCT_EMAIL: {
     subject: ({ booking_id }) =>
       `PlusX Mobility- Ride Payment Deducted from Security Deposit`,

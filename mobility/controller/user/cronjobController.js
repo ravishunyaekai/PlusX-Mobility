@@ -7,49 +7,50 @@ import { verifyPaymentByOrderId } from "../razorpay/razorpay.js";
 import { NOTIFICATION_CONTENT } from "../../../common/controller/notificationContent.js";
 import emailQueue from "../../../emailQueue.js";
 
-export const cronjobAddMoney =async(req,resp)=>{
 
-    try{
-      console.log("cron job money working")
-         const [rows] = await db.execute(`
+export const cronjobAddMoney = async (req, resp) => {
+
+    try {
+        console.log("cron job money working")
+        const [rows] = await db.execute(`
             SELECT 
              order_id, rider_id, amount as paidAmount, status from
               transaction_history 
               WHERE  status = 'PNR' AND created_at >= (NOW() - INTERVAL 15 MINUTE)
         `); // AND rsa.price = "0"
-// const checkOrder = rows[0];
-for (const checkOrder of rows) {
-  console.log("checkOrder",checkOrder)
-     const verify_payment=await verifyPaymentByOrderId(checkOrder.order_id);
-            if(!verify_payment){
-            //  return "payment does not completed"
-              continue;
+        // const checkOrder = rows[0];
+        for (const checkOrder of rows) {
+            console.log("checkOrder", checkOrder)
+            const verify_payment = await verifyPaymentByOrderId(checkOrder.order_id);
+            if (!verify_payment) {
+                //  return "payment does not completed"
+                continue;
             }
-  console.log("verify_payment",verify_payment)
+            console.log("verify_payment", verify_payment)
 
-    const riders = await queryDB("SELECT amount,out_standing_cost FROM riders WHERE rider_id = ?",
-              [checkOrder.rider_id]);
-              console.log("riders",riders,"er.paidAmount",checkOrder.paidAmount)
-    let queryParams=`amount = amount + ? `;
-    let  paidAmount=checkOrder.paidAmount; 
-    if(riders.out_standing_cost>0){
-            paidAmount=checkOrder.paidAmount-riders.out_standing_cost
-          queryParams +=` , out_standing_cost=0 `;
-         } 
-         let query=`UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;
-        
-         console.log("query",query,"paidAmount, checkOrder.rider_id",paidAmount, checkOrder.rider_id)
+            const riders = await queryDB("SELECT amount,out_standing_cost FROM riders WHERE rider_id = ?",
+                [checkOrder.rider_id]);
+            console.log("riders", riders, "er.paidAmount", checkOrder.paidAmount)
+            let queryParams = `amount = amount + ? `;
+            let paidAmount = checkOrder.paidAmount;
+            if (riders.out_standing_cost > 0) {
+                paidAmount = checkOrder.paidAmount - riders.out_standing_cost
+                queryParams += ` , out_standing_cost=0 `;
+            }
+            let query = `UPDATE riders SET  ${queryParams}  WHERE rider_id = ?`;
 
-    await db.execute( query, [paidAmount, checkOrder.rider_id]);
-    await updateRecord('transaction_history', { status : 'CNF', payment_id : verify_payment.payment_id}, ['order_id', 'rider_id'],[checkOrder.order_id, checkOrder.rider_id] );
-              console.log(` payment for  ${checkOrder.rider_id}  is confirmed.`);
+            console.log("query", query, "paidAmount, checkOrder.rider_id", paidAmount, checkOrder.rider_id)
 
-}
-console.log(" All pending money  processed successfully.");
+            await db.execute(query, [paidAmount, checkOrder.rider_id]);
+            await updateRecord('transaction_history', { status: 'CNF', payment_id: verify_payment.payment_id }, ['order_id', 'rider_id'], [checkOrder.order_id, checkOrder.rider_id]);
+            console.log(` payment for  ${checkOrder.rider_id}  is confirmed.`);
 
-    }catch(error){
+        }
+        console.log(" All pending money  processed successfully.");
+
+    } catch (error) {
         console.error("Transaction failed:", err);
-               tryCatchErrorHandler(err, resp);
+        tryCatchErrorHandler(err, resp);
     }
 }
 
@@ -59,7 +60,7 @@ export const failedCycleBooking = async () => {
     try {
         // await conn.beginTransaction();
         // 1. Insert into destination table
-        
+
         await db.query(`
             INSERT INTO failed_cycle_booking (booking_id, rider_id, status, country, country_code, city, cycle_id,
   cycle_type, time_taken, price, per_min_cost, base_duration, post_price,
@@ -75,16 +76,16 @@ export const failedCycleBooking = async () => {
             FROM 
                 cycle_booking
             WHERE 
-                status = ? AND created_at < NOW() - INTERVAL 5 MINUTE`, 
-        ['PNR']);
-    
+                status = ? AND created_at < NOW() - INTERVAL 5 MINUTE`,
+            ['PNR']);
+
         // 2. Delete from source table 
-        await db.query( `DELETE FROM road_assistance WHERE order_status = ? AND created_at < NOW() - INTERVAL 5 MINUTE`, ['PNR'] );
-    
+        await db.query(`DELETE FROM road_assistance WHERE order_status = ? AND created_at < NOW() - INTERVAL 5 MINUTE`, ['PNR']);
+
         // await conn.commit();
         // console.log("RSA Data moved successfully!");
         return "RSA Data moved successfully!";
-    
+
     } catch (err) {
         // await conn.rollback();
         console.error("Transaction failed:", err);
@@ -110,7 +111,7 @@ export const mobilitynotificationOld = async () => {
         `);
 
         if (!booking_data.length) {
-       
+
             // return resp.json({ message: "No active bookings found" });
         }
 
@@ -131,11 +132,11 @@ export const mobilitynotificationOld = async () => {
                 'RDRFCM',
                 href
             );
-        createNotification(heading, desc, 'mobility_ongoing', 'Rider', 'Admin','',rider_id, href);
+            createNotification(heading, desc, 'mobility_ongoing', 'Rider', 'Admin', '', rider_id, href);
         }
-         
 
-       console.log("sent notifuication to booking")
+
+        console.log("sent notifuication to booking")
         //return resp.json({ message: "Notifications sent successfully" });
 
     } catch (err) {
@@ -146,7 +147,7 @@ export const mobilitynotificationOld = async () => {
 
 export const mobilitynotification = async () => {
     try {
- 
+
         const [booking_data] = await db.execute(`
             SELECT 
                 cb.rider_id,  r.fcm_token,
@@ -156,19 +157,19 @@ export const mobilitynotification = async () => {
             WHERE cb.status = 'ON'
               AND cb.updated_at <= (NOW() - INTERVAL 20 MINUTE)
         `);
- 
+
         if (!booking_data.length) return;
- 
+
         for (const booking of booking_data) {
- 
+
             const { booking_id, fcm_token, rider_id } = booking;
- 
+
             if (!fcm_token) continue;
- 
+
             const href = `mobility_ongoing/${booking_id}`;
             const heading = `Ongoing Ride Alert`;
             const desc = 'The ride is ongoing. Are you still on this ride?';
-            
+
             const [result] = await db.execute(
                 `UPDATE cycle_booking 
                  SET updated_at = NOW()
@@ -176,8 +177,8 @@ export const mobilitynotification = async () => {
                  AND updated_at <= (NOW() - INTERVAL 20 MINUTE)`,
                 [booking_id]
             );
-              if (result.affectedRows === 0) continue;
- 
+            if (result.affectedRows === 0) continue;
+
             await pushNotification(
                 fcm_token,
                 heading,
@@ -185,91 +186,112 @@ export const mobilitynotification = async () => {
                 'RDRFCM',
                 href
             );
-        createNotification(heading, desc, 'mobility_ongoing', 'Rider', 'Admin','',rider_id, href);
+            createNotification(heading, desc, 'mobility_ongoing', 'Rider', 'Admin', '', rider_id, href);
             console.log(
-          `${booking_id} sent notification at ${new Date().toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-            hour12: true
-          })}`
-        );
-     
- 
+                `${booking_id} sent notification at ${new Date().toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    hour12: true
+                })}`
+            );
+
+
         }      //return resp.json({ message: "Notifications sent successfully" });
- 
+
     } catch (err) {
         console.error("Notification failed:", err);
-        
+
     }
 };
 
 
+// deductOutstandingAmount
+
 export const deductOutstandingAmount = async () => {
- 
+
     try {
- 
+
         const [riders] = await db.execute(`
-             SELECT 
-                r.rider_id, r.rider_email, r.rider_name, r.amount, r.out_standing_cost, cb.created_at, cb.booking_id, cb.cycle_id,
+            SELECT 
+                r.rider_id, 
+                r.rider_email, 
+                r.rider_name, 
+                r.amount, 
+                r.out_standing_cost, 
+                cb.created_at, 
+                cb.booking_id, 
+                cb.cycle_id,
                 cb.time_taken
             FROM riders r
             INNER JOIN (
-                SELECT rider_id, MAX(created_at) AS latest_booking
+                SELECT 
+                    rider_id, 
+                    MAX(created_at) AS latest_booking
                 FROM cycle_booking
                 WHERE status = 'CMP'
                 GROUP BY rider_id
             ) latest
-                ON latest.rider_id = r.rider_id
-            LEFT JOIN country c ON c.country_id = r.country_id
+            ON latest.rider_id = r.rider_id
+            LEFT JOIN country c 
+            ON c.country_id = r.country_id
             INNER JOIN cycle_booking cb
-                ON cb.rider_id = latest.rider_id AND cb.created_at = latest.latest_booking
- 
-            WHERE r.out_standing_cost > 0 AND cb.created_at <= NOW() - INTERVAL 24 HOUR
+            ON cb.rider_id = latest.rider_id 
+            AND cb.created_at = latest.latest_booking 
+            WHERE r.out_standing_cost > 0 
+            AND cb.created_at <= NOW() - INTERVAL 2 MINUTE            
             ORDER BY cb.created_at DESC
-        `);
-        
-        if (riders.length == 0)  return false; 
- 
+        `);  // AND r.amount >= r.out_standing_cost
+        console.log("----------------", riders.length == 0)
+        if (riders.length == 0) return false;
+
         for (const rider of riders) {
- 
+
             const outstanding = parseFloat(rider.out_standing_cost || 0);
-            const wallet      = parseFloat(rider.amount || 0);
- 
+            const wallet = parseFloat(rider.amount || 0);
+
+            // let remainingAmount      = (outstanding > wallet) ? wallet - outstanding : 0;
+            // let remainingOutstanding = (outstanding > wallet) ? 0 : outstanding - wallet;
             const remainingAmount = wallet - outstanding;
- 
+
             const updatesFields = {
-                amount            : remainingAmount,
-                out_standing_cost : 0
+                amount: remainingAmount,
+                out_standing_cost: 0
             }
+
+            // const updatesFields = {
+            //     amount            : remainingAmount,
+            //     out_standing_cost : remainingOutstanding
+            // }
             const update = await updateRecord('riders', updatesFields, ['rider_id'], [rider.rider_id]);
-            await insertRecord('transaction_history', 
+            await insertRecord('transaction_history',
                 [
                     'rider_id', 'amount', 'payment_type', 'order_id', "outstanding", "current_balance",
                     "prev_balance", "status"
                 ], [
-                    rider.rider_id, outstanding, 'debt',  rider.booking_id, 0, remainingAmount, 
-                    wallet, "CNF" 
-                ]
-            ); 
-            const mail_template =NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
-             emailQueue.addEmail(
+                rider.rider_id, outstanding, 'debt', rider.booking_id, 0, remainingAmount, wallet, "CNF"
+            ]
+            );
+
+            const mail_template = NOTIFICATION_CONTENT["SECURITY_DEPOSIT_DEDUCT_EMAIL"];
+            emailQueue.addEmail(
                 rider.rider_email,
                 mail_template.subject({
                     booking_id: rider.booking_id
                 }),
                 mail_template.content({
-                    rider_name : rider.rider_name,
-                    amount     : outstanding,
-                    booking_id : rider.booking_id,
-                    cycle_id   : rider.cycle_id,
-                    time_taken : rider.time_taken
+                    rider_name: rider.rider_name,
+                    amount: outstanding,
+                    booking_id: rider.booking_id,
+                    cycle_id: rider.cycle_id,
+                    time_taken: rider.time_taken
                 })
             );
         }
-        
+
+
     } catch (error) {
- 
+
         console.log('deductOutstandingAmount Error:', error);
- 
+
     }
- 
+
 };

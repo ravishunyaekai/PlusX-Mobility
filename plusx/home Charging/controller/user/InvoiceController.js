@@ -16,20 +16,20 @@ import { io } from '../../../../server.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+const __dirname = path.dirname(__filename);
 
 export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
-    
-    const {rider_id, request_id, payment_intent_id ='', coupon_code ='', session_id='' } = mergeParam(req);
- 
+
+    const { rider_id, request_id, payment_intent_id = '', coupon_code = '', session_id = '' } = mergeParam(req);
+
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id   : ["required"], 
-        request_id : ["required"], 
+        rider_id: ["required"],
+        request_id: ["required"],
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     // const conn = await startTransaction();
     console.log('Invoice Valet');
-    try { 
+    try {
         const checkOrder = await queryDB(`
             SELECT 
                 cs.name, cs.country_code, cs.contact_no, rd.rider_email, rd.fcm_token, cs.slot_date_time, cs.pickup_address, cs.pickup_latitude, cs.pickup_longitude, cs.vehicle_data, cs.price 
@@ -40,44 +40,44 @@ export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
             WHERE 
                 cs.request_id = ? AND cs.rider_id = ? AND cs.order_status = 'PNR'
             LIMIT 1
-        `,[request_id, rider_id]);  //AND cs.price = "0"
- 
-        if (!checkOrder || parseFloat( checkOrder.price) > 0 ) {
-            return resp.json({ 
-                message : [`We have received your booking. Our team will get in touch with you soon!`], 
-                status  : 1, 
-                code    : 200 
+        `, [request_id, rider_id]);  //AND cs.price = "0"
+
+        if (!checkOrder || parseFloat(checkOrder.price) > 0) {
+            return resp.json({
+                message: [`We have received your booking. Our team will get in touch with you soon!`],
+                status: 1,
+                code: 200
             });
         }
         const ordHistoryCount = await queryDB(
-            'SELECT COUNT(*) as count FROM charging_service_history WHERE service_id = ? AND order_status = "CNF"',[request_id]
+            'SELECT COUNT(*) as count FROM charging_service_history WHERE service_id = ? AND order_status = "CNF"', [request_id]
         );
-        if (ordHistoryCount.count === 0) { 
-            
+        if (ordHistoryCount.count === 0) {
+
             const insert = await insertRecord('charging_service_history', ['service_id', 'rider_id', 'order_status'], [request_id, rider_id, 'CNF']);
-            
-            if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
- 
-            if(coupon_code){
-                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [ coupon_code ]); 
-        
-                let coupan_percentage = coupon.coupan_percentage ;
+
+            if (insert.affectedRows == 0) return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
+
+            if (coupon_code) {
+                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [coupon_code]);
+
+                let coupan_percentage = coupon.coupan_percentage;
                 await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [coupon_code, rider_id, request_id, coupan_percentage]);
             }
             let paymentIntentId = payment_intent_id;
-            if(session_id){
-                const session   = await stripe.checkout.sessions.retrieve(session_id);
-                paymentIntentId = session.payment_intent ;
+            if (session_id) {
+                const session = await stripe.checkout.sessions.retrieve(session_id);
+                paymentIntentId = session.payment_intent;
             }
-            const updt = await updateRecord('charging_service', { order_status : 'CNF', payment_intent_id : paymentIntentId }, ['request_id', 'rider_id'], [request_id, rider_id] );
- 
-            const href    = 'charging_service/' + request_id;
+            const updt = await updateRecord('charging_service', { order_status: 'CNF', payment_intent_id: paymentIntentId }, ['request_id', 'rider_id'], [request_id, rider_id]);
+
+            const href = 'charging_service/' + request_id;
             const heading = 'EV Pick Up & Drop Off Booking!';
-            const desc    = `Booking Confirmed! ${request_id}`;
-            createNotification(heading, desc, 'Charging Service', 'Rider', 'Admin','', rider_id, href);
+            const desc = `Booking Confirmed! ${request_id}`;
+            createNotification(heading, desc, 'Charging Service', 'Rider', 'Admin', '', rider_id, href);
             createNotification(heading, desc, 'Charging Service', 'Admin', 'Rider', rider_id, '', href);
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
-        
+
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.name},</h4>
@@ -93,7 +93,7 @@ export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
                 </body>
             </html>`;
             emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your EV Pickup and Drop Off Service', htmlUser);
- 
+
             const htmlAdmin = `<html>
                 <body>
                     <h4>Dear Admin,</h4>
@@ -109,38 +109,38 @@ export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
                 </body>
             </html>`;
             emailQueue.addEmail(process.env.MAIL_CS_ADMIN, `EV Pickup and Drop-Off - ${request_id}`, htmlAdmin);
- 
+
             // await commitTransaction(conn);
-            io.emit('notification-list', {msCount : 1});
+            io.emit('notification-list', { msCount: 1 });
             let responseMsg = 'We have received your booking. Our team will get in touch with you soon!';
             return resp.json({ message: [responseMsg], status: 1, code: 200 });
         } else {
             return resp.json({ message: ['Your booking has been already confirmed!'], status: 0, code: 200 });
         }
-    } catch(err) {
+    } catch (err) {
         // await rollbackTransaction(conn);
         console.error("Transaction failed:", err);
         tryCatchErrorHandler(err, resp);
-        
+
     } finally {
         // if (conn) conn.release();
     }
 });
 
 export const oldportableChargerInvoice = asyncHandler(async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id='', coupon_code='', session_id='',razorpay_signature,razorpay_order_id=''
- } = mergeParam(req);
+    const { rider_id, request_id, payment_intent_id = '', coupon_code = '', session_id = '', razorpay_signature, razorpay_order_id = ''
+    } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id   : ["required"], 
-        request_id : ["required"],
+        rider_id: ["required"],
+        request_id: ["required"],
         // razorpay_signature:["required"],
         // razorpay_order_id: ["required"]
     });
     // console.log("mergeParam",mergeParam(req))
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
     // const conn = await startTransaction();
-    try { 
+    try {
         const checkOrder = await queryDB(`
             SELECT 
                 pcb.user_name, pcb.country_code, pcb.contact_no, pcb.slot_date, pcb.slot_time, pcb.address, pcb.latitude, pcb.longitude, pcb.service_type, rd.fcm_token, rd.rider_email, pcb.vehicle_data, pcb.service_price  
@@ -151,45 +151,45 @@ export const oldportableChargerInvoice = asyncHandler(async (req, resp) => {
             WHERE 
                 pcb.booking_id = ? AND pcb.rider_id = ? AND pcb.status = 'PNR' 
             LIMIT 1
-        `,[request_id, rider_id]);  //AND pcb.service_price = "0"
+        `, [request_id, rider_id]);  //AND pcb.service_price = "0"
 
-        if (!checkOrder || parseFloat( checkOrder.service_price) > 0 ) {
-            
-            let respMsg = "Thank you for booking our Mobile EV Charging service for your EV. Our team will arrive at the scheduled time."; 
-            return resp.json({ message : [respMsg], status: 1, code : 200 });
+        if (!checkOrder || parseFloat(checkOrder.service_price) > 0) {
+
+            let respMsg = "Thank you for booking our Mobile EV Charging service for your EV. Our team will arrive at the scheduled time.";
+            return resp.json({ message: [respMsg], status: 1, code: 200 });
         }
         const ordHistoryCount = await queryDB(
-            'SELECT COUNT(*) as count FROM portable_charger_history WHERE booking_id = ? AND order_status = "CNF"',[request_id]
+            'SELECT COUNT(*) as count FROM portable_charger_history WHERE booking_id = ? AND order_status = "CNF"', [request_id]
         );
-        if (ordHistoryCount.count === 0) { 
+        if (ordHistoryCount.count === 0) {
 
             const insert = await insertRecord('portable_charger_history', ['booking_id', 'rider_id', 'order_status'], [request_id, rider_id, 'CNF']); //, conn
 
-            if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
+            if (insert.affectedRows == 0) return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
 
-            if(coupon_code){
-                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [ coupon_code ]); 
-        
-                let coupan_percentage = coupon.coupan_percentage ;
+            if (coupon_code) {
+                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [coupon_code]);
+
+                let coupan_percentage = coupon.coupan_percentage;
                 await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [coupon_code, rider_id, request_id, coupan_percentage]);  //, conn
             }
             // if (checkOrder.service_type.toLowerCase() === "get monthly subscription") {
             //     await db.execute('UPDATE portable_charger_subscriptions SET total_booking = total_booking + 1 WHERE rider_id = ?', [rider_id]);
             // }
-           
-             
-              let payment_id= payment_intent_id?payment_intent_id:null;
-             
-            await updateRecord('portable_charger_booking', { status : 'CNF',payment_intent_id:payment_id}, ['booking_id', 'rider_id'], [request_id, rider_id] );  //, conn
 
-            const href    = 'portable_charger_booking/' + request_id;
+
+            let payment_id = payment_intent_id ? payment_intent_id : null;
+
+            await updateRecord('portable_charger_booking', { status: 'CNF', payment_intent_id: payment_id }, ['booking_id', 'rider_id'], [request_id, rider_id]);  //, conn
+
+            const href = 'portable_charger_booking/' + request_id;
             const heading = 'Mobile EV Charging Booking!';
-            const desc    = `Booking Confirmed! ${request_id}`;
-            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin','', rider_id, href);
-            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
-           
+            const desc = `Booking Confirmed! ${request_id}`;
+            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', rider_id, href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
-        
+
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
@@ -217,16 +217,16 @@ export const oldportableChargerInvoice = asyncHandler(async (req, resp) => {
                 </body>
             </html>`;
             emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking - ${request_id}`, htmlAdmin);
-            
-            io.emit('plusx-notification-list', {msCount : 1});
+
+            io.emit('plusx-notification-list', { msCount: 1 });
             // await commitTransaction(conn);
-            let respMsg = "Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
+            let respMsg = "Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time.";
             return resp.json({ message: [respMsg], status: 1, code: 200 });
         } else {
             return resp.json({ message: ['Your booking has been already confirmed!'], status: 0, code: 200 });
         }
 
-    } catch(err) {
+    } catch (err) {
         // await rollbackTransaction(conn);
         console.error("Transaction failed:", err);
         tryCatchErrorHandler(err, resp);
@@ -235,19 +235,19 @@ export const oldportableChargerInvoice = asyncHandler(async (req, resp) => {
     }
 });
 export const portableChargerInvoice = asyncHandler(async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id='', coupon_code='', session_id='',razorpay_signature,razorpay_order_id=''
- } = mergeParam(req);
+    const { rider_id, request_id, payment_intent_id = '', coupon_code = '', session_id = '', razorpay_signature, razorpay_order_id = ''
+    } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id   : ["required"], 
-        request_id : ["required"],
+        rider_id: ["required"],
+        request_id: ["required"],
         // razorpay_signature:["required"],
         // razorpay_order_id: ["required"]
     });
     console.log("working")
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    
+
     // const conn = await startTransaction();
-    try { 
+    try {
         const checkOrder = await queryDB(`
             SELECT 
                 pcb.user_name, pcb.country_code, pcb.contact_no, pcb.slot_date, pcb.slot_time, pcb.address, pcb.latitude, pcb.longitude, pcb.service_type, rd.fcm_token, rd.rider_email, pcb.vehicle_data, pcb.service_price  
@@ -258,47 +258,47 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
             WHERE 
                 pcb.booking_id = ? AND pcb.rider_id = ? AND pcb.status = 'PNR' 
             LIMIT 1
-        `,[request_id, rider_id]);  //AND pcb.service_price = "0"
+        `, [request_id, rider_id]);  //AND pcb.service_price = "0"
 
-        if (!checkOrder || parseFloat( checkOrder.service_price) > 0 ) {
+        if (!checkOrder || parseFloat(checkOrder.service_price) > 0) {
             console.log("step 2 inside if price is >0")
-            
-            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
-            return resp.json({ message : [respMsg], status: 1, code : 200 });
+
+            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time.";
+            return resp.json({ message: [respMsg], status: 1, code: 200 });
         }
 
         const ordHistoryCount = await queryDB(
-            'SELECT COUNT(*) as count FROM portable_charger_history WHERE booking_id = ? AND order_status = "CNF"',[request_id]
+            'SELECT COUNT(*) as count FROM portable_charger_history WHERE booking_id = ? AND order_status = "CNF"', [request_id]
         );
-        if (ordHistoryCount.count === 0) { 
+        if (ordHistoryCount.count === 0) {
 
             const insert = await insertRecord('portable_charger_history', ['booking_id', 'rider_id', 'order_status'], [request_id, rider_id, 'CNF']); //, conn
 
-            if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
+            if (insert.affectedRows == 0) return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
 
-            if(coupon_code){
-                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [ coupon_code ]); 
-        
-                let coupan_percentage = coupon.coupan_percentage ;
+            if (coupon_code) {
+                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [coupon_code]);
+
+                let coupan_percentage = coupon.coupan_percentage;
                 await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [coupon_code, rider_id, request_id, coupan_percentage]);  //, conn
             }
             // if (checkOrder.service_type.toLowerCase() === "get monthly subscription") {
             //     await db.execute('UPDATE portable_charger_subscriptions SET total_booking = total_booking + 1 WHERE rider_id = ?', [rider_id]);
             // }
-           
-             
-              let payment_id= payment_intent_id?payment_intent_id:null;
-             
-            await updateRecord('portable_charger_booking', { status : 'CNF',payment_intent_id:payment_id}, ['booking_id', 'rider_id'], [request_id, rider_id] );  //, conn
 
-            const href    = 'portable_charger_booking/' + request_id;
+
+            let payment_id = payment_intent_id ? payment_intent_id : null;
+
+            await updateRecord('portable_charger_booking', { status: 'CNF', payment_intent_id: payment_id }, ['booking_id', 'rider_id'], [request_id, rider_id]);  //, conn
+
+            const href = 'portable_charger_booking/' + request_id;
             const heading = 'Mobile EV Charging Booking!';
-            const desc    = `Booking Confirmed! ${request_id}`;
-            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin','', rider_id, href);
-            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider',  rider_id, '', href);
-           
+            const desc = `Booking Confirmed! ${request_id}`;
+            createNotification(heading, desc, 'Portable Charging Booking', 'Rider', 'Admin', '', rider_id, href);
+            createNotification(heading, desc, 'Portable Charging Booking', 'Admin', 'Rider', rider_id, '', href);
+
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
-        
+
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.user_name},</h4>
@@ -326,18 +326,18 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
                 </body>
             </html>`;
             emailQueue.addEmail(process.env.MAIL_POD_ADMIN, `Mobile EV Charging  Booking - ${request_id}`, htmlAdmin);
-            
-            io.emit('plusx-notification-list', {msCount : 1});
+
+            io.emit('plusx-notification-list', { msCount: 1 });
             // await commitTransaction(conn);
             // console.log("step 2 inside if price is >0")
 
-            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time."; 
+            let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time.";
             return resp.json({ message: [respMsg], status: 1, code: 200 });
         } else {
             return resp.json({ message: ['Your booking has been already confirmed!'], status: 0, code: 200 });
         }
 
-    } catch(err) {
+    } catch (err) {
         // await rollbackTransaction(conn);
         console.error("Transaction failed:", err);
         tryCatchErrorHandler(err, resp);
@@ -346,16 +346,69 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
     }
 });
 
-export const rsaInvoice = asyncHandler(async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id='', coupon_code='', session_id='' } = mergeParam(req);
+export const scanChargerInvoiceNew = asyncHandler(async (req, resp) => {
+    const { rider_id, invoice_id, session_id } = mergeParam(req);
+
     const { isValid, errors } = validateFields(mergeParam(req), {
-        rider_id   : ["required"], 
-        request_id : ["required"]
+        rider_id: ["required"],
+        invoice_id: ["required"],
+        // session_id: ["required"]
+    });
+
+    if (!isValid) {
+        return resp.json({
+            status: 0,
+            code: 422,
+            message: errors
+        });
+    }
+
+    try {
+        const invoiceData = await queryDB(`
+            SELECT invoice_id, invoice_status, community_name, area_name
+            FROM scan_charger_invoice
+            WHERE invoice_id = ?
+              AND rider_id = ?
+              AND invoice_status = 1
+            LIMIT 1
+        `, [invoice_id, rider_id]);
+
+        if (invoiceData && invoiceData.length > 0) {
+            return resp.json({
+                message: ["Your invoice has been paid successfully. Thank you for your payment."],
+                status: 1,
+                code: 200,
+                data: {
+                    invoice_id
+                }
+            });
+        }
+
+        return resp.json({
+            message: ["Payment failed. The invoice has not been paid."],
+            status: 0,
+            code: 422,
+            data: {
+                invoice_id
+            }
+        });
+
+    } catch (err) {
+        console.error("Transaction failed:", err);
+        tryCatchErrorHandler(req.originalUrl, err, resp);
+    }
+});
+
+export const rsaInvoice = asyncHandler(async (req, resp) => {
+    const { rider_id, request_id, payment_intent_id = '', coupon_code = '', session_id = '' } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id: ["required"],
+        request_id: ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     console.log('Invoice RSA');
     // const conn = await startTransaction();
-    try { 
+    try {
         const checkOrder = await queryDB(`
             SELECT 
                 rsa.name, rsa.country_code, rsa.contact_no, rsa.pickup_address, rsa.pickup_latitude, 
@@ -367,45 +420,45 @@ export const rsaInvoice = asyncHandler(async (req, resp) => {
             WHERE 
                 rsa.request_id = ? AND rsa.rider_id = ? AND rsa.order_status = 'PNR'
             LIMIT 1
-        `,[request_id, rider_id]); // AND rsa.price = "0"
+        `, [request_id, rider_id]); // AND rsa.price = "0"
 
-        if (!checkOrder || parseFloat( checkOrder.price) > 0 ) {
-            let respMsg = 'We have received your booking and our team will reach out to you soon.'; 
-            return resp.json({ message : [respMsg], status: 1, code : 200 });
+        if (!checkOrder || parseFloat(checkOrder.price) > 0) {
+            let respMsg = 'We have received your booking and our team will reach out to you soon.';
+            return resp.json({ message: [respMsg], status: 1, code: 200 });
         }
         const ordHistoryCount = await queryDB(
-            'SELECT COUNT(*) as count FROM order_history WHERE order_id = ? AND order_status = "CNF"',[request_id]
+            'SELECT COUNT(*) as count FROM order_history WHERE order_id = ? AND order_status = "CNF"', [request_id]
         );
-        if (ordHistoryCount.count === 0) { 
+        if (ordHistoryCount.count === 0) {
 
             const insert = await insertRecord('order_history', ['order_id', 'order_status', 'rider_id'], [request_id, 'CNF', rider_id]); //, conn
 
-            if(insert.affectedRows == 0) return resp.json({status:0, code:200, message: ["Oops! Something went wrong. Please try again."]});
+            if (insert.affectedRows == 0) return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
 
-            if(coupon_code){
-                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [ coupon_code ]); 
+            if (coupon_code) {
+                const coupon = await queryDB(`SELECT coupan_percentage FROM coupon WHERE coupan_code = ? LIMIT 1 `, [coupon_code]);
                 // (SELECT count(id) FROM coupon_usage AS cu WHERE cu.coupan_code = coupon.coupan_code AND user_id = ?) as use_count
                 // if(coupon.use_count >= coupon.user_per_user){
                 //     return resp.json({ errors: {coupon_code: ["Coupon per user limit exceeded."]} });
                 // }
-        
-                let coupan_percentage = coupon.coupan_percentage ;
+
+                let coupan_percentage = coupon.coupan_percentage;
                 await insertRecord('coupon_usage', ['coupan_code', 'user_id', 'booking_id', 'coupan_percentage'], [coupon_code, rider_id, request_id, coupan_percentage]); //, conn
             }
             let paymentIntentId = payment_intent_id;
-            if(session_id){
+            if (session_id) {
                 const session = await stripe.checkout.sessions.retrieve(session_id);
-                paymentIntentId = session.payment_intent ;
+                paymentIntentId = session.payment_intent;
             }
-            await updateRecord('road_assistance', { order_status : 'CNF', payment_intent_id : paymentIntentId}, ['request_id', 'rider_id'], [request_id, rider_id] ); //, conn
+            await updateRecord('road_assistance', { order_status: 'CNF', payment_intent_id: paymentIntentId }, ['request_id', 'rider_id'], [request_id, rider_id]); //, conn
 
-            const href    = 'road_assistance/' + request_id;
+            const href = 'road_assistance/' + request_id;
             const heading = 'EV Roadside Assistance';
-            const desc    = `Booking Confirmed! ID : ${request_id}`;
-            createNotification(heading, desc, 'Roadside Assistance', 'Rider', 'Admin','', rider_id, href);
+            const desc = `Booking Confirmed! ID : ${request_id}`;
+            createNotification(heading, desc, 'Roadside Assistance', 'Rider', 'Admin', '', rider_id, href);
             createNotification(heading, desc, 'Roadside Assistance', 'Admin', 'Rider', rider_id, '', href);
             pushNotification(checkOrder.fcm_token, heading, desc, 'RDRFCM', href);
-        
+
             const htmlUser = `<html>
                 <body>
                     <h4>Dear ${checkOrder.name},</h4>
@@ -433,15 +486,15 @@ export const rsaInvoice = asyncHandler(async (req, resp) => {
             const adminEmails = [process.env.MAIL_POD_ADMIN, process.env.MAIL_CHINTAN, process.env.MAIL_NADIA];
             // const adminEmails = [ process.env.MAIL_POD_ADMIN, process.env.MAIL_CHINTAN, process.env.MAIL_NADIA, process.env.MAIL_JAHID, process.env.MAIL_JALAL, process.env.MAIL_ABDUR, process.env.MAIL_ZAKIR, process.env.MAIL_JAVED ];
             emailQueue.addEmail(adminEmails, `EV Roadside Assistance Booking - ${request_id}`, htmlAdmin);
-            
-            io.emit('notification-list', {msCount : 1});
+
+            io.emit('notification-list', { msCount: 1 });
             // await commitTransaction(conn);
-            let respMsg = 'We have received your booking and our team will reach out to you soon.'; 
+            let respMsg = 'We have received your booking and our team will reach out to you soon.';
             return resp.json({ message: [respMsg], status: 1, code: 200 });
         } else {
             return resp.json({ message: ['Your booking has been already confirmed!'], status: 0, code: 200 });
         }
-    } catch(err) {
+    } catch (err) {
         // await rollbackTransaction(conn);
         console.error("Transaction failed:", err);
         tryCatchErrorHandler(err, resp);
@@ -451,8 +504,8 @@ export const rsaInvoice = asyncHandler(async (req, resp) => {
 });
 
 export const preSaleTestingInvoice = asyncHandler(async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id = '' } = mergeParam(req);
-    const { isValid, errors } = validateFields(mergeParam(req), {rider_id: ["required"], request_id: ["required"], /* payment_intent_id: ["required"] */ });
+    const { rider_id, request_id, payment_intent_id = '' } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), { rider_id: ["required"], request_id: ["required"], /* payment_intent_id: ["required"] */ });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const invoiceId = request_id.replace('PCB', 'INVPC');
@@ -464,26 +517,26 @@ export const preSaleTestingInvoice = asyncHandler(async (req, resp) => {
         invoice_date: moment().format('YYYY-MM-DD HH:mm:ss'),
     }
 
-    if(payment_intent_id && payment_intent_id.trim() != '' ){
+    if (payment_intent_id && payment_intent_id.trim() != '') {
         const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
         const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
         const cardData = {
-            brand:     charge.payment_method_details.card.brand,
-            country:   charge.payment_method_details.card.country,
+            brand: charge.payment_method_details.card.brand,
+            country: charge.payment_method_details.card.country,
             exp_month: charge.payment_method_details.card.exp_month,
-            exp_year:  charge.payment_method_details.card.exp_year,
+            exp_year: charge.payment_method_details.card.exp_year,
             last_four: charge.payment_method_details.card.last4,
         };
 
-        createObj.amount = charge.amount;  
-        createObj.payment_intent_id = charge.payment_intent;  
-        createObj.payment_method_id = charge.payment_method;  
-        createObj.payment_cust_id = charge.customer;  
-        createObj.charge_id = charge.id;  
-        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;  
-        createObj.payment_type = charge.payment_method_details.type;  
-        createObj.payment_status = charge.status;  
-        createObj.currency = charge.currency;  
+        createObj.amount = charge.amount;
+        createObj.payment_intent_id = charge.payment_intent;
+        createObj.payment_method_id = charge.payment_method;
+        createObj.payment_cust_id = charge.customer;
+        createObj.charge_id = charge.id;
+        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;
+        createObj.payment_type = charge.payment_method_details.type;
+        createObj.payment_status = charge.status;
+        createObj.currency = charge.currency;
         createObj.invoice_date = moment(charge.created).format('YYYY-MM-DD HH:mm:ss');
         createObj.receipt_url = charge.receipt_url;
         createObj.card_data = cardData;
@@ -507,14 +560,14 @@ export const preSaleTestingInvoice = asyncHandler(async (req, resp) => {
         LIMIT 1
     `, [invoiceId]);
 
-    const invoiceData = { data, numberToWords, formatNumber  };
-    const templatePath = path.join(__dirname, '../views/mail/ev-pre-sale-invoice.ejs'); 
+    const invoiceData = { data, numberToWords, formatNumber };
+    const templatePath = path.join(__dirname, '../views/mail/ev-pre-sale-invoice.ejs');
     const pdfSavePath = path.join(__dirname, '../public', 'ev-pre-sale-invoice');
     const filename = `${invoiceId}-invoice.pdf`;
 
     const pdf = await generatePdf(templatePath, invoiceData, filename, pdfSavePath);
 
-    if(pdf.success){
+    if (pdf.success) {
         const html = `<html>
             <body>
                 <h4>Dear ${data.owner_name}</h4>
@@ -525,50 +578,50 @@ export const preSaleTestingInvoice = asyncHandler(async (req, resp) => {
         const attachment = {
             filename: `${invoiceId}-invoice.pdf`, path: pdfPath, contentType: 'application/pdf'
         };
-    
+
         emailQueue.addEmail(data.email, 'Your EV-pre Sale Booking Invoice - PlusX Electric App', html, attachment);
     }
-    
-    if(insert.affectedRows > 0){
-        return resp.json({ message: ["Pre-sale Testing Invoice created successfully!"], status:1, code:200 });
-    }else{
-        return resp.json({ message: ["Oops! Something went wrong! Please Try Again."], status:0, code:200 });
+
+    if (insert.affectedRows > 0) {
+        return resp.json({ message: ["Pre-sale Testing Invoice created successfully!"], status: 1, code: 200 });
+    } else {
+        return resp.json({ message: ["Oops! Something went wrong! Please Try Again."], status: 0, code: 200 });
     }
 });
 
 export const chargerInstallationInvoice = asyncHandler(async (req, resp) => {
-    const {rider_id, request_id, payment_intent_id = '' } = mergeParam(req);
-    const { isValid, errors } = validateFields(mergeParam(req), {rider_id: ["required"], request_id: ["required"], /* payment_intent_id: ["required"] */ });
+    const { rider_id, request_id, payment_intent_id = '' } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), { rider_id: ["required"], request_id: ["required"], /* payment_intent_id: ["required"] */ });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const invoiceId = request_id.replace('CIS', 'INVCIS');
 
     const createObj = {
-        invoice_id   : invoiceId,
-        request_id   : request_id,
-        rider_id     : rider_id,
-        invoice_date : moment().format('YYYY-MM-DD HH:mm:ss'),
+        invoice_id: invoiceId,
+        request_id: request_id,
+        rider_id: rider_id,
+        invoice_date: moment().format('YYYY-MM-DD HH:mm:ss'),
     }
-    if(payment_intent_id && payment_intent_id.trim() != '' ){
+    if (payment_intent_id && payment_intent_id.trim() != '') {
         const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id);
         const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
         const cardData = {
-            brand:     charge.payment_method_details.card.brand,
-            country:   charge.payment_method_details.card.country,
+            brand: charge.payment_method_details.card.brand,
+            country: charge.payment_method_details.card.country,
             exp_month: charge.payment_method_details.card.exp_month,
-            exp_year:  charge.payment_method_details.card.exp_year,
+            exp_year: charge.payment_method_details.card.exp_year,
             last_four: charge.payment_method_details.card.last4,
         };
 
-        createObj.amount = charge.amount;  
-        createObj.payment_intent_id = charge.payment_intent;  
-        createObj.payment_method_id = charge.payment_method;  
-        createObj.payment_cust_id = charge.customer;  
-        createObj.charge_id = charge.id;  
-        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;  
-        createObj.payment_type = charge.payment_method_details.type;  
-        createObj.payment_status = charge.status;  
-        createObj.currency = charge.currency;  
+        createObj.amount = charge.amount;
+        createObj.payment_intent_id = charge.payment_intent;
+        createObj.payment_method_id = charge.payment_method;
+        createObj.payment_cust_id = charge.customer;
+        createObj.charge_id = charge.id;
+        createObj.transaction_id = charge.payment_method_details.card.three_d_secure?.transaction_id || null;
+        createObj.payment_type = charge.payment_method_details.type;
+        createObj.payment_status = charge.status;
+        createObj.currency = charge.currency;
         createObj.invoice_date = moment(charge.created).format('YYYY-MM-DD HH:mm:ss');
         createObj.receipt_url = charge.receipt_url;
         createObj.card_data = cardData;
@@ -592,14 +645,14 @@ export const chargerInstallationInvoice = asyncHandler(async (req, resp) => {
         LIMIT 1
     `, [invoiceId]);
 
-    const invoiceData = { data, numberToWords, formatNumber  };
-    const templatePath = path.join(__dirname, '../views/mail/charger-installation-invoice.ejs'); 
+    const invoiceData = { data, numberToWords, formatNumber };
+    const templatePath = path.join(__dirname, '../views/mail/charger-installation-invoice.ejs');
     const pdfSavePath = path.join(__dirname, '../public', 'charger-installation-invoice');
     const filename = `${invoiceId}-invoice.pdf`;
 
     const pdf = await generatePdf(templatePath, invoiceData, filename, pdfSavePath, req);
 
-    if(pdf.success){
+    if (pdf.success) {
         const html = `<html>
             <body>
                 <h4>Dear ${data.name}</h4>
@@ -612,10 +665,10 @@ export const chargerInstallationInvoice = asyncHandler(async (req, resp) => {
         };
         emailQueue.addEmail(email.email, 'Your Charging Installation Booking Invoice - PlusX Electric App', html, attachment);
     }
-    
-    if(insert.affectedRows > 0){
-        return resp.json({ message: ["Charger Installation Invoice created successfully!"], status:1, code:200 });
-    }else{
-        return resp.json({ message: ["Oops! Something went wrong! Please Try Again."], status:0, code:200 });
+
+    if (insert.affectedRows > 0) {
+        return resp.json({ message: ["Charger Installation Invoice created successfully!"], status: 1, code: 200 });
+    } else {
+        return resp.json({ message: ["Oops! Something went wrong! Please Try Again."], status: 0, code: 200 });
     }
 });

@@ -5,7 +5,7 @@ import { notificationList } from "../controller/admin/AuthController.js";
 
 import { handleFileUpload } from "../../fileUpload.js";
 
-import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, cycleOnOff, lockerOpen } from "../controller/admin/CycleController.js";  //addCoupon, 
+import { addCycle, cycleBookinghistory, cycleBookingList, getCityList, getStationList, cycleDelete, cycledetails, cycleList, cyclePrice, editCycle, FaildcycleBookingList, qrCode, StationcycleList, cycleInvoiceList, cycleInvoiceDetails, IssuecycleBookingList, RefundRequestList, addRefundComment, IssuecycleBookingComments, addBookingComment, IssuecycleBookingDetails, IssueBookingUpdate, RefundRequestDescription, cycleOnOff, lockerOpen, approveRefundRequest } from "../controller/admin/CycleController.js";
 
 import { AddMobilityStation, deletemobilityStation, editMobilityStation, mobilityStaionListforselectBox, mobilitystationDetails, mobilitystationList, stationlistforlockAssign } from "../controller/admin/MobilitystationController.js";
 
@@ -18,6 +18,9 @@ import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount
 // import { stateCountry } from "../../common/controller/UserController.js";
 
 import { addSolenoidId, assignLocker, assignLockTobooking, availableLocker } from "../controller/admin/LockerController.js";
+
+import { communityList, communityDetail, addCommunity, editCommunity, allCommunityList, addResidentMulti, editResidentMulti, residentListMulti, residentListMultiOld, residentDetailMulti, residentSearchMulti, communityAreaList, getInvoiceData, createScanChargeInvoice, scanChargeInvoiceList, scanChargeInvoiceDetail, sessionList, sessionDetail } from "../controller/admin/CommunityController.js";
+
 
 const router = Router();
 
@@ -45,8 +48,13 @@ const adminRoutes = [
     { method: 'post',   path: '/cycle-price-detail',         handler: cyclePrice },
     { method: 'post',   path: '/failed-cycle-booking-list',  handler: FaildcycleBookingList },
     { method: 'post',   path: '/issue-cycle-booking-list',   handler: IssuecycleBookingList },
+    { method: 'post',   path: '/refund-requests-list',       handler: RefundRequestList },
+    { method: 'post',   path: '/add-refund-comment',              handler: addRefundComment },
     { method: 'post',   path: '/issue-cycle-booking-detail', handler: IssuecycleBookingDetails },
     { method: 'post',   path: '/issue-status-update',        handler: IssueBookingUpdate },
+    { method: 'post',   path: '/refund-request-description-list',        handler: RefundRequestDescription },
+    { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
+
     
     { method: 'post',   path: '/issue-comments-list',        handler: IssuecycleBookingComments },
     { method: 'post',   path: '/issue-comments-add',        handler: addBookingComment },
@@ -86,10 +94,42 @@ const adminRoutes = [
     { method: 'post',   path: '/user-list',  handler: usersList }, 
     
     // Added by ravi 3 Mrch 
-    { method: 'post',   path: '/user-transaction-list',       handler: userTransactionList }, 
-    { method: 'post',   path: '/add-refund-amount',           handler: addRefundAmount },
-    { method: 'post',   path: '/complete-booking-by-admin',   handler: bookngCompleteByadmin }, 
+    { method: 'post',   path: '/user-transaction-list',     handler: userTransactionList }, 
+    { method: 'post',   path: '/add-refund-amount',         handler: addRefundAmount },
+    { method: 'post',   path: '/complete-booking-by-admin', handler: bookngCompleteByadmin }, 
     { method: 'post',   path: '/incomplete-booking-by-admin', handler: bookngIncompleteByadmin }, 
+ 
+    // Community Routes
+    { method: 'post',  path: '/community-add',       handler: addCommunity },
+    { method: 'post',  path: '/community-edit',      handler: editCommunity },
+    { method: 'post',  path: '/community-list',      handler: communityList },
+    { method: 'post',  path: '/community-details',   handler: communityDetail },
+    { method: 'post',  path: '/all-community-list',  handler: allCommunityList },
+    { method: 'post',  path: '/community-area-list', handler: communityAreaList },
+ 
+    // Resident Routes -- existing routes
+    // { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    // { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    // { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    // { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    // { method: 'post',  path: '/resident-search',            handler : residentSearchMulti },
+ 
+    // Resident Routes (multi-community — CommunityControllerNew)
+    { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    { method: 'post',  path: '/resident-list-old', handler: residentListMultiOld },
+    // { method: 'post',  path: '/resident-list-single-old', handler: residentListOld }, // handler commented out in CommunityController
+    { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    { method: 'post',  path: '/resident-search',  handler: residentSearchMulti },
+
+    { method: 'post',  path: '/get-invoice-data',           handler : getInvoiceData }, 
+    { method: 'post',  path: '/create-scan-charge-invoice', handler : createScanChargeInvoice },
+    { method: 'post',  path: '/scan-charge-invoice-list',   handler : scanChargeInvoiceList },
+    { method: 'post',  path: '/scan-charge-invoice-detail', handler : scanChargeInvoiceDetail },
+
+    { method: 'post',  path: '/session-list',    handler : sessionList },
+    { method: 'post',  path: '/session-detail',  handler : sessionDetail },
 ]; 
 
 const uploadRules = {
@@ -116,4 +156,6 @@ adminRoutes.forEach(({ method, path, handler }) => {
 
     router[method](path, ...middlewares, handler);
 });
+    // { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
+// router.post('/approve-refund-request',approveRefundRequest)
 export default router;

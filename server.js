@@ -47,6 +47,7 @@ const __dirname = path.dirname(__filename);
 const corsOptions = {
     origin : [
         'http://localhost:2425',
+        'https://mobilityv1.plusxelectric.com',
         'https://mobility.plusxelectric.com/v1',
         'https://mobility.plusxelectric.com',
         'https://plusxmobility.shunyaekai.com',
@@ -69,14 +70,14 @@ cron.schedule('* * * * *', async () => {
     await mobilitynotification();
 });
 
-cron.schedule('*/5 * * * *', async () => {
-    console.log('Outstanding deduction cron started');
-    try {
-        await deductOutstandingAmount();
-    } catch (error) {
-        console.log('Cron Error:', error.message);
-    }
-});
+// cron.schedule('*/5 * * * *', async () => {
+//     console.log('Outstanding deduction cron started');
+//     try {
+//         // await deductOutstandingAmount();
+//     } catch (error) {
+//         console.log('Cron Error:', error.message);
+//     }
+// });
 
 app.use(cors(corsOptions));
 app.post("/razorpay/webhook", bodyParser.raw({ type: "application/json" }), razorpayWebhook);
@@ -153,6 +154,6 @@ client.on('reconnect', () => console.log('Reconnecting...'));
 client.on('close', () => console.log('Disconnected'));
 client.on('error', err => console.log('Error', err.message));
 
-// console.log('LIVE CODE: 03 Septpember 2026');
+// console.log('LIVE CODE: 05 October 2026');
 
 export default client;

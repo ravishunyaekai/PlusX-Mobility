@@ -35,7 +35,15 @@ import {vehicleList, vehicleDetail, interestedPeople, areaList, sellVehicle, all
     sellVehicleDetail, updateSellVehicle, deleteSellVehicle, soldSellVehicle, reminder_sell_vehicle_list, vehicleModelList, vehicleBrandList, updateSellVehicleImg, dubaiAreaList
 } from '../controller/api/VehicleController.js';
 
-
+import {
+    residentCommunities,
+    chargingStart,
+    stopCharge,
+    chargingDetail,
+    chargingHistory,
+    scanChargeInvoices,
+    scanChargeInvoiceDetail,
+} from '../controller/api/ScanChargerController.js';
 
 import rateLimit from 'express-rate-limit';
 import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, packageList, packageVehicleList, addressList, timeSlotList, outputAndConnector ,chargeShareDelete,editChargShare} from "../controller/api/ChargeShareController.js";
@@ -154,7 +162,7 @@ const authzAndAuthRoutes = [
    
 
     /* Payment */
-    // { method: 'post', path: '/payment-intent',                       handler: createIntent },
+    { method: 'post', path: '/payment-intent',                       handler: createIntent },
    
     
     /* Invoice */ 
@@ -180,6 +188,15 @@ const authzAndAuthRoutes = [
     { method: 'get', path: '/charge-share-for-map', handler: chargeshareForMap },
 
 
+ 
+    // Scan Charge — multi-community access via community_resident_map; overall limits on community_resident
+    { method: 'get',   path: '/resident-communities',         handler: residentCommunities },
+    { method: 'post',  path: '/start-scan-charge',            handler: chargingStart },
+    { method: 'post',  path: '/stop-scan-charge',             handler: stopCharge },
+    { method: 'get',   path: '/scan-charge-detail',           handler: chargingDetail },
+    { method: 'get',   path: '/scan-charge-history',          handler: chargingHistory },
+    { method: 'get',   path: '/scan-charge-invoice-list',     handler: scanChargeInvoices },
+    { method: 'get',   path: '/scan-charge-invoice-detail',   handler: scanChargeInvoiceDetail },
 
 
 
@@ -214,7 +231,7 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
     middlewares.push(apiAuthentication);
     router[method](path, ...middlewares, handler);
 });
-router.post('/payment-intent', createIntent);
+// router.post('/payment-intent', createIntent);
 router.post('/charger-booking-payment-confirm-test', portableChargerBookingConfirm);
 
 export default router;

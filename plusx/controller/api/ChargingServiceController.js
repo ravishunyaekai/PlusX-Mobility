@@ -368,8 +368,8 @@ export const cancelValetBooking = asyncHandler(async (req, resp) => {
         return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
     }
     var slotDateTime = moment(`${checkOrder.slot_date_time}`).format('YYYY-MM-DD HH:mm:ss');
-    let dubaiTime    = new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" });
-    dubaiTime        = moment(dubaiTime).add(1, 'hours').format('YYYY-MM-DD HH:mm:ss');
+    let dubaiTime    = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    dubaiTime        = moment(dubaiTime);//.add(1, 'hours').format('YYYY-MM-DD HH:mm:ss');
 
     if (slotDateTime <= dubaiTime) {
         return resp.json({

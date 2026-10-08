@@ -707,7 +707,7 @@ export const purchaseHistoryDetails = asyncHandler(async (req, resp) => {
 
     const purchaseDetails = await queryDB(`
         SELECT 
-            purchase_id, customer_name, customer_email, customer_mobile, customer_address, 
+            purchase_id, customer_name, customer_email, customer_mobile, country_code, customer_address, 
             product_name, output_Power, price, type_of_service, purchase_invoice_pdf, installation_invoice_pdf, completion_certificate_pdf, created_at,
             ${formatDateInQuery(['purchase_date'])}, ${formatDateInQuery(['warranty_expiry_date'])}, ${formatDateInQuery(['installation_date'])}
         FROM 

@@ -5,7 +5,7 @@ import { io } from "../../server.js";
 import db from "../../config/indiadb.js";
 
 import emailQueue from "../../emailQueue.js";
-import { insertRecord, queryDB, updateRecord } from "../../dbUtils.js";
+import { formatFloatInQuery, insertRecord, queryDB, updateRecord } from "../../dbUtils.js";
 import { NOTIFICATION_CONTENT } from "../../common/controller/notificationContent.js";
 import { verifyPayment } from "../../mobility/controller/razorpay/razorpay.js";
 import dotenv from "dotenv";
@@ -15,37 +15,153 @@ import moment from "moment";
 import Razorpay from "razorpay";
 
 export const razorpayWebhook = async (req, res) => {
+    console.log("\n\n========================================");
+    console.log("🔥 RAZORPAY WEBHOOK CONTROLLER HIT");
+    console.log("========================================");
+
     try {
+        console.log("[WEBHOOK 1] Method:", req.method);
+        console.log("[WEBHOOK 2] URL:", req.originalUrl);
+        console.log("[WEBHOOK 3] Headers:", {
+            signature: req.headers["x-razorpay-signature"],
+            contentType: req.headers["content-type"],
+        });
+
+        console.log("[WEBHOOK 4] Body type:", typeof req.body);
+        console.log("[WEBHOOK 5] Is Buffer:", Buffer.isBuffer(req.body));
+
+        if (Buffer.isBuffer(req.body)) {
+            console.log(
+                "[WEBHOOK 6] Raw body length:",
+                req.body.length
+            );
+        } else {
+            console.log(
+                "[WEBHOOK 6] Body:",
+                req.body
+            );
+        }
+
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
         const signature = req.headers["x-razorpay-signature"];
 
+        console.log("[WEBHOOK 7] Webhook secret exists:", !!webhookSecret);
+        console.log("[WEBHOOK 8] Signature exists:", !!signature);
+
+        if (!webhookSecret) {
+            console.error(
+                "[WEBHOOK ERROR] RAZORPAY_WEBHOOK_SECRET is missing"
+            );
+
+            return res.status(200).send("ok");
+        }
+
+        if (!signature) {
+            console.error(
+                "[WEBHOOK ERROR] x-razorpay-signature header missing"
+            );
+
+            return res.status(200).send("ok");
+        }
+
+        /**
+         * IMPORTANT:
+         * Razorpay signature must be calculated using the RAW request body.
+         */
+        const rawBody = Buffer.isBuffer(req.body)
+            ? req.body
+            : Buffer.from(JSON.stringify(req.body));
+
+        console.log(
+            "[WEBHOOK 9] Raw body prepared. Length:",
+            rawBody.length
+        );
+
+        const expectedSignature = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(rawBody)
+            .digest("hex");
+
+        console.log("[WEBHOOK 10] Signature comparison:", {
+            received: signature,
+            expected: expectedSignature,
+            matched: signature === expectedSignature,
+        });
+
         // Verify Razorpay signature
-        const expectedSignature = crypto.createHmac("sha256", webhookSecret).update(req.body).digest("hex");
+        if (signature !== expectedSignature) {
+            console.error(
+                "[WEBHOOK ERROR] Razorpay signature verification FAILED"
+            );
 
-        if (signature !== expectedSignature) { return res.status(200).send("ok"); }
+            return res.status(200).send("ok");
+        }
 
-        const event = JSON.parse(req.body.toString());
+        console.log(
+            "[WEBHOOK 11] Razorpay signature verification SUCCESS"
+        );
 
-        console.log("Webhook Event:", event.event);
+        let event;
 
+        try {
+            event = JSON.parse(rawBody.toString());
+
+            console.log(
+                "[WEBHOOK 12] Event parsed successfully:",
+                event.event
+            );
+        } catch (parseError) {
+            console.error(
+                "[WEBHOOK ERROR] JSON parsing failed:",
+                parseError
+            );
+
+            return res.status(200).send("ok");
+        }
+
+        console.log("[WEBHOOK 13] Full event name:", event.event);
+
+        // ============================================
         // REFUND EVENTS
+        // ============================================
+
         if (event.event === "refund.processed") {
+            console.log("🔥 REFUND.PROCESSED EVENT");
+
             const refund = event.payload.refund.entity;
 
-            const refundRequestId = refund.notes?.refund_request_id;
+            console.log("[REFUND] Refund data:", {
+                refundId: refund.id,
+                paymentId: refund.payment_id,
+                amount: refund.amount,
+                notes: refund.notes,
+            });
+
+            const refundRequestId =
+                refund.notes?.refund_request_id;
+
+            console.log(
+                "[REFUND] refundRequestId:",
+                refundRequestId
+            );
 
             await updateRecord(
                 "refund_requests",
-                { refund_status: "processed", status: "approved" },
+                {
+                    refund_status: "processed",
+                    status: "approved",
+                },
                 ["id"],
                 [refundRequestId],
             );
+
             await updateRecord(
                 "riders",
                 { amount: 0 },
                 ["rider_id"],
                 [refund.notes?.rider_id],
             );
+
             await insertRecord(
                 "transaction_history",
                 [
@@ -57,9 +173,9 @@ export const razorpayWebhook = async (req, res) => {
                     "payment_id",
                     "reference_id",
                 ],
-
                 [
-                    refund.notes?.booking_id || refund.payment_id,
+                    refund.notes?.booking_id ||
+                    refund.payment_id,
                     refund.notes?.rider_id,
                     refund.amount / 100,
                     "CNF",
@@ -68,12 +184,19 @@ export const razorpayWebhook = async (req, res) => {
                     refund.id,
                 ],
             );
+
             const riderData = await queryDB(
-                `SELECT fcm_token FROM riders WHERE rider_id = ? LIMIT 1`,
+                `
+                SELECT fcm_token
+                FROM riders
+                WHERE rider_id = ?
+                LIMIT 1
+                `,
                 [refund.notes?.rider_id],
             );
 
-            const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+            const template =
+                NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
 
             if (riderData?.fcm_token) {
                 await pushNotification(
@@ -88,15 +211,27 @@ export const razorpayWebhook = async (req, res) => {
                     }),
                 );
             }
+
+            console.log(
+                "[REFUND] refund.processed completed"
+            );
+
             return res.status(200).send("ok");
         }
 
         if (event.event === "refund.failed") {
+            console.log("🔥 REFUND.FAILED EVENT");
+
             const refund = event.payload.refund.entity;
+
+            console.log("[REFUND FAILED] Data:", refund);
 
             await updateRecord(
                 "refund_requests",
-                { refund_status: "failed", status: "failed" },
+                {
+                    refund_status: "failed",
+                    status: "failed",
+                },
                 ["id"],
                 [refund.notes?.refund_request_id],
             );
@@ -104,14 +239,51 @@ export const razorpayWebhook = async (req, res) => {
             return res.status(200).send("ok");
         }
 
+        // ============================================
         // PAYMENT EVENTS
+        // ============================================
 
-        const payment = event.payload.payment.entity;
+        console.log(
+            "[WEBHOOK 14] Processing payment event..."
+        );
 
-        //  setImmediate(async()=>{
-        switch (payment.notes.booking_type) {
+        const payment =
+            event.payload?.payment?.entity;
+
+        if (!payment) {
+            console.error(
+                "[WEBHOOK ERROR] Payment entity not found"
+            );
+
+            console.log(
+                "[WEBHOOK] Payload:",
+                event.payload
+            );
+
+            return res.status(200).send("ok");
+        }
+
+        console.log("[WEBHOOK 15] Payment details:", payment);
+
+        const bookingType =
+            payment.notes?.booking_type;
+
+        console.log(
+            "[WEBHOOK 16] booking_type:",
+            bookingType
+        );
+
+        switch (bookingType) {
+
             case "RSA":
+
+                console.log("🔥 RSA CASE HIT");
+
                 if (event.event === "payment.captured") {
+                    console.log(
+                        "[RSA] Calling rsaInvoice..."
+                    );
+
                     await rsaInvoice(
                         payment.notes.rider_id,
                         payment.notes.booking_id,
@@ -119,6 +291,11 @@ export const razorpayWebhook = async (req, res) => {
                         payment.notes.coupon_code,
                     );
                 } else {
+                    console.log(
+                        "[RSA] Payment not captured:",
+                        event.event
+                    );
+
                     await updateRecord(
                         "road_assistance",
                         { order_status: "PNR" },
@@ -126,27 +303,72 @@ export const razorpayWebhook = async (req, res) => {
                         [payment.notes.booking_id],
                     );
                 }
+
                 break;
 
             case "MOBILITY":
+
+                console.log("🔥🔥 MOBILITY CASE HIT 🔥🔥");
+
+                console.log("[MOBILITY] Event:", event.event);
+
+                console.log("[MOBILITY] Payment notes:", {
+                    rider_id: payment.notes?.rider_id,
+                    amount: payment.notes?.amount,
+                    booking_type: payment.notes?.booking_type,
+                });
+
                 if (event.event === "payment.captured") {
-                    await addMoneywebhook(
+
+                    console.log(
+                        "🔥 [MOBILITY] PAYMENT CAPTURED"
+                    );
+
+                    console.log(
+                        "[MOBILITY] Calling addMoneywebhook..."
+                    );
+
+                    const result = await addMoneywebhook(
                         payment.notes.rider_id,
                         payment.id,
                         payment.order_id,
                         payment.notes.amount,
+                        payment,
+                    );
+
+                    console.log(
+                        "[MOBILITY] addMoneywebhook result:",
+                        result
+                    );
+
+                } else {
+
+                    console.log(
+                        "[MOBILITY] Event is NOT payment.captured:",
+                        event.event
                     );
                 }
+
                 break;
+
             case "PCB":
+
+                console.log("🔥 PCB CASE HIT");
+
                 if (event.event === "payment.captured") {
-                    console.log("PCB case hit, calling portableChargerBookingConfirm");
+
+                    console.log(
+                        "[PCB] Calling portableChargerBookingConfirm..."
+                    );
+
                     await portableChargerBookingConfirm(
                         payment.notes.booking_id,
                         payment.id,
                         payment.notes.coupon_code,
                     );
+
                 } else {
+
                     await updateRecord(
                         "portable_charger_booking",
                         { status: "PNR" },
@@ -154,16 +376,27 @@ export const razorpayWebhook = async (req, res) => {
                         [payment.notes.booking_id],
                     );
                 }
+
                 break;
+
             case "HEV":
+
+                console.log("🔥 HEV CASE HIT");
+
                 if (event.event === "payment.captured") {
-                    console.log("HEV case hit, calling portableChargerBookingConfirm");
+
+                    console.log(
+                        "[HEV] Calling portableChargerBookingConfirm..."
+                    );
+
                     await portableChargerBookingConfirm(
                         payment.notes.booking_id,
                         payment.id,
                         payment.notes.coupon_code,
                     );
+
                 } else {
+
                     await updateRecord(
                         "portable_charger_booking",
                         { status: "PNR" },
@@ -171,12 +404,24 @@ export const razorpayWebhook = async (req, res) => {
                         [payment.notes.booking_id],
                     );
                 }
+
                 break;
 
             case "BOOKING":
-                console.log("BOOKING case hit");
+
+                console.log("🔥 BOOKING CASE HIT");
+
+                console.log(
+                    "[BOOKING] Event:",
+                    event.event
+                );
 
                 if (event.event === "payment.captured") {
+
+                    console.log(
+                        "[BOOKING] Calling confirmCycleBookingPayment..."
+                    );
+
                     await confirmCycleBookingPayment(
                         payment.notes.rider_id,
                         payment.notes.booking_id,
@@ -185,20 +430,116 @@ export const razorpayWebhook = async (req, res) => {
                 }
                 break;
 
-             
+            case "SCI":
+
+                console.log("🔥 SCI CASE HIT");
+
+                console.log(
+                    "[SCI] Event:",
+                    event.event
+                );
+
+                if (event.event === "payment.captured") {
+
+                    console.log(
+                        "[SCI] Calling confirmCycleBookingPayment..."
+                    );
+
+                    // await confirmCycleBookingPayment(
+                    //     payment.notes.rider_id,
+                    //     payment.notes.booking_id,
+                    //     payment,
+                    // );
+
+                    await updateRecord(
+                        'scan_charger_invoice',
+                        { invoice_status: 1, payment_intent_id: payment.id || "" },
+                        ['invoice_id', 'rider_id'],
+                        [payment.notes.invoice_id, payment.notes.rider_id]
+                    );
+
+
+                    return res.json({
+                        status: 1,
+                        code: 422,
+                        message: ["Invoice payment done successfully!"]
+                    });
+                }
+
+                break;
+
+            // case "MOBILITY_REFUND":
+            //   console.log("MOBILITY_REFUND case hit");
+
+            //   if (event === "refund.processed") {
+            //     const refund = req.body.payload.refund.entity;
+
+            //     console.log("Refund ID:", refund.id);
+            //     console.log("Payment ID:", refund.payment_id);
+            //     console.log("Refund Amount:", refund.amount); // paise
+            //     console.log("Status:", refund.status);
+
+            //     // Update your database here
+            //     await completeRefundProcess({
+            //       refundRequestId: refund.notes.refund_request_id,
+            //       refundId: refund.id,
+            //       refundStatus: refund.status,
+            //       riderId: refund.notes.rider_id,
+            //       refundAmount: Number(refund.notes.refund_amount),
+            //     });
+            //   }
+
+            //   if (event === "refund.failed") {
+            //     const refund = req.body.payload.refund.entity;
+
+            //     console.log("Refund ID:", refund.id);
+            //     console.log("Payment ID:", refund.payment_id);
+            //     console.log("Refund Amount:", refund.amount); // paise
+            //     console.log("Status:", refund.status);
+
+            //     // Update your database here
+            //   }
+            //   break;
 
             default:
-                // console.log("Unhandled booking_type");
+
+                console.log(
+                    "⚠️ UNKNOWN booking_type:",
+                    bookingType
+                );
+
+                console.log(
+                    "⚠️ Event:",
+                    event.event
+                );
+
                 return res.status(200).send("ok");
-                break;
         }
-        //  })
+
+        console.log(
+            "========== WEBHOOK PROCESSING COMPLETE =========="
+        );
+
+        return res.status(200).send("ok");
+
     } catch (error) {
-        console.log(" Webhook error:", error);
+
+        console.error(
+            "\n========== WEBHOOK ERROR =========="
+        );
+
+        console.error("Error message:", error?.message);
+        console.error("Error stack:", error?.stack);
+        console.error("Full error:", error);
+
+        console.error(
+            "====================================\n"
+        );
+
         return res.status(200).send("ok");
     }
-    return res.status(200).send("ok");
 };
+
 
 const rsaInvoice = async (
     rider_id,
@@ -523,7 +864,7 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
 
 
 
-const addMoneywebhook = async (rider_id, payment_intent_id, razorpay_order_id, amount) => {
+const addMoneywebhookOld = async (rider_id, payment_intent_id, razorpay_order_id, amount) => {
     try {
         const paidAmount = amount; // / 100;
         const riders = await queryDB(`
@@ -564,6 +905,385 @@ const addMoneywebhook = async (rider_id, payment_intent_id, razorpay_order_id, a
         return false;
     }
 }
+
+const addMoneywebhook = async (
+    rider_id,
+    payment_intent_id,
+    razorpay_order_id,
+    amount,
+    payment
+) => {
+    try {
+        console.log(
+            `Processing addMoneywebhook for rider_id: ${rider_id}, amount: ${amount}`
+        );
+
+        const paidAmount = Number(amount || 0);
+
+        if (!paidAmount || paidAmount <= 0) {
+            throw new Error(
+                `Invalid payment amount: ${amount}`
+            );
+        }
+
+        // --------------------------------------------------
+        // GET RIDER WALLET / SECURITY / OUTSTANDING DETAILS
+        // --------------------------------------------------
+
+        const rider = await queryDB(
+            `
+                SELECT
+                    r.amount,
+                    r.security_deposit,
+                    r.out_standing_cost,
+                    r.rider_name,
+                    r.rider_email,
+
+                    ${formatFloatInQuery("cn.new_min_wallet_price")} AS min_wallet_price,
+                    ${formatFloatInQuery("cn.min_sec_deposit")} AS min_sec_deposit
+
+                FROM riders r
+
+                JOIN country cn
+                    ON cn.country_id = r.country_id
+
+                WHERE r.rider_id = ?
+
+                LIMIT 1
+            `,
+            [rider_id]
+        );
+
+        // --------------------------------------------------
+        // RIDER NOT FOUND
+        // --------------------------------------------------
+
+        if (!rider) {
+            throw new Error(
+                `Rider not found for rider_id: ${rider_id}`
+            );
+        }
+
+        // --------------------------------------------------
+        // COUNTRY CONFIGURATION
+        // --------------------------------------------------
+
+        const minWallet = Number(
+            rider.min_wallet_price || 20
+        );
+
+        const minSecurity = Number(
+            rider.min_sec_deposit || 100
+        );
+
+        // --------------------------------------------------
+        // CURRENT BALANCES
+        // --------------------------------------------------
+
+        const prevBalance = Number(
+            rider.amount || 0
+        );
+
+        let walletBalance = prevBalance;
+
+        let securityDeposit = Number(
+            rider.security_deposit || 0
+        );
+
+        let outstanding = Number(
+            rider.out_standing_cost || 0
+        );
+
+        // --------------------------------------------------
+        // PAYMENT ALLOCATION
+        // --------------------------------------------------
+
+        let remainingAmount = paidAmount;
+
+        // These values are specifically for email
+        let outstandingPaid = 0;
+        let securityDepositAdded = 0;
+        let walletAdded = 0;
+
+        // --------------------------------------------------
+        // STEP 1: SETTLE OUTSTANDING
+        // --------------------------------------------------
+
+        if (
+            outstanding > 0 &&
+            remainingAmount > 0
+        ) {
+            outstandingPaid = Math.min(
+                remainingAmount,
+                outstanding
+            );
+
+            outstanding -= outstandingPaid;
+            remainingAmount -= outstandingPaid;
+
+            console.log("Outstanding payment:", {
+                outstandingPaid,
+                remainingOutstanding: outstanding,
+                remainingAmount,
+            });
+        }
+
+        // --------------------------------------------------
+        // STEP 2: COMPLETE SECURITY DEPOSIT
+        // --------------------------------------------------
+
+        if (
+            securityDeposit < minSecurity &&
+            remainingAmount > 0
+        ) {
+            const depositNeeded =
+                minSecurity - securityDeposit;
+
+            securityDepositAdded = Math.min(
+                remainingAmount,
+                depositNeeded
+            );
+
+            securityDeposit += securityDepositAdded;
+            remainingAmount -= securityDepositAdded;
+
+            console.log("Security deposit payment:", {
+                securityDepositAdded,
+                securityDeposit,
+                remainingAmount,
+            });
+        }
+
+        // --------------------------------------------------
+        // STEP 3: BRING WALLET TO MINIMUM
+        // --------------------------------------------------
+
+        if (
+            walletBalance < minWallet &&
+            remainingAmount > 0
+        ) {
+            const walletNeeded =
+                minWallet - walletBalance;
+
+            const walletTopUp = Math.min(
+                remainingAmount,
+                walletNeeded
+            );
+
+            walletBalance += walletTopUp;
+
+            walletAdded += walletTopUp;
+
+            remainingAmount -= walletTopUp;
+
+            console.log("Minimum wallet top-up:", {
+                walletTopUp,
+                walletBalance,
+                remainingAmount,
+            });
+        }
+
+        // --------------------------------------------------
+        // STEP 4: ADD REMAINING AMOUNT TO WALLET
+        // --------------------------------------------------
+
+        if (remainingAmount > 0) {
+            walletBalance += remainingAmount;
+
+            walletAdded += remainingAmount;
+
+            remainingAmount = 0;
+
+            console.log("Remaining amount added to wallet:", {
+                walletAdded,
+                walletBalance,
+            });
+        }
+
+        // --------------------------------------------------
+        // ROUND VALUES
+        // --------------------------------------------------
+
+        const finalWalletBalance = Number(
+            walletBalance.toFixed(2)
+        );
+
+        const finalSecurityDeposit = Number(
+            securityDeposit.toFixed(2)
+        );
+
+        const finalOutstanding = Number(
+            outstanding.toFixed(2)
+        );
+
+        outstandingPaid = Number(
+            outstandingPaid.toFixed(2)
+        );
+
+        securityDepositAdded = Number(
+            securityDepositAdded.toFixed(2)
+        );
+
+        walletAdded = Number(
+            walletAdded.toFixed(2)
+        );
+
+        // --------------------------------------------------
+        // DEBUG
+        // --------------------------------------------------
+
+        console.log(
+            "Add money payment allocation:",
+            {
+                rider_id,
+                payment_intent_id,
+                razorpay_order_id,
+
+                paidAmount,
+
+                prevBalance,
+
+                current_security_deposit:
+                    Number(rider.security_deposit || 0),
+
+                current_outstanding:
+                    Number(rider.out_standing_cost || 0),
+
+                minWallet,
+                minSecurity,
+
+                // PAYMENT SETTLEMENT
+                outstandingPaid,
+                securityDepositAdded,
+                walletAdded,
+
+                // FINAL BALANCES
+                finalWalletBalance,
+                finalSecurityDeposit,
+                finalOutstanding,
+            }
+        );
+
+        // --------------------------------------------------
+        // UPDATE RIDER BALANCES
+        // --------------------------------------------------
+
+        await updateRecord(
+            "riders",
+            {
+                amount: finalWalletBalance,
+                security_deposit: finalSecurityDeposit,
+                out_standing_cost: finalOutstanding,
+            },
+            ["rider_id"],
+            [rider_id]
+        );
+
+        // --------------------------------------------------
+        // SAVE TRANSACTION
+        // --------------------------------------------------
+
+        await insertRecord(
+            "transaction_history",
+            [
+                "rider_id",
+                "amount",
+                "payment_type",
+                "order_id",
+                "outstanding",
+                "current_balance",
+                "prev_balance",
+                "status",
+                "payment_id",
+            ],
+            [
+                rider_id,
+                paidAmount,
+                "crd",
+                razorpay_order_id,
+                finalOutstanding,
+                finalWalletBalance,
+                prevBalance,
+                "CNF",
+                payment_intent_id,
+            ]
+        );
+
+        // --------------------------------------------------
+        // SEND PAYMENT CONFIRMATION EMAIL
+        // --------------------------------------------------
+
+        const mail_template =
+            NOTIFICATION_CONTENT[
+            "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
+            ];
+
+        if (
+            rider.rider_email &&
+            mail_template
+        ) {
+            emailQueue.addEmail(
+                rider.rider_email,
+
+                mail_template.subject({
+                    booking_id:
+                        razorpay_order_id,
+                }),
+
+                mail_template.content({
+                    rider_name:
+                        rider.rider_name,
+
+                    amount:
+                        paidAmount,
+
+                    // --------------------------------------
+                    // PAYMENT SETTLEMENT BREAKDOWN
+                    // --------------------------------------
+
+                    outstanding_paid:
+                        outstandingPaid,
+
+                    security_deposit_added:
+                        securityDepositAdded,
+
+                    wallet_added:
+                        walletAdded,
+
+                    // --------------------------------------
+                    // BALANCES AFTER PAYMENT
+                    // --------------------------------------
+
+                    current_wallet_balance:
+                        finalWalletBalance,
+
+                    current_security_deposit:
+                        finalSecurityDeposit,
+
+                    remaining_outstanding:
+                        finalOutstanding,
+                }),
+            );
+        }
+
+        return true;
+
+    } catch (err) {
+        console.log(
+            "mobility add money webhook error:",
+            err
+        );
+
+        webHooktryCatchErrorHandler(
+            "mobility add money webhook error",
+            err
+        );
+
+        return false;
+    }
+};
+
+
 
 export const webHooktryCatchErrorHandler = (action, err) => {
     try {
@@ -684,91 +1404,261 @@ const confirmCycleBookingPaymentOld = async (rider_id, booking_id, payment) => {
     }
 };
 
-const confirmCycleBookingPayment = async (rider_id, booking_id, payment) => {
+const confirmCycleBookingPayment = async (
+    rider_id,
+    booking_id,
+    payment
+) => {
     try {
         const payment_id = payment.id;
         const order_id = payment.order_id;
-        const paidAmount = payment.amount / 100;
+        const paidAmount = Number(payment.amount || 0) / 100;
 
-        const paymentDate = moment
-            .unix(payment.created_at)
-            .format("YYYY-MM-DD HH:mm:ss");
+        if (!paidAmount || paidAmount <= 0) {
+            throw new Error(
+                `Invalid payment amount: ${payment.amount}`
+            );
+        }
 
         const rider = await queryDB(
             `SELECT
-            r.amount,
-            r.security_deposit,
-            r.out_standing_cost,
-            r.rider_name,
-            r.rider_email,
-            cb.cycle_id,
-            cb.booking_id,
-            c.min_wallet_price, 
-            c.min_sec_deposit, 
-            cb.time_taken
-       FROM riders r
-        JOIN country c 
-        ON r.country_code = c.country_code
-       LEFT JOIN cycle_booking cb
-       ON cb.booking_id = (
-            SELECT booking_id
-            FROM cycle_booking
-            WHERE rider_id = r.rider_id
-            ORDER BY created_at DESC
-            LIMIT 1
-       )
-       WHERE r.rider_id = ?`,
-            [rider_id],
+                r.amount,
+                r.security_deposit,
+                r.out_standing_cost,
+                r.rider_name,
+                r.rider_email,
+
+                cb.cycle_id,
+                cb.booking_id,
+                cb.time_taken,
+
+                c.new_min_wallet_price as min_wallet_price,
+                c.min_sec_deposit
+
+            FROM riders r
+
+            JOIN country c
+                ON r.country_code = c.country_code
+
+            LEFT JOIN cycle_booking cb
+                ON cb.booking_id = ?
+
+            WHERE r.rider_id = ?
+
+            LIMIT 1`,
+            [booking_id, rider_id],
         );
 
         if (!rider) {
-            throw new Error(`Rider not found for rider_id: ${rider_id}`);
+            throw new Error(
+                `Rider not found for rider_id: ${rider_id}`
+            );
         }
 
-        const prev_balance = parseFloat(rider.amount || 0);
+        // --------------------------------------------------
+        // CURRENT BALANCES
+        // --------------------------------------------------
+
+        const prev_balance = Number(
+            rider.amount || 0
+        );
+
         let walletBalance = prev_balance;
-        let securityDeposit = parseFloat(rider.security_deposit || 0);
-        let outstanding = parseFloat(rider.out_standing_cost || 0);
+
+        let securityDeposit = Number(
+            rider.security_deposit || 0
+        );
+
+        let outstanding = Number(
+            rider.out_standing_cost || 0
+        );
+
+        // --------------------------------------------------
+        // COUNTRY CONFIGURATION
+        // --------------------------------------------------
+
+        const minWallet = Number(
+            rider.min_wallet_price || 20
+        );
+
+        const minSecurity = Number(
+            rider.min_sec_deposit || 100
+        );
+
+        // --------------------------------------------------
+        // PAYMENT ALLOCATION
+        // --------------------------------------------------
 
         let remainingAmount = paidAmount;
 
-        /**
-         * STEP 1: Settle outstanding amount
-         */
-        if (outstanding > 0) {
-            const outstandingPaid = Math.min(remainingAmount, outstanding);
+        // These are specifically for the email
+        let outstandingPaid = 0;
+        let securityDepositAdded = 0;
+        let walletAdded = 0;
+
+        // --------------------------------------------------
+        // STEP 1: SETTLE OUTSTANDING
+        // --------------------------------------------------
+
+        if (
+            outstanding > 0 &&
+            remainingAmount > 0
+        ) {
+            outstandingPaid = Math.min(
+                remainingAmount,
+                outstanding
+            );
 
             outstanding -= outstandingPaid;
             remainingAmount -= outstandingPaid;
         }
 
-        /**
-         * STEP 2: Complete security deposit to ₹100
-         */
-        const depositNeeded = Math.max(0, rider.min_sec_deposit - securityDeposit);
-        const depositAdded = Math.min(depositNeeded, remainingAmount);
+        // --------------------------------------------------
+        // STEP 2: COMPLETE SECURITY DEPOSIT
+        // --------------------------------------------------
 
-        securityDeposit += depositAdded;
-        remainingAmount -= depositAdded;
+        if (
+            securityDeposit < minSecurity &&
+            remainingAmount > 0
+        ) {
+            const depositNeeded =
+                minSecurity - securityDeposit;
 
-        /**
-         * STEP 3: Credit remaining amount to wallet
-         */
-        walletBalance += remainingAmount;
+            securityDepositAdded = Math.min(
+                remainingAmount,
+                depositNeeded
+            );
 
-        // Update rider balances
+            securityDeposit += securityDepositAdded;
+            remainingAmount -= securityDepositAdded;
+        }
+
+        // --------------------------------------------------
+        // STEP 3: BRING WALLET TO MINIMUM
+        // --------------------------------------------------
+
+        if (
+            walletBalance < minWallet &&
+            remainingAmount > 0
+        ) {
+            const walletNeeded =
+                minWallet - walletBalance;
+
+            const walletTopUp = Math.min(
+                remainingAmount,
+                walletNeeded
+            );
+
+            walletBalance += walletTopUp;
+
+            // Add this to total amount credited to wallet
+            walletAdded += walletTopUp;
+
+            remainingAmount -= walletTopUp;
+        }
+
+        // --------------------------------------------------
+        // STEP 4: ADD REMAINING AMOUNT TO WALLET
+        // --------------------------------------------------
+
+        if (remainingAmount > 0) {
+            walletBalance += remainingAmount;
+
+            // This is also part of the wallet amount added
+            walletAdded += remainingAmount;
+
+            remainingAmount = 0;
+        }
+
+        // --------------------------------------------------
+        // ROUND FINAL VALUES
+        // --------------------------------------------------
+
+        const finalWalletBalance = Number(
+            walletBalance.toFixed(2)
+        );
+
+        const finalSecurityDeposit = Number(
+            securityDeposit.toFixed(2)
+        );
+
+        const finalOutstanding = Number(
+            outstanding.toFixed(2)
+        );
+
+        // Round payment allocation values
+        outstandingPaid = Number(
+            outstandingPaid.toFixed(2)
+        );
+
+        securityDepositAdded = Number(
+            securityDepositAdded.toFixed(2)
+        );
+
+        walletAdded = Number(
+            walletAdded.toFixed(2)
+        );
+
+        // --------------------------------------------------
+        // DEBUG
+        // --------------------------------------------------
+
+        console.log(
+            "Cycle booking payment allocation:",
+            {
+                rider_id,
+                booking_id,
+                payment_id,
+                order_id,
+
+                paidAmount,
+
+                prev_balance,
+
+                current_security_deposit:
+                    Number(
+                        rider.security_deposit || 0
+                    ),
+
+                current_outstanding:
+                    Number(
+                        rider.out_standing_cost || 0
+                    ),
+
+                minWallet,
+                minSecurity,
+
+                // PAYMENT SETTLEMENT
+                outstandingPaid,
+                securityDepositAdded,
+                walletAdded,
+
+                // FINAL BALANCES
+                finalWalletBalance,
+                finalSecurityDeposit,
+                finalOutstanding,
+            }
+        );
+
+        // --------------------------------------------------
+        // UPDATE RIDER BALANCES
+        // --------------------------------------------------
+
         await updateRecord(
             "riders",
             {
-                amount: walletBalance,
-                security_deposit: securityDeposit,
-                out_standing_cost: outstanding,
+                amount: finalWalletBalance,
+                security_deposit: finalSecurityDeposit,
+                out_standing_cost: finalOutstanding,
             },
             ["rider_id"],
             [rider_id],
         );
 
-        // Save transaction
+        // --------------------------------------------------
+        // SAVE TRANSACTION
+        // --------------------------------------------------
+
         await insertRecord(
             "transaction_history",
             [
@@ -787,39 +1677,195 @@ const confirmCycleBookingPayment = async (rider_id, booking_id, payment) => {
                 rider_id,
                 booking_id,
                 paidAmount,
-                // "debt",
                 "crd",
                 payment_id,
                 order_id,
                 "CNF",
                 prev_balance,
-                walletBalance,
-                outstanding,
+                finalWalletBalance,
+                finalOutstanding,
             ],
         );
 
-        // Send confirmation email
-        const mail_template = NOTIFICATION_CONTENT["PAYMENT_SUCCESS_EMAIL"];
+        // --------------------------------------------------
+        // SEND PAYMENT CONFIRMATION EMAIL
+        // --------------------------------------------------
 
-        emailQueue.addEmail(
-            rider.rider_email,
-            mail_template.subject({
-                booking_id: rider.booking_id,
-            }),
-            mail_template.content({
-                rider_name: rider.rider_name,
-                amount: paidAmount,
-                booking_id: rider.booking_id,
-                cycle_id: rider.cycle_id,
-                time_taken: rider.time_taken,
-            }),
-        );
+        const mail_template =
+            NOTIFICATION_CONTENT[
+            "MOBILITY_NEW_FLOW_PAYMENT_SUCCESS_EMAIL"
+            ];
+
+        if (
+            rider.rider_email &&
+            mail_template
+        ) {
+            emailQueue.addEmail(
+                rider.rider_email,
+
+                mail_template.subject({
+                    booking_id:
+                        rider.booking_id || booking_id,
+                }),
+
+                mail_template.content({
+                    rider_name:
+                        rider.rider_name,
+
+                    amount:
+                        paidAmount,
+
+                    // --------------------------------------
+                    // PAYMENT SETTLEMENT BREAKDOWN
+                    // --------------------------------------
+
+                    outstanding_paid:
+                        outstandingPaid,
+
+                    security_deposit_added:
+                        securityDepositAdded,
+
+                    wallet_added:
+                        walletAdded,
+
+                    // --------------------------------------
+                    // BALANCES AFTER PAYMENT
+                    // --------------------------------------
+
+                    current_wallet_balance:
+                        finalWalletBalance,
+
+                    current_security_deposit:
+                        finalSecurityDeposit,
+
+                    remaining_outstanding:
+                        finalOutstanding,
+                }),
+            );
+        }
 
         return true;
+
     } catch (err) {
-        console.log(err);
-        webHooktryCatchErrorHandler("cycle booking webhook error", err);
+        console.log(
+            "Cycle booking payment confirmation error:",
+            err
+        );
+
+        webHooktryCatchErrorHandler(
+            "cycle booking webhook error",
+            err
+        );
+
         return false;
     }
 };
- 
+
+
+// export const completeRefundProcess = async ({
+//   refundRequestId,
+//   refundId,
+//   refundStatus,
+//   riderId,
+//   refundAmount,
+// }) => {
+//   // Refund request
+//   console.log("completeRefundProcess called\n\n\n")
+//   const refundRequest = await queryDB(
+//     `SELECT * FROM refund_requests WHERE id = ? LIMIT 1`,
+//     [refundRequestId],
+//   );
+
+//   if (!refundRequest) {
+//     throw new Error("Refund request not found");
+//   }
+
+//   // Already processed (idempotency)
+//   if (refundRequest.status === "approved") {
+//     return;
+//   }
+
+//   // Rider details
+//   const riderData = await queryDB(
+//     `SELECT amount, fcm_token
+//      FROM riders
+//      WHERE rider_id = ?
+//      LIMIT 1`,
+//     [riderId],
+//   );
+
+//   if (!riderData) {
+//     throw new Error("Rider not found");
+//   }
+
+//   const currentWalletAmount = Number(riderData.amount || 0);
+
+//   // Update refund request
+//   await updateRecord(
+//     "refund_requests",
+//     {
+//       status: "approved",
+//       refund_id: refundId,
+//       refund_status: refundStatus,
+//     },
+//     ["id"],
+//     [refundRequestId],
+//   );
+
+//   // Reset rider balances
+//   await updateRecord(
+//     "riders",
+//     {
+//       security_deposit: 0,
+//       out_standing_cost: 0,
+//     },
+//     ["rider_id"],
+//     [riderId],
+//   );
+
+//   // Transaction history
+//   await insertRecord(
+//     "transaction_history",
+//     [
+//       "rider_id",
+//       "amount",
+//       "payment_type",
+//       "outstanding",
+//       "current_balance",
+//       "prev_balance",
+//       "status",
+//       "payment_id",
+//     ],
+//     [
+//       riderId,
+//       refundAmount,
+//       "sd_refund",
+//       0,
+//       currentWalletAmount,
+//       currentWalletAmount,
+//       "CNF",
+//       refundId,
+//     ],
+//   );
+
+//   // Notification
+//   await sendNotification(
+//     "USER_REFUND_APPROVED",
+//     {
+//       amount: refundAmount,
+//       rider_id: riderId,
+//     },
+//     riderId,
+//     riderId,
+//   );
+
+//   const template = NOTIFICATION_CONTENT["USER_REFUND_APPROVED"];
+
+//   await pushNotification(
+//     riderData.fcm_token,
+//     template.heading,
+//     template.desc({ amount: refundAmount }),
+//     "RDRFCM",
+//     template.href({ rider_id: riderId }),
+//   );
+// };
