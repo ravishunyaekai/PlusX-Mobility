@@ -140,7 +140,7 @@ export const riderDetailsElectricDB = async (req, resp) => {
         const [ [riderAddress], [riderVehicles], ] = await Promise.all([
             db.execute(`
                 SELECT 
-                    address_id, street_name, "India" as emirate, area, building_name, unit_no, landmark, nick_name, latitude, longitude
+                    address_id, street_name, "India" as emirate, area, building_name, unit_no, landmark, nick_name, latitude, longitude, city, state
                 FROM rider_address
                 WHERE rider_id = ? `, [riderId]
             ),

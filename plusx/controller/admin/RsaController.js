@@ -40,19 +40,19 @@ export const riderBookingLists = async (req, resp) => {
                 LIMIT ${startIndex}, ${parseInt(limit, 10)} ` 
             ;         
         }
-        // else if (service_type == "Valet") {
-        //     query =  `
-        //         SELECT SQL_CALC_FOUND_ROWS
-        //             cs.request_id, rsa.rsa_name, cs.vehicle_id, cs.order_status,
-        //             DATE_FORMAT(cs.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time,
-        //             ROUND(cs.price / 100, 2) AS price, ${formatDateTimeInQuery(['cs.created_at'])}
-        //         FROM charging_service cs
-        //         LEFT JOIN rsa ON cs.rsa_id = rsa.rsa_id
-        //         WHERE cs.rider_id = ?
-        //         ORDER BY cs.created_at DESC
-        //         LIMIT ${startIndex}, ${parseInt(limit, 10)} `
-        //     ;
-        // }
+        else if (service_type == "Valet") {
+            query =  `
+                SELECT SQL_CALC_FOUND_ROWS
+                    cs.request_id, rsa.rsa_name, cs.vehicle_id, cs.order_status,
+                    DATE_FORMAT(cs.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time,
+                    ROUND(cs.price / 100, 2) AS price, ${formatDateTimeInQuery(['cs.created_at'])}
+                FROM charging_service cs
+                LEFT JOIN rsa ON cs.rsa_id = rsa.rsa_id
+                WHERE cs.rider_id = ?
+                ORDER BY cs.created_at DESC
+                LIMIT ${startIndex}, ${parseInt(limit, 10)} `
+            ;
+        }
         else if (service_type == "RSA") {
             query =  `
                 SELECT SQL_CALC_FOUND_ROWS
