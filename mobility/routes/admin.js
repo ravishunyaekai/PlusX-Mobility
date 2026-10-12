@@ -24,7 +24,7 @@ import { communityList, communityDetail, addCommunity, editCommunity, allCommuni
 
 const router = Router();
 
-const adminRoutes = [
+export const adminRoutes = [
     { method: 'post',   path: '/notification-list',            handler:notificationList },
     { method: 'post',   path: '/mobility-dashboard',           handler: mobilityDashboardData},
 
@@ -131,7 +131,7 @@ const adminRoutes = [
 
     { method: 'post',  path: '/session-list',    handler : sessionList },
     { method: 'post',  path: '/session-detail',  handler : sessionDetail },
-]; 
+];
 
 const uploadRules = {
     '/add-mobility-station' : { 
@@ -158,5 +158,6 @@ adminRoutes.forEach(({ method, path, handler }) => {
     router[method](path, ...middlewares, handler);
 });
     // { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
-// router.post('/approve-refund-request',approveRefundRequest)
+// router.post('/add-users',addUsers);
+export const adminMobilityProtectedRoutes = adminRoutes.map(route => route.path);
 export default router;

@@ -41,7 +41,7 @@ export const login = async(req, resp) => {
     try {
 
          const [users] = await db.execute(`SELECT id, name, email, phone, image,
-           ${formatDateTimeInQuery(['created_at', 'updated_at'])}, password,country_id,city_id,role,panel_link,access 
+           ${formatDateTimeInQuery(['created_at', 'updated_at'])}, password,country_id,city_id,role,panel_link,access, department_id
            FROM users WHERE email=?`, [email]);
           
         if(users.length === 0){ 
@@ -62,7 +62,7 @@ export const login = async(req, resp) => {
             sameSite : 'None',
             maxAge   : 3600000 
         });
-        // console.log(" users[0]", users[0])
+        console.log(" users[0]", users[0])
         resp.status(200).json({
             message     : "Login successfull",
             code        : 200, 

@@ -110,49 +110,112 @@ export const RiderList = async (req, resp) => {
 
 
 export const addUsers = asyncHandler(async (req, resp) => {
-        try {
-        const data = req.body;
+    try {
+        console.log("========== ADD USERS API ==========");
+        console.log("Request body:", req.body);
 
-            const {name,user_email,password,country,city,permison = 'view'} = data;
+        const {
+            name,
+            user_email,
+            password,
+            country,
+            city,
+            permission,
+            userId,
+            email
+        } = req.body ?? {};
 
-        const { isValid, errors } = validateFields(data, {
-        name: ["required"],
-        user_email: ["required"],
-        password: ["required"],
-        permison: ["required"],
-        country: ["required"],
-        city: ["required"]
+        console.log("Extracted data:", {
+            name,
+            user_email,
+            country,
+            city,
+            permission,
+            userId,
+            email,
+            passwordProvided: !!password
         });
 
-        if (!isValid) {
-        return resp.json({ status: 0, code: 422, message: errors });
+        // Validate required fields
+        if (
+            !name ||
+            !user_email ||
+            !password ||
+            !country ||
+            // !city ||
+            !permission
+        ) {
+            console.log("Missing required fields");
+
+            return resp.status(422).json({
+                status: 0,
+                code: 422,
+                message: "Name, email, password, country, city and permission are required."
+            });
         }
 
-        // Check if user already exists
-            const [existingUsers] = await db.execute(
-        'SELECT id FROM users WHERE email = ?',
-        [user_email]
-                );
+        // Check whether the user already exists
+        console.log("Checking existing email:", user_email);
+
+        const [existingUsers] = await db.execute(
+            "SELECT id FROM users WHERE email = ?",
+            [user_email]
+        );
 
         if (existingUsers.length > 0) {
-        return resp.json({ status: 0, code: 400, message: ["User already exists."] });
+            return resp.status(400).json({
+                status: 0,
+                code: 400,
+                message: ["User already exists."]
+            });
         }
 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Insert user
-        await db.execute(
-        `INSERT INTO users (name, email, password, access, country, city, role_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [name, user_email, hashedPassword, permison, country, city, 'ROLE002'] 
+        const insertValues = [
+            name,
+            user_email,
+            hashedPassword,
+            permission,
+            country,
+            "ROLE002"
+        ];
+
+        console.log("Insert values:", [
+            name,
+            user_email,
+            "[HIDDEN]",
+            permission,
+            country,
+            "ROLE002"
+        ]);
+
+        const [result] = await db.execute(
+            `INSERT INTO users
+            (name, email, password, access, country, role_id)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+            insertValues
         );
 
-        return resp.json({ status: 1,code:200,  message: "User added successfully." });
+        console.log("User created successfully. ID:", result.insertId);
+
+        return resp.status(200).json({
+            status: 1,
+            code: 200,
+            message: "User added successfully."
+        });
 
     } catch (error) {
-        console.error('AddUsers Error:', error);
-        resp.status(500).json({ message: 'Something went wrong. Please try again later.' });
+        console.error("AddUsers Error:", error.message);
+        console.error(error.stack);
+
+        return resp.status(500).json({
+            status: 0,
+            code: 500,
+            message: "Something went wrong. Please try again later."
+        });
     }
 });
 
