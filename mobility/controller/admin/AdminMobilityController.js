@@ -11,7 +11,7 @@ import moment from "moment";
 
 //AdminMobilityController.js";
 export const RiderList = async (req, resp) => {
-    let { page_no, sortBy, addedFrom='admin',  start_date, end_date, search_text = '' ,country_id,city_id} = req.body;
+    let { page_no, sortBy, addedFrom='admin',  start_date, end_date, search_text = '' ,country_id,city_id, panel} = req.body;
     // console.log(" req.body", req.body)
 
     // if(!req.db){console.log("databse required")}
@@ -64,6 +64,16 @@ export const RiderList = async (req, resp) => {
             params.whereField.push('added_from');
             params.whereValue.push(addedFrom);
             params.whereOperator.push('!=');
+        }
+
+        // Riders with a vehicle or address belong to PlusX only
+        if (panel === 'mobility') {
+            params.whereField.push(`(
+                NOT EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = riders.rider_id)
+                AND NOT EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = riders.rider_id)
+            )`);
+            params.whereValue.push(1);
+            params.whereOperator.push('=');
         }
         
         if (country_id){
@@ -265,7 +275,7 @@ export const oldstateCountry = asyncHandler(async (req, resp) => {
 
 
 export const DeletedRiderList = async (req, resp) => {
-    let { page_no, addedFrom,  start_date, end_date, search_text = '' ,country_id,city_id} = req.body;
+    let { page_no, addedFrom,  start_date, end_date, search_text = '' ,country_id,city_id, panel} = req.body;
 
     page_no = parseInt(page_no, 10);
     if (isNaN(page_no) || page_no < 1) {
@@ -314,6 +324,16 @@ export const DeletedRiderList = async (req, resp) => {
         if(addedFrom) {
             params.whereField.push('added_from');
             params.whereValue.push(addedFrom);
+            params.whereOperator.push('=');
+        }
+
+        // Riders with a vehicle or address belong to PlusX only
+        if (panel === 'mobility') {
+            params.whereField.push(`(
+                NOT EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = deleted_riders.rider_id)
+                AND NOT EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = deleted_riders.rider_id)
+            )`);
+            params.whereValue.push(1);
             params.whereOperator.push('=');
         }
          if (country_id){
