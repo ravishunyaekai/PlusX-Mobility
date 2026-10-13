@@ -47,6 +47,8 @@ import { podDeviceList, podDeviceDetails, addPodDevice, editPodDevice, deletePod
 import { bikeList, bikeDetails, addBike, editBike, bikeSwipeData } from "../controller/admin/BikeController.js";
 import { swipeStationList, stationDetails, addStation, editStation } from "../controller/admin/SwipeStationController.js";
 import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector, chargeShareDelete, editChargShare, rejectChargShare, acceptChargShare } from "../controller/admin/ChargeShareController.js";
+import { RiderList } from "../../mobility/controller/admin/AdminMobilityController.js";
+
 const router = Router();
 
 const adminAuthRoutes = [
@@ -61,6 +63,7 @@ adminAuthRoutes.forEach(({ method, path, handler }) => {
 const adminRoutes = [
 
     { method: 'post', path: '/dashboard', handler: getDashboardData },
+    { method: 'post', path: '/electric-customer-list', handler: RiderList },
     { method: 'post', path: '/plusx-notification-list', handler: notificationList },
 
     { method: 'post', path: '/location-list', handler: locationList },
