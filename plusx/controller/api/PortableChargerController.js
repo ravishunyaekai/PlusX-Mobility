@@ -704,7 +704,7 @@ export const userCancelPCBooking = asyncHandler(async (req, resp) => {
         return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
     }
     let slotDateTime = moment(`${checkOrder.slot_date} ${checkOrder.slot_time}`).format('YYYY-MM-DD HH:mm:ss');
-    let dubaiTime    = moment.tz("Asia/Dubai").format('YYYY-MM-DD HH:mm:ss');
+    let dubaiTime    = moment.tz("Asia/Kolkata").format('YYYY-MM-DD HH:mm:ss');
     
     let cancellationDeadline = moment(slotDateTime).subtract(1, 'hours').format('YYYY-MM-DD HH:mm:ss');
     if (dubaiTime > cancellationDeadline) {

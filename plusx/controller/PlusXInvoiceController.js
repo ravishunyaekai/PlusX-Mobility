@@ -93,7 +93,7 @@ export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
             </html>`;
             emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your EV Pickup and Drop Off Service', htmlUser);
 
-            let dubaiTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" });
+            let dubaiTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
             dubaiTime     = moment(dubaiTime).format('D MMM, YYYY, h:mm A');
             const htmlAdmin = `<html>
                 <body>
@@ -194,7 +194,7 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
             </html>`;
             emailQueue.addEmail(checkOrder.rider_email, 'PlusX Electric App: Booking Confirmation for Your Portable EV Charger', htmlUser);
 
-            let dubaiTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" });
+            let dubaiTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
             dubaiTime     = moment(dubaiTime).format('D MMM, YYYY, h:mm A');
             const htmlAdmin = `<html>
                 <body>

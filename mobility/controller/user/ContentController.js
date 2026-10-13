@@ -112,7 +112,7 @@ export const userTransactionList = asyncHandler(async (req, resp) => {
 
         const riderData = await queryDB(
             `
-            SELECT r.out_standing_cost, r.amount, r.security_deposit, c.min_wallet_price FROM riders r 
+            SELECT r.out_standing_cost, r.amount, r.security_deposit, c.new_min_wallet_price as min_wallet_price FROM riders r 
             LEFT JOIN country c ON c.country_id = r.country_id WHERE rider_id = ? `,
             [rider_id],
         );

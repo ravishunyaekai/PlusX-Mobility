@@ -375,18 +375,18 @@ export const requestList = asyncHandler(async (req, resp) => {
     const [result] = await db.query(`
         SELECT * FROM (
                 SELECT 
-                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Dubai'), '%Y-%m-%d %H:%i:%s') AS created_at, "CIS" as booking_type
+                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Kolkata'), '%Y-%m-%d %H:%i:%s') AS created_at, "CIS" as booking_type
                 FROM charging_installation_service
                 WHERE rider_id = ?
             UNION ALL
                 SELECT 
-                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Dubai'), '%Y-%m-%d %H:%i:%s') AS created_at, "FCB" as booking_type
+                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Kolkata'), '%Y-%m-%d %H:%i:%s') AS created_at, "FCB" as booking_type
                 FROM ev_charger_booiking
                 WHERE rider_id = ?
 
             UNION ALL
                 SELECT 
-                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Dubai'), '%Y-%m-%d %H:%i:%s') AS created_at, "AB" as booking_type
+                    request_id, name, email, country_code, contact_no, address, latitude, longitude, order_status, DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Kolkata'), '%Y-%m-%d %H:%i:%s') AS created_at, "AB" as booking_type
                 FROM ev_accessories_booiking
                 WHERE rider_id = ?
         ) AS combined

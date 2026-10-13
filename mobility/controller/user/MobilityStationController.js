@@ -34,7 +34,7 @@ export const cycleStationList = asyncHandler(async (req, resp) => {
     
     const sortOrder = (sort_by === 'd') ? 'DESC' : 'ASC';
     
-    query += ` HAVING distance <= 50`;
+    query += ` HAVING distance <= 10`;
     query += ` ORDER BY distance ${sortOrder} LIMIT ${start}, ${limit}`;
     const [stations] = await db.execute(query, queryParams);
     
@@ -160,7 +160,7 @@ export const nearByStaion = asyncHandler(async (req, resp) => {
         LEFT JOIN  cycle_list cl ON cl.station_id = msl.station_id 
         GROUP BY msl.station_name, msl.latitude, msl.longitude
         HAVING  cycle_count > 0
-        AND distance <= 50
+        AND distance <= 10
         ORDER BY distance ASC `, [ latitude, longitude, latitude]
     );
     return resp.json({
@@ -196,7 +196,7 @@ export const nearByStaionDetails = asyncHandler(async (req, resp) => {
             mobility_station_list msl
         LEFT JOIN  cycle_list cl ON cl.station_id = msl.station_id 
         WHERE msl.station_id=? GROUP BY msl.station_name, msl.latitude, msl.longitude
-        HAVING cycle_count > 0 AND distance <= 50 ORDER BY distance ASC `, [ latitude, longitude, latitude, station_id ] 
+        HAVING cycle_count > 0 AND distance <= 10 ORDER BY distance ASC `, [ latitude, longitude, latitude, station_id ] 
     );
     const data = { 
         station,
