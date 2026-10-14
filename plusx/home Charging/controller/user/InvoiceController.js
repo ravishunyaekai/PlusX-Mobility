@@ -28,7 +28,6 @@ export const pickAndDropInvoice = asyncHandler(async (req, resp) => {
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
     // const conn = await startTransaction();
-    console.log('Invoice Valet');
     try {
         const checkOrder = await queryDB(`
             SELECT 
@@ -243,7 +242,6 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
         // razorpay_signature:["required"],
         // razorpay_order_id: ["required"]
     });
-    console.log("working")
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     // const conn = await startTransaction();
@@ -261,7 +259,6 @@ export const portableChargerInvoice = asyncHandler(async (req, resp) => {
         `, [request_id, rider_id]);  //AND pcb.service_price = "0"
 
         if (!checkOrder || parseFloat(checkOrder.service_price) > 0) {
-            console.log("step 2 inside if price is >0")
 
             let respMsg = "Booking Request Received! Thank you for booking our mobile EV charging service for your EV. Our team will arrive at the scheduled time.";
             return resp.json({ message: [respMsg], status: 1, code: 200 });
@@ -406,7 +403,6 @@ export const rsaInvoice = asyncHandler(async (req, resp) => {
         request_id: ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    console.log('Invoice RSA');
     // const conn = await startTransaction();
     try {
         const checkOrder = await queryDB(`

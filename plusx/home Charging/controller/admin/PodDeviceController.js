@@ -87,7 +87,6 @@ export const podDeviceDetails = async (req, resp) => {
 };
 
 export const addPodDevice = async (req, resp) => {
-    console.log(req.body);
     // return resp.json({ status: 0, code: 422, message: 'Battery data must be in array format.' });
     try {
         const { podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing, status = 1, battery_ids, capacities } = req.body;
@@ -721,7 +720,6 @@ export const podAreaBookingList = async (req, resp) => {
             whereField       : ['pcb.pod_id', 'pcb.status'],  
             whereValue       : [podId, 'RO']
         });
-        console.log(result.data)
         return resp.json({
             status     : 1,
             code       : 200,

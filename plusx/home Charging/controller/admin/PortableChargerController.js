@@ -64,7 +64,6 @@ export const chargerDetails = async (req, resp) => {
                 charger_id = ?`,
             [charger_id]
         );
-        console.log('image', chargerDetails[0].image)
 
         return resp.json({
             status: 1,
@@ -180,9 +179,6 @@ export const deleteCharger = async (req, resp) => {
 export const chargerBookingList = async (req, resp) => {
     try {
         const { page_no, booking_id, name, contact, status, start_date, end_date, search_text = '', scheduleFilters, areaSelected, rowSelected } = req.body;
-        console.log(req.body);
-        console.log(req.query);
-        console.log(mergeParam(req));
         const { isValid, errors } = validateFields(req.body, { page_no: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
@@ -243,7 +239,6 @@ export const chargerBookingList = async (req, resp) => {
             params.whereOperator.push('=');
         }
         const result = await getPaginatedData(params);
-        console.log("\nresult", result.data);
         return resp.json({
             status: 1,
             code: 200,
@@ -261,7 +256,6 @@ export const chargerBookingList = async (req, resp) => {
 export const chargerBookingDetails = async (req, resp) => {
     try {
         const { booking_id } = req.body;
-        console.log("chargerBookingDetails req.body", req.body);
 
         if (!booking_id) {
             return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
@@ -453,7 +447,6 @@ export const invoiceList = async (req, resp) => {
             whereValue: whereValues,
             whereOperator: whereOperators
         });
-        console.log(result.data)
         return resp.json({
             status: 1,
             code: 200,
@@ -470,7 +463,6 @@ export const invoiceList = async (req, resp) => {
 export const invoiceDetailsOld = async (req, resp) => {
     try {
         const { invoice_id } = req.body;
-        console.log('invoice_id', invoice_id);
         const { isValid, errors } = validateFields(req.body, { invoice_id: ["required"] });
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
@@ -546,7 +538,6 @@ export const invoiceDetailsOld = async (req, resp) => {
 export const invoiceDetails = async (req, resp) => {
     try {
         const { invoice_id } = req.body;
-        console.log("invoiceDetails", req.body)
 
         const { isValid, errors } = validateFields(req.body, {
             invoice_id: ["required"]
@@ -979,7 +970,6 @@ export const editSlot = asyncHandler(async (req, resp) => {
 export const deleteSlot = async (req, resp) => {
     try {
         const { slot_date } = req.body;
-        console.log('slot_date', req.body.slot_date);
 
 
         const { isValid, errors } = validateFields(req.body, {
@@ -1424,7 +1414,6 @@ export const AddChargingPackage = asyncHandler(async (req, resp) => {
             [package_name]
         );
 
-        console.log(checkPackage.length > 0);
         if (checkPackage.length > 0)
             return resp.json({
                 status: 0,
@@ -1433,7 +1422,6 @@ export const AddChargingPackage = asyncHandler(async (req, resp) => {
         const [lastIdResult] = await db.execute("SELECT IFNULL(MAX(id), 0) AS lastId FROM home_ev_charging_packages");
 
         const package_id = `PKG${1401 + lastIdResult[0].lastId}`;
-        console.log("---------------", package_id)
         const insert = await insertRecord(
             "home_ev_charging_packages",
             [
@@ -1502,7 +1490,6 @@ export const ChargingPackageList = asyncHandler(async (req, resp) => {
             whereField: ['is_deleted'],
             whereValue: [0],
         });
-        console.log("result", result)
 
         return resp.json({
             status: 1,
@@ -1617,7 +1604,6 @@ export const deletePackage = async (req, resp) => {
     try {
         const { package_id } = req.body;
 
-        console.log('package_id', package_id);
 
         const { isValid, errors } = validateFields(req.body, {
             package_id: ["required"]

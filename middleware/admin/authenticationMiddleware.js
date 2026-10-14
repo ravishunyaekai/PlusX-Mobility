@@ -2,23 +2,14 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import db from "../../config/indiadb.js";
 import { adminMobilityProtectedRoutes } from '../../mobility/routes/admin.js';
-// import { adminRoutes } from "../../mobility/routes/admin.js";
 dotenv.config();
 
-// console.log("adminMobilityProtectedRoutes", adminMobilityProtectedRoutes);
 export const authenticateAdmin = async (req, resp, next) => {
   try {
 
     const { userId, email } = req.body;
     // Headers are lowercase and their values are strings.
     const departmentId = Number(req?.headers?.departmentid || 0);
-
-    console.log("Authentication request:", {
-      userId,
-      email,
-      departmentId,
-      path: req.path,
-    });
 
     // Validate department ID.
     if (!Number.isInteger(departmentId)) {

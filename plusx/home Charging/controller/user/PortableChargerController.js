@@ -416,9 +416,6 @@ export const chargerBookingList = asyncHandler(async (req, resp) => {
         bookingStatus: ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-    console.log(req.body);
-    console.log(req.query);
-    console.log(mergeParam(req));
 
     const limit = 10;
     const start = (page_no * limit) - limit;
@@ -1124,7 +1121,6 @@ export const podInvoiceDetailsOld1 = asyncHandler(async (req, resp) => {
 });
 
 export const podInvoiceDetails = asyncHandler(async (req, resp) => {
-    console.log("functionn called")
     const { rider_id, booking_id } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
         rider_id: ["required"],

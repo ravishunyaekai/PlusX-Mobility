@@ -15,32 +15,8 @@ import moment from "moment";
 import Razorpay from "razorpay";
 
 export const razorpayWebhook = async (req, res) => {
-    console.log("\n\n========================================");
-    console.log("🔥 RAZORPAY WEBHOOK CONTROLLER HIT");
-    console.log("========================================");
 
     try {
-        console.log("[WEBHOOK 1] Method:", req.method);
-        console.log("[WEBHOOK 2] URL:", req.originalUrl);
-        console.log("[WEBHOOK 3] Headers:", {
-            signature: req.headers["x-razorpay-signature"],
-            contentType: req.headers["content-type"],
-        });
-
-        console.log("[WEBHOOK 4] Body type:", typeof req.body);
-        console.log("[WEBHOOK 5] Is Buffer:", Buffer.isBuffer(req.body));
-
-        if (Buffer.isBuffer(req.body)) {
-            console.log(
-                "[WEBHOOK 6] Raw body length:",
-                req.body.length
-            );
-        } else {
-            console.log(
-                "[WEBHOOK 6] Body:",
-                req.body
-            );
-        }
 
         const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
         const signature = req.headers["x-razorpay-signature"];
@@ -72,21 +48,11 @@ export const razorpayWebhook = async (req, res) => {
             ? req.body
             : Buffer.from(JSON.stringify(req.body));
 
-        console.log(
-            "[WEBHOOK 9] Raw body prepared. Length:",
-            rawBody.length
-        );
 
         const expectedSignature = crypto
             .createHmac("sha256", webhookSecret)
             .update(rawBody)
             .digest("hex");
-
-        console.log("[WEBHOOK 10] Signature comparison:", {
-            received: signature,
-            expected: expectedSignature,
-            matched: signature === expectedSignature,
-        });
 
         // Verify Razorpay signature
         if (signature !== expectedSignature) {
@@ -106,10 +72,6 @@ export const razorpayWebhook = async (req, res) => {
         try {
             event = JSON.parse(rawBody.toString());
 
-            console.log(
-                "[WEBHOOK 12] Event parsed successfully:",
-                event.event
-            );
         } catch (parseError) {
             console.error(
                 "[WEBHOOK ERROR] JSON parsing failed:",
@@ -119,31 +81,17 @@ export const razorpayWebhook = async (req, res) => {
             return res.status(200).send("ok");
         }
 
-        console.log("[WEBHOOK 13] Full event name:", event.event);
 
         // ============================================
         // REFUND EVENTS
         // ============================================
 
         if (event.event === "refund.processed") {
-            console.log("🔥 REFUND.PROCESSED EVENT");
 
             const refund = event.payload.refund.entity;
 
-            console.log("[REFUND] Refund data:", {
-                refundId: refund.id,
-                paymentId: refund.payment_id,
-                amount: refund.amount,
-                notes: refund.notes,
-            });
-
             const refundRequestId =
                 refund.notes?.refund_request_id;
-
-            console.log(
-                "[REFUND] refundRequestId:",
-                refundRequestId
-            );
 
             await updateRecord(
                 "refund_requests",
@@ -212,19 +160,12 @@ export const razorpayWebhook = async (req, res) => {
                 );
             }
 
-            console.log(
-                "[REFUND] refund.processed completed"
-            );
-
             return res.status(200).send("ok");
         }
 
         if (event.event === "refund.failed") {
-            console.log("🔥 REFUND.FAILED EVENT");
 
             const refund = event.payload.refund.entity;
-
-            console.log("[REFUND FAILED] Data:", refund);
 
             await updateRecord(
                 "refund_requests",
@@ -242,11 +183,6 @@ export const razorpayWebhook = async (req, res) => {
         // ============================================
         // PAYMENT EVENTS
         // ============================================
-
-        console.log(
-            "[WEBHOOK 14] Processing payment event..."
-        );
-
         const payment =
             event.payload?.payment?.entity;
 
@@ -255,34 +191,18 @@ export const razorpayWebhook = async (req, res) => {
                 "[WEBHOOK ERROR] Payment entity not found"
             );
 
-            console.log(
-                "[WEBHOOK] Payload:",
-                event.payload
-            );
-
             return res.status(200).send("ok");
         }
 
-        console.log("[WEBHOOK 15] Payment details:", payment);
 
         const bookingType =
             payment.notes?.booking_type;
-
-        console.log(
-            "[WEBHOOK 16] booking_type:",
-            bookingType
-        );
 
         switch (bookingType) {
 
             case "RSA":
 
-                console.log("🔥 RSA CASE HIT");
-
                 if (event.event === "payment.captured") {
-                    console.log(
-                        "[RSA] Calling rsaInvoice..."
-                    );
 
                     await rsaInvoice(
                         payment.notes.rider_id,
@@ -291,10 +211,6 @@ export const razorpayWebhook = async (req, res) => {
                         payment.notes.coupon_code,
                     );
                 } else {
-                    console.log(
-                        "[RSA] Payment not captured:",
-                        event.event
-                    );
 
                     await updateRecord(
                         "road_assistance",
@@ -307,26 +223,7 @@ export const razorpayWebhook = async (req, res) => {
                 break;
 
             case "MOBILITY":
-
-                console.log("🔥🔥 MOBILITY CASE HIT 🔥🔥");
-
-                console.log("[MOBILITY] Event:", event.event);
-
-                console.log("[MOBILITY] Payment notes:", {
-                    rider_id: payment.notes?.rider_id,
-                    amount: payment.notes?.amount,
-                    booking_type: payment.notes?.booking_type,
-                });
-
                 if (event.event === "payment.captured") {
-
-                    console.log(
-                        "🔥 [MOBILITY] PAYMENT CAPTURED"
-                    );
-
-                    console.log(
-                        "[MOBILITY] Calling addMoneywebhook..."
-                    );
 
                     const result = await addMoneywebhook(
                         payment.notes.rider_id,
@@ -334,11 +231,6 @@ export const razorpayWebhook = async (req, res) => {
                         payment.order_id,
                         payment.notes.amount,
                         payment,
-                    );
-
-                    console.log(
-                        "[MOBILITY] addMoneywebhook result:",
-                        result
                     );
 
                 } else {
@@ -353,13 +245,7 @@ export const razorpayWebhook = async (req, res) => {
 
             case "PCB":
 
-                console.log("🔥 PCB CASE HIT");
-
                 if (event.event === "payment.captured") {
-
-                    console.log(
-                        "[PCB] Calling portableChargerBookingConfirm..."
-                    );
 
                     await portableChargerBookingConfirm(
                         payment.notes.booking_id,
@@ -381,13 +267,7 @@ export const razorpayWebhook = async (req, res) => {
 
             case "HEV":
 
-                console.log("🔥 HEV CASE HIT");
-
                 if (event.event === "payment.captured") {
-
-                    console.log(
-                        "[HEV] Calling portableChargerBookingConfirm..."
-                    );
 
                     await portableChargerBookingConfirm(
                         payment.notes.booking_id,
@@ -409,18 +289,7 @@ export const razorpayWebhook = async (req, res) => {
 
             case "BOOKING":
 
-                console.log("🔥 BOOKING CASE HIT");
-
-                console.log(
-                    "[BOOKING] Event:",
-                    event.event
-                );
-
                 if (event.event === "payment.captured") {
-
-                    console.log(
-                        "[BOOKING] Calling confirmCycleBookingPayment..."
-                    );
 
                     await confirmCycleBookingPayment(
                         payment.notes.rider_id,
@@ -432,18 +301,7 @@ export const razorpayWebhook = async (req, res) => {
 
             case "SCI":
 
-                console.log("🔥 SCI CASE HIT");
-
-                console.log(
-                    "[SCI] Event:",
-                    event.event
-                );
-
                 if (event.event === "payment.captured") {
-
-                    console.log(
-                        "[SCI] Calling confirmCycleBookingPayment..."
-                    );
 
                     // await confirmCycleBookingPayment(
                     //     payment.notes.rider_id,
@@ -503,22 +361,9 @@ export const razorpayWebhook = async (req, res) => {
 
             default:
 
-                console.log(
-                    "⚠️ UNKNOWN booking_type:",
-                    bookingType
-                );
-
-                console.log(
-                    "⚠️ Event:",
-                    event.event
-                );
-
                 return res.status(200).send("ok");
         }
 
-        console.log(
-            "========== WEBHOOK PROCESSING COMPLETE =========="
-        );
 
         return res.status(200).send("ok");
 
@@ -579,7 +424,6 @@ const rsaInvoice = async (
             const insert = await insertRecord('order_history', ['order_id', 'order_status', 'rider_id'], [request_id, 'CNF', rider_id]); //, conn
 
             if (insert.affectedRows == 0) {
-                console.log("order_history insert failed for request_id:", request_id);
                 return false;
             }
             if (coupon_code) {
@@ -749,7 +593,6 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
     // const conn = await startTransaction();
     // const { booking_id, payment_intent_id, couponCode } = req.body;
     try {
-        console.log("function called", booking_id, payment_intent_id, couponCode);
         // PCB0049 pay_TK3XElf3IAL2yA
         const checkOrder = await queryDB(`
           SELECT 
@@ -777,10 +620,8 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
     `, [booking_id]);
 
         if (!checkOrder) {
-            console.log("No order found for booking_id:", booking_id);
             return res.status(404).json({ success: false, message: "Booking not found or already confirmed." });
         }
-        console.log("Order found:", checkOrder);
         const battery_percent = checkOrder?.current_percent > 0 ? "More than 10 %" : "0 %";
 
         const ordHistoryCount = await queryDB(
@@ -789,7 +630,6 @@ export const portableChargerBookingConfirm = async (booking_id, payment_intent_i
             WHERE booking_id = ? 
             AND order_status = "CNF"`, [booking_id]
         );
-        console.log("Order history count:", ordHistoryCount.count);
         if (ordHistoryCount.count === 0) {
 
             const insert = await insertRecord('portable_charger_history', ['booking_id', 'rider_id', 'order_status'], [booking_id, checkOrder.rider_id, 'CNF']);
@@ -914,9 +754,6 @@ const addMoneywebhook = async (
     payment
 ) => {
     try {
-        console.log(
-            `Processing addMoneywebhook for rider_id: ${rider_id}, amount: ${amount}`
-        );
 
         const paidAmount = Number(amount || 0);
 
@@ -1021,11 +858,6 @@ const addMoneywebhook = async (
             outstanding -= outstandingPaid;
             remainingAmount -= outstandingPaid;
 
-            console.log("Outstanding payment:", {
-                outstandingPaid,
-                remainingOutstanding: outstanding,
-                remainingAmount,
-            });
         }
 
         // --------------------------------------------------
@@ -1047,11 +879,6 @@ const addMoneywebhook = async (
             securityDeposit += securityDepositAdded;
             remainingAmount -= securityDepositAdded;
 
-            console.log("Security deposit payment:", {
-                securityDepositAdded,
-                securityDeposit,
-                remainingAmount,
-            });
         }
 
         // --------------------------------------------------
@@ -1076,11 +903,6 @@ const addMoneywebhook = async (
 
             remainingAmount -= walletTopUp;
 
-            console.log("Minimum wallet top-up:", {
-                walletTopUp,
-                walletBalance,
-                remainingAmount,
-            });
         }
 
         // --------------------------------------------------
@@ -1094,10 +916,6 @@ const addMoneywebhook = async (
 
             remainingAmount = 0;
 
-            console.log("Remaining amount added to wallet:", {
-                walletAdded,
-                walletBalance,
-            });
         }
 
         // --------------------------------------------------
@@ -1126,42 +944,6 @@ const addMoneywebhook = async (
 
         walletAdded = Number(
             walletAdded.toFixed(2)
-        );
-
-        // --------------------------------------------------
-        // DEBUG
-        // --------------------------------------------------
-
-        console.log(
-            "Add money payment allocation:",
-            {
-                rider_id,
-                payment_intent_id,
-                razorpay_order_id,
-
-                paidAmount,
-
-                prevBalance,
-
-                current_security_deposit:
-                    Number(rider.security_deposit || 0),
-
-                current_outstanding:
-                    Number(rider.out_standing_cost || 0),
-
-                minWallet,
-                minSecurity,
-
-                // PAYMENT SETTLEMENT
-                outstandingPaid,
-                securityDepositAdded,
-                walletAdded,
-
-                // FINAL BALANCES
-                finalWalletBalance,
-                finalSecurityDeposit,
-                finalOutstanding,
-            }
         );
 
         // --------------------------------------------------
@@ -1597,47 +1379,6 @@ const confirmCycleBookingPayment = async (
 
         walletAdded = Number(
             walletAdded.toFixed(2)
-        );
-
-        // --------------------------------------------------
-        // DEBUG
-        // --------------------------------------------------
-
-        console.log(
-            "Cycle booking payment allocation:",
-            {
-                rider_id,
-                booking_id,
-                payment_id,
-                order_id,
-
-                paidAmount,
-
-                prev_balance,
-
-                current_security_deposit:
-                    Number(
-                        rider.security_deposit || 0
-                    ),
-
-                current_outstanding:
-                    Number(
-                        rider.out_standing_cost || 0
-                    ),
-
-                minWallet,
-                minSecurity,
-
-                // PAYMENT SETTLEMENT
-                outstandingPaid,
-                securityDepositAdded,
-                walletAdded,
-
-                // FINAL BALANCES
-                finalWalletBalance,
-                finalSecurityDeposit,
-                finalOutstanding,
-            }
         );
 
         // --------------------------------------------------
