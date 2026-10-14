@@ -579,7 +579,7 @@ export const startChargingCheck = async (
                 "YYYY-MM-DD HH:mm:ss",
                 "Asia/Kolkata",);
 
-            const end_time = moment().add(5, "hours").add(30, "minutes");
+            const end_time = moment();//.add(5, "hours").add(30, "minutes");
 
             /**
              * NOW this works because both are Moment objects.
@@ -731,7 +731,7 @@ export const stopCharge = async (
         /**
          * Keep end_time as Moment.
          */
-        const end_time = moment().add(5, "hours").add(30, "minutes");
+        const end_time = moment();//.add(5, "hours").add(30, "minutes");
 
         /**
          * Calculate duration BEFORE formatting.
@@ -1004,7 +1004,7 @@ export const chargingDetail = async (
         /**
          * Keep end_time as Moment.
          */
-        const end_time = moment().add(5, "hours").add(30, "minutes");
+        const end_time = moment();//.add(5, "hours").add(30, "minutes");
 
         /**
          * Calculate before formatting.

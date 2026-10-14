@@ -576,7 +576,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     </html>`;
     emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
 
-    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
+    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
 
     sendOtp(fullMobile, 35, otp)
         .then(result => {
@@ -725,7 +725,7 @@ export const createOTP = asyncHandler(async (req, resp) => {
     </html>`;
     emailQueue.addEmail(riderData.rider_email, `Your OTP for Signin - PlusX Electric`, html);
 
-    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
+    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] });
 
     sendOtp(fullMobile, 34, otp)
         .then(result => {
@@ -967,7 +967,7 @@ const scanChargingDetail = async (rider_id) => {
         const start_time = moment(chargingData?.start_time,
             "YYYY-MM-DD HH:mm:ss",
             "Asia/Kolkata",);
-        const end_time = moment().add(5, "hours").add(30, "minutes");
+        const end_time = moment();//.add(5, "hours").add(30, "minutes");
         const diffInMinutes = end_time.diff(start_time, "minutes");
 
         const total_consumption = parseFloat(currentReading) - parseFloat(chargingData?.start_kwh);

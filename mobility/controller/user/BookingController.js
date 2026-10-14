@@ -161,11 +161,11 @@ export const validateRideStart = async ({
     }
 
     // Station Time
-    // const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-    const currTime = moment()
-        .add(5, "hours")
-        .add(30, "minutes")
-        .format("HH:mm:ss");
+    const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
+    // const currTime = moment()
+    //     .add(5, "hours")
+    //     .add(30, "minutes")
+    //     .format("HH:mm:ss");
 
     if (currTime < pricing.open_time || currTime > pricing.close_time) {
         const formatTime = (time) => {
@@ -394,11 +394,11 @@ export const startScanCycleQrOld = asyncHandler(async (req, resp) => {
         });
     }
 
-    // const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
-    const currTime = moment()
-        .add(5, "hours")
-        .add(30, "minutes")
-        .format("HH:mm:ss");
+    const currTime = moment().tz("Asia/Kolkata").format("HH:mm:ss");
+    // const currTime = moment()
+    //     .add(5, "hours")
+    //     .add(30, "minutes")
+    //     .format("HH:mm:ss");
 
     if (
         currTime < pricing_details.open_time ||
@@ -1181,8 +1181,8 @@ export const stopeRide = asyncHandler(async (req, resp) => {
     );
 
     const nowMoment = moment()
-        .add(5, "hours")
-        .add(30, "minutes");
+        // .add(5, "hours")
+        // .add(30, "minutes");
 
     const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
     let diffInMinutes = nowMoment.diff(pickMoment, "minutes");
@@ -1577,7 +1577,7 @@ export const completeLockerQrOld = asyncHandler(async (req, resp) => {
     const pick_db_ime = bookingDetail.pick_time;
     const pickMoment = moment(pick_db_ime, "YYYY-MM-DD HH:mm:ss", "Asia/Kolkata");
 
-    const nowMoment = moment().add(5, "hours").add(30, "minutes");
+    const nowMoment = moment();//.add(5, "hours").add(30, "minutes");
 
     // difference
     const diffInSeconds = nowMoment.diff(pickMoment, "seconds");
@@ -1976,7 +1976,7 @@ export const completeLockerQr = asyncHandler(async (req, resp) => {
             "Asia/Kolkata",
         );
 
-        const nowMoment = moment().add(5, "hours").add(30, "minutes");;
+        const nowMoment = moment();//.add(5, "hours").add(30, "minutes");;
 
         const diffInSeconds = nowMoment.diff(
             pickMoment,
@@ -2499,7 +2499,7 @@ export const nearByStaionLocker = asyncHandler(async (req, resp) => {
             FROM mobility_station_list msl
             LEFT JOIN cycle_list cl ON cl.station_id = msl.station_id
             GROUP BY msl.operator_contact, msl.station_id, msl.station_name, msl.latitude, msl.longitude
-        ) AS sub WHERE distance <= 10
+        ) AS sub WHERE distance <= 50
         ORDER BY distance ASC `,
         [latitude, longitude, latitude],
     );
@@ -2554,7 +2554,7 @@ export const manualRideCreateOTPOld = asyncHandler(async (req, resp) => {
         html,
     );
 
-    // return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
+    return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
 
     sendOtp(fullMobile, 38, otp)
         .then((result) => {
@@ -2662,7 +2662,7 @@ export const manualRideCreateOTP = asyncHandler(async (req, resp) => {
 
         // Send SMS OTP
 
-        // return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
+        return resp.json({ status: 1, code: 200, otp, message: ["OTP sent to the station operator for verification"] });
 
         sendOtp(
             fullMobile,
@@ -2905,7 +2905,7 @@ const completeride = async (
             "Asia/Kolkata",
         );
 
-        const nowMoment = moment().add(5, "hours").add(30, "minutes");
+        const nowMoment = moment();//.add(5, "hours").add(30, "minutes");
 
         // difference
         const diffInSeconds = nowMoment.diff(
