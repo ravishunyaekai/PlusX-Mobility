@@ -65,7 +65,7 @@ export const RiderList = async (req, resp) => {
             params.whereValue.push(addedFrom);
             params.whereOperator.push('!=');
         }
- 
+
         // Riders with a vehicle or address belong to PlusX only
         if (panel === 'mobility') {
             params.whereField.push(`(
@@ -276,7 +276,6 @@ export const oldstateCountry = asyncHandler(async (req, resp) => {
  
 export const DeletedRiderList = async (req, resp) => {
     let { page_no, addedFrom,  start_date, end_date, search_text = '' ,country_id,city_id, panel} = req.body;
- 
     page_no = parseInt(page_no, 10);
     if (isNaN(page_no) || page_no < 1) {
         page_no = 1;
