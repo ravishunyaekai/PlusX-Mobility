@@ -304,6 +304,21 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                         LIMIT 1
                     ),''
                 ) AS guideline,
+                COALESCE(
+                    (
+                        SELECT pch.remarks
+                        FROM portable_charger_history pch
+                        WHERE CONVERT(pch.booking_id USING utf8mb4)
+                            COLLATE utf8mb4_unicode_ci =
+                            CONVERT(pb.booking_id USING utf8mb4)
+                            COLLATE utf8mb4_unicode_ci
+                        AND pch.remarks IS NOT NULL
+                        AND pch.remarks != ''
+                        ORDER BY pch.created_at DESC
+                        LIMIT 1
+                    ),
+                    ''
+                ) AS remarks,
                 DATE_FORMAT(portable_charger_booking_assign.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time
             FROM portable_charger_booking_assign
             LEFT JOIN portable_charger_booking AS pb 
@@ -377,7 +392,22 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                 cs.request_id, cs.pickup_address, cs.pickup_latitude, cs.pickup_longitude,
                 cs.order_status, CONCAT(cs.name, ",", cs.country_code, "-", cs.contact_no) AS riderDetails,
                 DATE_FORMAT(charging_service_assign.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time,
-                ${formatDateTimeInQuery(['cs.created_at'])}
+                ${formatDateTimeInQuery(['cs.created_at'])},
+                COALESCE(
+                    (
+                        SELECT csh.remarks
+                        FROM charging_service_history csh
+                        WHERE CONVERT(csh.service_id USING utf8mb4)
+                            COLLATE utf8mb4_unicode_ci =
+                            CONVERT(cs.request_id USING utf8mb4)
+                            COLLATE utf8mb4_unicode_ci
+                        AND csh.remarks IS NOT NULL
+                        AND csh.remarks != ''
+                        ORDER BY csh.created_at DESC
+                        LIMIT 1
+                    ),
+                    ''
+                ) AS remarks
             FROM charging_service_assign
             LEFT JOIN charging_service AS cs ON cs.request_id = charging_service_assign.order_id
             WHERE charging_service_assign.rsa_id = ? AND cs.request_id IS NOT NULL
@@ -425,7 +455,22 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                 pb.request_id, pb.pickup_address, pb.pickup_latitude, pb.pickup_longitude, pb.order_status,
                 CONCAT(pb.name, ",", pb.country_code, "-", pb.contact_no) AS riderDetails,
                 ${formatDateTimeInQuery(['pb.created_at'])}, 
-                (SELECT CONCAT(vehicle_make, "-", vehicle_model) FROM riders_vehicles WHERE vehicle_id = pb.vehicle_id) AS vehicle_data
+                (SELECT CONCAT(vehicle_make, "-", vehicle_model) FROM riders_vehicles WHERE vehicle_id = pb.vehicle_id) AS vehicle_data,
+                COALESCE(
+                (
+                    SELECT oh.remarks
+                    FROM order_history oh
+                    WHERE CONVERT(oh.order_id USING utf8mb4)
+                        COLLATE utf8mb4_unicode_ci =
+                        CONVERT(pb.request_id USING utf8mb4)
+                        COLLATE utf8mb4_unicode_ci
+                    AND oh.remarks IS NOT NULL
+                    AND oh.remarks != ''
+                    ORDER BY oh.created_at DESC
+                    LIMIT 1
+                ),
+                ''
+            ) AS remarks
             FROM order_assign
             LEFT JOIN 
                 road_assistance AS pb ON pb.request_id = order_assign.order_id
