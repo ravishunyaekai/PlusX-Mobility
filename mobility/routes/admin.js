@@ -13,7 +13,7 @@ import { mobilityDashboardData, DeletedRiderList, addUsers, RiderList, usersList
 
 import { addUnversity, universityListSelect,universityList, addstudent, studentList, universitydetail, universityStudent, editStudent, editUniversity } from "../controller/admin/UninversityController.js";
 
-import { riderDetails, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin, bookngIncompleteByadmin } from "../controller/admin/UserController.js"; 
+import { riderDetails, riderDetailsElectricDB, cycleBookingDetails, userTransactionList, addRefundAmount, bookngCompleteByadmin, bookngIncompleteByadmin } from "../controller/admin/UserController.js"; 
 
 // import { stateCountry } from "../../common/controller/UserController.js";
 
@@ -24,13 +24,14 @@ import { communityList, communityDetail, addCommunity, editCommunity, allCommuni
 
 const router = Router();
 
-const adminRoutes = [
+export const adminRoutes = [
     { method: 'post',   path: '/notification-list',            handler:notificationList },
     { method: 'post',   path: '/mobility-dashboard',           handler: mobilityDashboardData},
 
     { method: 'post',   path: '/mobility-deleted-rider-list',  handler: DeletedRiderList},
     { method: 'post',   path: '/mobility-rider-list',          handler: RiderList},
     { method: 'post',   path: '/rider-details',                handler: riderDetails},
+    { method: 'post',   path: '/rider-details-electric-dashboard',                handler: riderDetailsElectricDB},
 
     // mobility station add,list, detail
     { method: 'post',   path: '/add-mobility-station',     handler: AddMobilityStation },
@@ -130,7 +131,7 @@ const adminRoutes = [
 
     { method: 'post',  path: '/session-list',    handler : sessionList },
     { method: 'post',  path: '/session-detail',  handler : sessionDetail },
-]; 
+];
 
 const uploadRules = {
     '/add-mobility-station' : { 
@@ -157,5 +158,6 @@ adminRoutes.forEach(({ method, path, handler }) => {
     router[method](path, ...middlewares, handler);
 });
     // { method: 'post', path: '/approve-refund-request',  handler: approveRefundRequest },
-// router.post('/approve-refund-request',approveRefundRequest)
+// router.post('/add-users',addUsers);
+export const adminMobilityProtectedRoutes = adminRoutes.map(route => route.path);
 export default router;

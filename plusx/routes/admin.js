@@ -20,7 +20,7 @@ import {
     storeList, storeData, storeAdd, storeView, storeUpdate, storeDelete, serviceList, serviceCreate, serviceUpdate, serviceDelete, brandList, brandCreate, brandUpdate, brandDelete,
     deleteStoreGallery
 } from "../controller/admin/ShopController.js";
-import { rsaList, rsaData, rsaAdd, rsaUpdate, rsaDelete, rsaStatusChange, driverBookingList, allRsaList, driverLocationList } from "../controller/admin/RsaController.js";
+import { rsaList, rsaData, rsaAdd, rsaUpdate, rsaDelete, rsaStatusChange, driverBookingList, allRsaList, driverLocationList, riderBookingLists } from "../controller/admin/RsaController.js";
 import { clubList, clubData, clubCreate, clubUpdate, clubDelete, clubDeleteImg } from "../controller/admin/RiderClubController.js"
 import { carsList, carDetail, carAdd, carEdit, carDelete, carGalleryDelete } from "../controller/admin/ElectriCarLeasingController.js";
 import { bikeDetail, bikesList, bikeAdd, bikeEdit, bikeDelete, bikeGalleryDelete } from "../controller/admin/ElectricBikeRentalController.js";
@@ -47,6 +47,8 @@ import { podDeviceList, podDeviceDetails, addPodDevice, editPodDevice, deletePod
 import { bikeList, bikeDetails, addBike, editBike, bikeSwipeData } from "../controller/admin/BikeController.js";
 import { swipeStationList, stationDetails, addStation, editStation } from "../controller/admin/SwipeStationController.js";
 import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector, chargeShareDelete, editChargShare, rejectChargShare, acceptChargShare } from "../controller/admin/ChargeShareController.js";
+import { RiderList } from "../../mobility/controller/admin/AdminMobilityController.js";
+
 const router = Router();
 
 const adminAuthRoutes = [
@@ -61,6 +63,7 @@ adminAuthRoutes.forEach(({ method, path, handler }) => {
 const adminRoutes = [
 
     { method: 'post', path: '/dashboard', handler: getDashboardData },
+    { method: 'post', path: '/electric-customer-list', handler: RiderList },
     { method: 'post', path: '/plusx-notification-list', handler: notificationList },
 
     { method: 'post', path: '/location-list', handler: locationList },
@@ -85,6 +88,7 @@ const adminRoutes = [
 
 
     /* RSA Routes */
+    { method: 'post', path: '/rider-booking-list', handler: riderBookingLists },
     { method: 'post', path: '/rsa-list', handler: rsaList },
     { method: 'post', path: '/rsa-data', handler: rsaData },
 

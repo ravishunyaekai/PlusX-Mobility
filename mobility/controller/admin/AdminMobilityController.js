@@ -3,29 +3,29 @@ import { asyncHandler, formatDateTimeInQuery, mergeParam } from "../../../utils.
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import { getPaginatedData, insertRecord, queryDB } from "../../../dbUtils.js";
-
+ 
 // import jwt from 'jsonwebtoken';
 import validateFields from "../../../validation.js";
 import { io } from "../../../server.js";
 import moment from "moment";
-
+ 
 //AdminMobilityController.js";
 export const RiderList = async (req, resp) => {
-    let { page_no, sortBy, addedFrom='admin',  start_date, end_date, search_text = '' ,country_id,city_id} = req.body;
+    let { page_no, sortBy, addedFrom='admin',  start_date, end_date, search_text = '' ,country_id,city_id, panel} = req.body;
     // console.log(" req.body", req.body)
-
+ 
     // if(!req.db){console.log("databse required")}
     // const db=req.db;
     // const db =callDatabase(req.db)
-
+ 
     page_no = parseInt(page_no, 10);
     if (isNaN(page_no) || page_no < 1) {
         page_no = 1;
     }
     
-
+ 
     const sortOrder = sortBy === 'd' ? 'DESC' : 'ASC';
-
+ 
     try {
         const params = {
             tableName: 'riders',
@@ -55,7 +55,7 @@ export const RiderList = async (req, resp) => {
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
             const end = formattedEndDate+' 19:59:59';
-
+ 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
@@ -65,25 +65,35 @@ export const RiderList = async (req, resp) => {
             params.whereValue.push(addedFrom);
             params.whereOperator.push('!=');
         }
+ 
+        // Riders with a vehicle or address belong to PlusX only
+        if (panel === 'mobility') {
+            params.whereField.push(`(
+                NOT EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = riders.rider_id)
+                AND NOT EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = riders.rider_id)
+            )`);
+            params.whereValue.push(1);
+            params.whereOperator.push('=');
+        }
         
         if (country_id){
             params.whereField.push('country_id');
             params.whereValue.push(country_id);
             params.whereOperator.push('=');
-
+ 
         }
         if (city_id){
             params.whereField.push('city_id');
             params.whereValue.push(city_id);
             params.whereOperator.push('=');
-
+ 
         }
         // if(emirates) {
         //     params.whereField.push('emirates');
         //     params.whereValue.push(emirates);
         //     params.whereOperator.push('=');
         // }
-
+ 
         const result = await getPaginatedData (params);
        
         // const [emiratesResult] = await db.query('SELECT DISTINCT emirates FROM riders');
@@ -106,15 +116,15 @@ export const RiderList = async (req, resp) => {
         });
     }
 };
-
-
-
+ 
+ 
+ 
 export const addUsers = asyncHandler(async (req, resp) => {
         try {
         const data = req.body;
-
+ 
             const {name,user_email,password,country,city,permison = 'view'} = data;
-
+ 
         const { isValid, errors } = validateFields(data, {
         name: ["required"],
         user_email: ["required"],
@@ -123,44 +133,44 @@ export const addUsers = asyncHandler(async (req, resp) => {
         country: ["required"],
         city: ["required"]
         });
-
+ 
         if (!isValid) {
         return resp.json({ status: 0, code: 422, message: errors });
         }
-
+ 
         // Check if user already exists
             const [existingUsers] = await db.execute(
         'SELECT id FROM users WHERE email = ?',
         [user_email]
                 );
-
+ 
         if (existingUsers.length > 0) {
         return resp.json({ status: 0, code: 400, message: ["User already exists."] });
         }
-
+ 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
-
+ 
         // Insert user
         await db.execute(
         `INSERT INTO users (name, email, password, access, country, city, role_id) 
         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [name, user_email, hashedPassword, permison, country, city, 'ROLE002'] 
         );
-
+ 
         return resp.json({ status: 1,code:200,  message: "User added successfully." });
-
+ 
     } catch (error) {
         console.error('AddUsers Error:', error);
         resp.status(500).json({ message: 'Something went wrong. Please try again later.' });
     }
 });
-
-
-
+ 
+ 
+ 
 export const usersList = async (req, resp) => {
     let { page_no, addedFrom,  start_date, end_date, search_text = '' } = req.body;
-
+ 
     page_no = parseInt(page_no, 10);
     if (isNaN(page_no) || page_no < 1) {
         page_no = 1;
@@ -200,7 +210,7 @@ export const usersList = async (req, resp) => {
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
             const end = formattedEndDate+' 19:59:59';
-
+ 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
@@ -235,7 +245,7 @@ export const usersList = async (req, resp) => {
         });
     }
 };
-
+ 
 export const oldstateCountry = asyncHandler(async (req, resp) => {
         const {requirement,country_id}=mergeParam(req);
             let validationRules = {requirement   : ["required"],};
@@ -243,7 +253,7 @@ export const oldstateCountry = asyncHandler(async (req, resp) => {
     const { isValid, errors } = validateFields(mergeParam(req), validationRules);
         if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
         let list;
-
+ 
     switch (requirement) {  
     case 'country':
         [list] = await db.execute(`SELECT country_id, name FROM country  ORDER BY name ASC`);
@@ -253,20 +263,20 @@ export const oldstateCountry = asyncHandler(async (req, resp) => {
     return resp.json({status: 0, code: 422,list, message: ['country_id is required for city list']});
             }
     [list] = await db.execute(`SELECT city_id,name FROM cities where country_id=? ORDER BY name ASC`,[country_id]);
-
+ 
     return resp.json({status: 1, code: 200, data: list, message:[ 'cities List fech successfully!']});
             
     default:
     return resp.json({ status: 0, code: 400,  message: ['Invalid Requirement type'] });
-
+ 
             }   
 });
-
-
-
+ 
+ 
+ 
 export const DeletedRiderList = async (req, resp) => {
-    let { page_no, addedFrom,  start_date, end_date, search_text = '' ,country_id,city_id} = req.body;
-
+    let { page_no, addedFrom,  start_date, end_date, search_text = '' ,country_id,city_id, panel} = req.body;
+ 
     page_no = parseInt(page_no, 10);
     if (isNaN(page_no) || page_no < 1) {
         page_no = 1;
@@ -306,7 +316,7 @@ export const DeletedRiderList = async (req, resp) => {
             const formattedEndDate = `${endToday.getFullYear()}-${(endToday.getMonth() + 1).toString()
                 .padStart(2, '0')}-${endToday.getDate().toString().padStart(2, '0')}`;
             const end = formattedEndDate+' 19:59:59';
-
+ 
             params.whereField.push('created_at', 'created_at');
             params.whereValue.push(start, end);
             params.whereOperator.push('>=', '<=');
@@ -316,17 +326,27 @@ export const DeletedRiderList = async (req, resp) => {
             params.whereValue.push(addedFrom);
             params.whereOperator.push('=');
         }
+ 
+        // Riders with a vehicle or address belong to PlusX only
+        if (panel === 'mobility') {
+            params.whereField.push(`(
+                NOT EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = deleted_riders.rider_id)
+                AND NOT EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = deleted_riders.rider_id)
+            )`);
+            params.whereValue.push(1);
+            params.whereOperator.push('=');
+        }
          if (country_id){
             params.whereField.push('country_id');
             params.whereValue.push(country_id);
             params.whereOperator.push('=');
-
+ 
         }
         if (city_id){
             params.whereField.push('city_id');
             params.whereValue.push(city_id);
             params.whereOperator.push('=');
-
+ 
         }
         const result  = await getPaginatedData(params);
         // const [emiratesResult] = await db.query('SELECT DISTINCT emirates FROM riders');
@@ -348,7 +368,7 @@ export const DeletedRiderList = async (req, resp) => {
         });
     }
 };
-
+ 
 export const mobilityDashboardData = async (req, resp) => {
     try {
         const currentDate = moment().tz('Asia/Kolkata').format('YYYY-MM-DD');
@@ -393,21 +413,21 @@ export const mobilityDashboardData = async (req, resp) => {
         io.emit('notification-list', {msCount : 1});
        
         return resp.json({code : 200, data : {count_arr, location}});
-
+ 
     } catch (error) {
         console.error('Error fetching dashboard data:', error);
         resp.json({ status :  0, code : 500, message: 'Error fetching dashboard data' });
     }
 };
-
+ 
 export const riderDetails = async (req, resp) => {
     const { riderId } = req.body;
-
+ 
     if (!riderId) {
         return resp.status(200).json({ status : 0, code : 400, message : ['Rider ID is required'] });
     }
     try {
-
+ 
         var [rows] = await db.execute( `
             SELECT 
                 rider_id, rider_name, last_name, rider_email, country_code, rider_mobile 
@@ -500,7 +520,7 @@ export const riderDetails = async (req, resp) => {
             rider_mobile  : rows[0].rider_mobile,
             country_code  : rows[0].country_code,
             emirates      : rows[0].emirates,
-
+ 
             portableChargerBookings : chargerRows,
             pickAndDropBookings     : chargingServiceRows,
             riderAddress,
