@@ -31,7 +31,6 @@ export const adminRoutes = [
     { method: 'post',   path: '/mobility-deleted-rider-list',  handler: DeletedRiderList},
     { method: 'post',   path: '/mobility-rider-list',          handler: RiderList},
     { method: 'post',   path: '/rider-details',                handler: riderDetails},
-    { method: 'post',   path: '/rider-details-electric-dashboard',                handler: riderDetailsElectricDB},
 
     // mobility station add,list, detail
     { method: 'post',   path: '/add-mobility-station',     handler: AddMobilityStation },
@@ -99,38 +98,6 @@ export const adminRoutes = [
     { method: 'post',   path: '/add-refund-amount',         handler: addRefundAmount },
     { method: 'post',   path: '/complete-booking-by-admin', handler: bookngCompleteByadmin }, 
     { method: 'post',   path: '/incomplete-booking-by-admin', handler: bookngIncompleteByadmin }, 
- 
-    // Community Routes
-    { method: 'post',  path: '/community-add',       handler: addCommunity },
-    { method: 'post',  path: '/community-edit',      handler: editCommunity },
-    { method: 'post',  path: '/community-list',      handler: communityList },
-    { method: 'post',  path: '/community-details',   handler: communityDetail },
-    { method: 'post',  path: '/all-community-list',  handler: allCommunityList },
-    { method: 'post',  path: '/community-area-list', handler: communityAreaList },
- 
-    // Resident Routes -- existing routes
-    // { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
-    // { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
-    // { method: 'post',  path: '/resident-list',    handler: residentListMulti },
-    // { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
-    // { method: 'post',  path: '/resident-search',            handler : residentSearchMulti },
- 
-    // Resident Routes (multi-community — CommunityControllerNew)
-    { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
-    { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
-    { method: 'post',  path: '/resident-list',    handler: residentListMulti },
-    { method: 'post',  path: '/resident-list-old', handler: residentListMultiOld },
-    // { method: 'post',  path: '/resident-list-single-old', handler: residentListOld }, // handler commented out in CommunityController
-    { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
-    { method: 'post',  path: '/resident-search',  handler: residentSearchMulti },
-
-    { method: 'post',  path: '/get-invoice-data',           handler : getInvoiceData }, 
-    { method: 'post',  path: '/create-scan-charge-invoice', handler : createScanChargeInvoice },
-    { method: 'post',  path: '/scan-charge-invoice-list',   handler : scanChargeInvoiceList },
-    { method: 'post',  path: '/scan-charge-invoice-detail', handler : scanChargeInvoiceDetail },
-
-    { method: 'post',  path: '/session-list',    handler : sessionList },
-    { method: 'post',  path: '/session-detail',  handler : sessionDetail },
 ];
 
 const uploadRules = {
