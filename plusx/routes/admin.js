@@ -27,8 +27,7 @@ import { carsList, carDetail, carAdd, carEdit, carDelete, carGalleryDelete } fro
 import { bikeDetail, bikesList, bikeAdd, bikeEdit, bikeDelete, bikeGalleryDelete } from "../controller/admin/ElectricBikeRentalController.js";
 
 import {
-    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails,
-    rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList
+    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails, rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList, offlineRSARiderLookup,vehicleBrandList, bikeVehicleBrandList
 } from '../controller/admin/EvRoadAssistanceController.js'
 
 import { interestList } from "../controller/admin/RegisterInterestController.js";
@@ -113,13 +112,15 @@ const adminRoutes = [
     { method: 'post', path: '/ev-road-assistance-edit-offline-booking', handler: editOfflineRSABooking },
     { method: 'post', path: '/ev-road-assistance-offline-booking-list', handler: offlineRSABookingList },
     { method: 'post', path: '/ev-road-assistance-offline-booking-details', handler: offlineRSABookingData },
+    { method: 'post', path: '/ev-road-assistance-offline-rider-lookup', handler: offlineRSARiderLookup },
     { method: 'post', path: '/ev-road-assistance-offline-vehicle-list', handler: offlineRSAVehicleList },
     { method: 'post', path: '/ev-road-assistance-cancel-booking', handler: evRoadAssistanceCancelBooking },
     { method: 'post', path: '/ev-road-assistance-invoice-list', handler: evRoadAssistanceInvoice },
     { method: 'post', path: '/ev-road-assistance-invoice-data', handler: invoiceData },
     { method: 'post', path: '/ev-road-assistance-assign', handler: rsaAssignBooking },
     { method: 'post', path: '/failed-road-assistance-list', handler: failedRSABookingList },
-    { method: 'post', path: '/failed-road-assistance-details', handler: failedRSABookingDetails },
+    { method: 'post', path: '/failed-road-assistance-details', handler: failedRSABookingDetails },{ method: 'post', path: '/vehicle-brand-list',      handler: vehicleBrandList },
+    { method: 'post', path: '/vehicle-bike-brand-list', handler: bikeVehicleBrandList },
 
     { method: 'post', path: '/road-assistance-slot-list', handler: rsaSlotList },
     { method: 'post', path: '/road-assistance-slot-details', handler: rsaSlotDetails },

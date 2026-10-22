@@ -73,7 +73,6 @@ const authzRoutes = [
     /* Vehicle Routes */
     { method: 'get',  path: '/location-area-list',         handler: areaList },
     { method: 'get',  path: '/reminder-sell-vehicle-list', handler: reminder_sell_vehicle_list },
-    { method: 'post', path: '/vehicle-brand-list',         handler: vehicleBrandList },
     { method: 'post', path: '/vehicle-model-list',         handler: vehicleModelList },
     // { method: 'get',  path: '/dubai-area-list',            handler: dubaiAreaList },
     { method: 'get',  path: '/output-power-and-connector-list', handler: outputAndConnector },
