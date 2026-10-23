@@ -1479,6 +1479,25 @@ export const rsaAssignBooking = async (req, resp) => {
 
     }
 };
+
+const buildVehicleBrandResponse = (vehicles) => {
+    const vehicleMap = new Map();
+    vehicles.forEach(({ make, model }) => {
+        if (!vehicleMap.has(make)) {
+            vehicleMap.set(make, {
+                value  : make,
+                label  : make,
+                models : [],
+            });
+        }
+        vehicleMap.get(make).models.push({
+            value : model,
+            label : model,
+        });
+    });
+    return Array.from(vehicleMap.values());
+};
+
 export const vehicleBrandList = asyncHandler(async (req, resp) => {
     const [vehicles] = await db.execute(`
         SELECT DISTINCT TRIM(make) AS make, TRIM(model) AS model

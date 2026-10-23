@@ -119,7 +119,8 @@ const adminRoutes = [
     { method: 'post', path: '/ev-road-assistance-invoice-data', handler: invoiceData },
     { method: 'post', path: '/ev-road-assistance-assign', handler: rsaAssignBooking },
     { method: 'post', path: '/failed-road-assistance-list', handler: failedRSABookingList },
-    { method: 'post', path: '/failed-road-assistance-details', handler: failedRSABookingDetails },{ method: 'post', path: '/vehicle-brand-list',      handler: vehicleBrandList },
+    { method: 'post', path: '/failed-road-assistance-details', handler: failedRSABookingDetails },
+    { method: 'post', path: '/vehicle-brand-list',      handler: vehicleBrandList },
     { method: 'post', path: '/vehicle-bike-brand-list', handler: bikeVehicleBrandList },
 
     { method: 'post', path: '/road-assistance-slot-list', handler: rsaSlotList },
