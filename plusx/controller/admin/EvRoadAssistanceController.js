@@ -1080,7 +1080,7 @@ export const offlineRSARiderLookup = asyncHandler(async (req, resp) => {
 export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
     const {
         customer_name, phone_number, email_id, emailId, country_code = '+91', location_link, address, state, city,
-        price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
+        price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, payment_mode,
         transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
         booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
     } = mergeParam(req);
@@ -1088,6 +1088,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
     const email = toNullableText(email_id || emailId);
     const mobileNo = toNullableText(phone_number);
+    const mode_of_payment = toNullableText(payment_mode);
 
     // Popup "Is booking completed?" — not sent by older clients, so default to the full (Yes) flow.
     const bookingCompleted = parseBookingCompletedFlag(is_booking_completed) || 'Yes';
@@ -1306,342 +1307,349 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
 });
 
 export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
-    const {
-        request_id, customer_name, phone_number, email_id, emailId, country_code = '+91', location_link, address, state, city,
-        price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
-        transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
-        booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
-    } = mergeParam(req);
+    try {
 
-    const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
-    const email = toNullableText(email_id || emailId);
-    const mobileNo = toNullableText(phone_number);
+        const {
+            request_id, customer_name, phone_number, email_id, emailId, country_code = '+91', location_link, address, state, city,
+            price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
+            transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
+            booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
+        } = mergeParam(req);
 
-    if (!request_id) {
-        return resp.json({ status: 0, code: 422, message: ['request_id is required.'] });
-    }
+        const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
+        const email = toNullableText(email_id || emailId);
+        const mobileNo = toNullableText(phone_number);
 
-    const existing = await queryDB(
-        `SELECT request_id, rider_id, mobile_no, email_id, is_booking_completed, order_status, proof_of_transaction
+        if (!request_id) {
+            return resp.json({ status: 0, code: 422, message: ['request_id is required.'] });
+        }
+
+        const existing = await queryDB(
+            `SELECT request_id, rider_id, mobile_no, email_id, is_booking_completed, order_status, proof_of_transaction
          FROM ${RSA_OFFLINE_BOOKING_TABLE}
          WHERE request_id = ?
          LIMIT 1`,
-        [request_id]
-    );
-    if (!existing) {
-        return resp.json({ status: 0, code: 404, message: ['Offline booking not found.'] });
-    }
-
-    // Not sent by older clients — keep the stored value. No -> Yes is allowed; Yes -> No is not (rider already created).
-    const existingBookingCompleted = existing.is_booking_completed || 'Yes';
-    const bookingCompleted = parseBookingCompletedFlag(is_booking_completed) || existingBookingCompleted;
-    if (existingBookingCompleted === 'Yes' && bookingCompleted === 'No') {
-        return resp.json({ status: 0, code: 422, message: ['A completed booking cannot be changed to not completed.'] });
-    }
-    const isBookingNotCompleted = bookingCompleted === 'No';
-
-    // Booking not completed: no field is mandatory, but at least mobile or email is needed to identify the customer later.
-    if (isBookingNotCompleted) {
-        if (!mobileNo && !email) {
-            return resp.json({ status: 0, code: 422, message: ['mobile_no or email_id is required.'] });
-        }
-        if (email) {
-            const { isValid: emailValid, errors: emailErrors } = validateFields(
-                { email_id: email },
-                { email_id: ['email'] }
-            );
-            if (!emailValid) {
-                return resp.json({ status: 0, code: 422, message: emailErrors });
-            }
-        }
-    } else {
-        const { isValid, errors } = validateFields({
-            ...mergeParam(req),
-            mobile_no: mobileNo,
-            email_id: email,
-        }, {
-            customer_name: ["required"],
-            mobile_no: ["required"],
-            email_id: ["required"],
-            city: ["required"],
-            state: ["required"],
-            location_link: ["required"],
-            address: ["required"],
-            price: ["required"],
-            booking_status: ["required"],
-        });
-        if (!isValid) {
-            return resp.json({ status: 0, code: 422, message: errors });
-        }
-    }
-
-    const statusInput = toNullableText(booking_status) || (isBookingNotCompleted ? 'CNF' : '');
-    const orderStatus = RSA_OFFLINE_STATUS_MAP[statusInput.toUpperCase()];
-    if (!orderStatus) {
-        return resp.json({
-            status: 0,
-            code: 422,
-            message: [RSA_OFFLINE_STATUS_ALLOWED_MSG],
-        });
-    }
-    if (isBookingNotCompleted && orderStatus === 'PU') {
-        return resp.json({ status: 0, code: 422, message: [RSA_OFFLINE_NOT_COMPLETED_STATUS_MSG] });
-    }
-
-    const wasCompleted = existing.order_status === 'PU';
-    // PU applies completion fields; C requires cancellation remarks unless the booking is not completed.
-    const isCompleted = orderStatus === 'PU';
-    const isCancelled = orderStatus === 'C';
-    const cancellationRemarks = isCancelled ? toNullableText(cancellation_remarks) : null;
-    if (isCancelled && !cancellationRemarks && !isBookingNotCompleted) {
-        return resp.json({ status: 0, code: 422, message: ['cancellation_remarks is required when booking status is Cancelled.'] });
-    }
-    const cancelledBy = isCancelled ? 'Admin' : null;
-    const { error: dateError, bookingDate, completedDate } = resolveOfflineDates(
-        booking_date, booking_completed_date, isCompleted
-    );
-    if (dateError) {
-        return resp.json({ status: 0, code: 422, message: [dateError] });
-    }
-
-    const bookingPrice = toNullableText(price) === null ? 0 : Number(price);
-    const batteryLevel = toNullableText(battery_level) === null ? 0 : battery_level;
-    const jumpStart = toYesNo(jump_start_required);
-    const vehicleData = buildVehicleData(vehicle_make, vehicle_model);
-    const savedProof = proofOfTransaction || existing.proof_of_transaction || null;
-    const modeOfPayment = isCancelled ? null : (mode_of_payment || null);
-
-    let connection;
-    try {
-        connection = await startTransaction();
-
-        // rsa_id / booking_completed_by optional for Cancelled and Confirmed.
-        const driverInfo = await resolveOfflineRsaDriver(rsa_id, driver_name, booking_completed_by, connection);
-        if (driverInfo === null) {
-            await rollbackTransaction(connection);
-            connection = null;
-            return resp.json({ status: 0, code: 422, message: ['Invalid RSA driver selected.'] });
+            [request_id]
+        );
+        if (!existing) {
+            return resp.json({ status: 0, code: 404, message: ['Offline booking not found.'] });
         }
 
-        let rider_id = null;
-        let isNewRider = false;
-        let savedCustomerName = toNullableText(customer_name);
-        let savedCity = toNullableText(city);
-        let savedState = toNullableText(state);
-        let savedMobileNo = mobileNo;
-        let savedEmail = email;
-        let savedCountryCode = country_code || '+91';
+        // Not sent by older clients — keep the stored value. No -> Yes is allowed; Yes -> No is not (rider already created).
+        const existingBookingCompleted = existing.is_booking_completed || 'Yes';
+        const bookingCompleted = parseBookingCompletedFlag(is_booking_completed) || existingBookingCompleted;
+        if (existingBookingCompleted === 'Yes' && bookingCompleted === 'No') {
+            return resp.json({ status: 0, code: 422, message: ['A completed booking cannot be changed to not completed.'] });
+        }
+        const isBookingNotCompleted = bookingCompleted === 'No';
 
+        // Booking not completed: no field is mandatory, but at least mobile or email is needed to identify the customer later.
         if (isBookingNotCompleted) {
-            // Keep the rider on the same contact; otherwise look up again and fill empty name and city/state.
-            const sameContact = existing.mobile_no === mobileNo && (existing.email_id || null) === email;
-            let existingRider = null;
-            if (sameContact && existing.rider_id) {
-                existingRider = await queryDB(
-                    `SELECT ${RIDER_LOOKUP_COLUMNS} FROM riders WHERE rider_id = ? LIMIT 1`,
-                    [existing.rider_id],
-                    connection
+            if (!mobileNo && !email) {
+                return resp.json({ status: 0, code: 422, message: ['mobile_no or email_id is required.'] });
+            }
+            if (email) {
+                const { isValid: emailValid, errors: emailErrors } = validateFields(
+                    { email_id: email },
+                    { email_id: ['email'] }
                 );
+                if (!emailValid) {
+                    return resp.json({ status: 0, code: 422, message: emailErrors });
+                }
             }
-            if (!existingRider) {
-                existingRider = await findRiderDetailsByMobileOrEmail(mobileNo, email, connection);
+        } else {
+            const { isValid, errors } = validateFields({
+                ...mergeParam(req),
+                mobile_no: mobileNo,
+                email_id: email,
+            }, {
+                customer_name: ["required"],
+                mobile_no: ["required"],
+                email_id: ["required"],
+                city: ["required"],
+                state: ["required"],
+                location_link: ["required"],
+                address: ["required"],
+                price: ["required"],
+                booking_status: ["required"],
+            });
+            if (!isValid) {
+                return resp.json({ status: 0, code: 422, message: errors });
             }
-            const filled = applyRiderDefaultsForIncompleteBooking({
+        }
+
+        const statusInput = toNullableText(booking_status) || (isBookingNotCompleted ? 'CNF' : '');
+        const orderStatus = RSA_OFFLINE_STATUS_MAP[statusInput.toUpperCase()];
+        if (!orderStatus) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: [RSA_OFFLINE_STATUS_ALLOWED_MSG],
+            });
+        }
+        if (isBookingNotCompleted && orderStatus === 'PU') {
+            return resp.json({ status: 0, code: 422, message: [RSA_OFFLINE_NOT_COMPLETED_STATUS_MSG] });
+        }
+
+        const wasCompleted = existing.order_status === 'PU';
+        // PU applies completion fields; C requires cancellation remarks unless the booking is not completed.
+        const isCompleted = orderStatus === 'PU';
+        const isCancelled = orderStatus === 'C';
+        const cancellationRemarks = isCancelled ? toNullableText(cancellation_remarks) : null;
+        if (isCancelled && !cancellationRemarks && !isBookingNotCompleted) {
+            return resp.json({ status: 0, code: 422, message: ['cancellation_remarks is required when booking status is Cancelled.'] });
+        }
+        const cancelledBy = isCancelled ? 'Admin' : null;
+        const { error: dateError, bookingDate, completedDate } = resolveOfflineDates(
+            booking_date, booking_completed_date, isCompleted
+        );
+        if (dateError) {
+            return resp.json({ status: 0, code: 422, message: [dateError] });
+        }
+
+        const bookingPrice = toNullableText(price) === null ? 0 : Number(price);
+        const batteryLevel = toNullableText(battery_level) === null ? 0 : battery_level;
+        const jumpStart = toYesNo(jump_start_required);
+        const vehicleData = buildVehicleData(vehicle_make, vehicle_model);
+        const savedProof = proofOfTransaction || existing.proof_of_transaction || null;
+        const modeOfPayment = isCancelled ? null : (mode_of_payment || null);
+
+        let connection;
+        try {
+            connection = await startTransaction();
+
+            // rsa_id / booking_completed_by optional for Cancelled and Confirmed.
+            const driverInfo = await resolveOfflineRsaDriver(rsa_id, driver_name, booking_completed_by, connection);
+            if (driverInfo === null) {
+                await rollbackTransaction(connection);
+                connection = null;
+                return resp.json({ status: 0, code: 422, message: ['Invalid RSA driver selected.'] });
+            }
+
+            let rider_id = null;
+            let isNewRider = false;
+            let savedCustomerName = toNullableText(customer_name);
+            let savedCity = toNullableText(city);
+            let savedState = toNullableText(state);
+            let savedMobileNo = mobileNo;
+            let savedEmail = email;
+            let savedCountryCode = country_code || '+91';
+
+            if (isBookingNotCompleted) {
+                // Keep the rider on the same contact; otherwise look up again and fill empty name and city/state.
+                const sameContact = existing.mobile_no === mobileNo && (existing.email_id || null) === email;
+                let existingRider = null;
+                if (sameContact && existing.rider_id) {
+                    existingRider = await queryDB(
+                        `SELECT ${RIDER_LOOKUP_COLUMNS} FROM riders WHERE rider_id = ? LIMIT 1`,
+                        [existing.rider_id],
+                        connection
+                    );
+                }
+                if (!existingRider) {
+                    existingRider = await findRiderDetailsByMobileOrEmail(mobileNo, email, connection);
+                }
+                const filled = applyRiderDefaultsForIncompleteBooking({
+                    customer_name: savedCustomerName,
+                    city: savedCity,
+                    state: savedState,
+                    mobile_no: savedMobileNo,
+                    email_id: savedEmail,
+                    country_code: savedCountryCode,
+                }, existingRider);
+                rider_id = filled.rider_id || (sameContact ? existing.rider_id : null);
+                savedCustomerName = filled.customer_name;
+                savedCity = filled.city;
+                savedState = filled.state;
+                savedMobileNo = filled.mobile_no;
+                savedEmail = filled.email_id;
+                savedCountryCode = filled.country_code;
+            } else {
+                const riderResult = await findOrCreateRiderByMobile({
+                    mobile: mobileNo,
+                    country_code: country_code || '+91',
+                    customer_name,
+                    email,
+                    city: savedCity,
+                    state: savedState,
+                }, connection);
+                if (riderResult.emailConflict) {
+                    await rollbackTransaction(connection);
+                    connection = null;
+                    return resp.json({ status: 0, code: 422, message: [RIDER_EMAIL_CONFLICT_MSG] });
+                }
+                ({ rider_id, isNewRider } = riderResult);
+
+                if (isNewRider) {
+                    await linkUnassignedOfflineBookings(rider_id, mobileNo, email, connection);
+                }
+            }
+
+            const update = await updateRecord(RSA_OFFLINE_BOOKING_TABLE, {
+                rider_id,
+                is_booking_completed: bookingCompleted,
                 customer_name: savedCustomerName,
-                city: savedCity,
-                state: savedState,
                 mobile_no: savedMobileNo,
                 email_id: savedEmail,
                 country_code: savedCountryCode,
-            }, existingRider);
-            rider_id = filled.rider_id || (sameContact ? existing.rider_id : null);
-            savedCustomerName = filled.customer_name;
-            savedCity = filled.city;
-            savedState = filled.state;
-            savedMobileNo = filled.mobile_no;
-            savedEmail = filled.email_id;
-            savedCountryCode = filled.country_code;
-        } else {
-            const riderResult = await findOrCreateRiderByMobile({
-                mobile: mobileNo,
-                country_code: country_code || '+91',
-                customer_name,
-                email,
+                location_link: location_link || null,
+                address: toNullableText(address),
                 city: savedCity,
                 state: savedState,
-            }, connection);
-            if (riderResult.emailConflict) {
+                price: bookingPrice,
+                jump_start_required: jumpStart,
+                battery_level: batteryLevel,
+                vehicle_data: vehicleData,
+                booking_price: bookingPrice,
+                order_status: orderStatus,
+                payment_status: payment_status || 'Pending',
+                mode_of_payment: modeOfPayment,
+                rsa_id: driverInfo.rsa_id,
+                transaction_id: transaction_id || null,
+                proof_of_transaction: savedProof,
+                booking_date: bookingDate,
+                booking_completed_date: completedDate,
+                cancellation_remarks: cancellationRemarks,
+                cancelled_by: cancelledBy,
+            }, ['request_id'], [request_id], connection);
+
+            if (update.affectedRows === 0) {
                 await rollbackTransaction(connection);
                 connection = null;
-                return resp.json({ status: 0, code: 422, message: [RIDER_EMAIL_CONFLICT_MSG] });
+                return resp.json({ status: 0, code: 500, message: ['Failed to update offline booking. Please try again.'] });
             }
-            ({ rider_id, isNewRider } = riderResult);
 
-            if (isNewRider) {
-                await linkUnassignedOfflineBookings(rider_id, mobileNo, email, connection);
-            }
-        }
+            let invoice_id = null;
+            const existingInvoice = await queryDB(
+                `SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} WHERE request_id = ? LIMIT 1`,
+                [request_id],
+                connection
+            );
 
-        const update = await updateRecord(RSA_OFFLINE_BOOKING_TABLE, {
-            rider_id,
-            is_booking_completed: bookingCompleted,
-            customer_name: savedCustomerName,
-            mobile_no: savedMobileNo,
-            email_id: savedEmail,
-            country_code: savedCountryCode,
-            location_link: location_link || null,
-            address: toNullableText(address),
-            city: savedCity,
-            state: savedState,
-            price: bookingPrice,
-            jump_start_required: jumpStart,
-            battery_level: batteryLevel,
-            vehicle_data: vehicleData,
-            booking_price: bookingPrice,
-            order_status: orderStatus,
-            payment_status: payment_status || 'Pending',
-            mode_of_payment: modeOfPayment,
-            rsa_id: driverInfo.rsa_id,
-            transaction_id: transaction_id || null,
-            proof_of_transaction: savedProof,
-            booking_date: bookingDate,
-            booking_completed_date: completedDate,
-            cancellation_remarks: cancellationRemarks,
-            cancelled_by: cancelledBy,
-        }, ['request_id'], [request_id], connection);
+            if (isCompleted) {
+                if (existingInvoice?.invoice_id) {
+                    invoice_id = existingInvoice.invoice_id;
+                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, {
+                        rider_id,
+                        amount: bookingPrice,
+                        payment_status: payment_status || 'Pending',
+                        transaction_id: transaction_id || null,
+                        invoice_date: moment().format('YYYY-MM-DD HH:mm:ss'),
+                    }, ['request_id'], [request_id], connection);
+                } else {
+                    const temporaryInvoiceId = `TMP-${generateUniqueId({ length: 12 })}`;
+                    const invoiceInsert = await insertRecord(RSA_OFFLINE_INVOICE_TABLE, [
+                        'invoice_id', 'request_id', 'rider_id', 'amount', 'transaction_id', 'payment_status', 'invoice_date',
+                    ], [
+                        temporaryInvoiceId, request_id, rider_id, bookingPrice, transaction_id || null,
+                        payment_status || 'Pending', moment().format('YYYY-MM-DD HH:mm:ss'),
+                    ], connection);
 
-        if (update.affectedRows === 0) {
-            await rollbackTransaction(connection);
-            connection = null;
-            return resp.json({ status: 0, code: 500, message: ['Failed to update offline booking. Please try again.'] });
-        }
+                    if (invoiceInsert.affectedRows === 0) {
+                        throw new Error('Failed to create offline RSA invoice');
+                    }
 
-        let invoice_id = null;
-        const existingInvoice = await queryDB(
-            `SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} WHERE request_id = ? LIMIT 1`,
-            [request_id],
-            connection
-        );
-
-        if (isCompleted) {
-            if (existingInvoice?.invoice_id) {
-                invoice_id = existingInvoice.invoice_id;
-                await updateRecord(RSA_OFFLINE_INVOICE_TABLE, {
-                    rider_id,
-                    amount: bookingPrice,
-                    payment_status: payment_status || 'Pending',
-                    transaction_id: transaction_id || null,
-                    invoice_date: moment().format('YYYY-MM-DD HH:mm:ss'),
-                }, ['request_id'], [request_id], connection);
-            } else {
-                const temporaryInvoiceId = `TMP-${generateUniqueId({ length: 12 })}`;
-                const invoiceInsert = await insertRecord(RSA_OFFLINE_INVOICE_TABLE, [
-                    'invoice_id', 'request_id', 'rider_id', 'amount', 'transaction_id', 'payment_status', 'invoice_date',
-                ], [
-                    temporaryInvoiceId, request_id, rider_id, bookingPrice, transaction_id || null,
-                    payment_status || 'Pending', moment().format('YYYY-MM-DD HH:mm:ss'),
-                ], connection);
-
-                if (invoiceInsert.affectedRows === 0) {
-                    throw new Error('Failed to create offline RSA invoice');
+                    invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
+                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
                 }
-
-                invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
-                await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
+            } else {
+                invoice_id = existingInvoice?.invoice_id || null;
+                if (existingInvoice?.invoice_id) {
+                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { rider_id }, ['request_id'], [request_id], connection);
+                }
             }
-        } else {
-            invoice_id = existingInvoice?.invoice_id || null;
-            if (existingInvoice?.invoice_id) {
-                await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { rider_id }, ['request_id'], [request_id], connection);
-            }
-        }
 
-        const statusChanged = existing.order_status !== orderStatus;
-        const latestHistory = await queryDB(
-            `SELECT id, driver_name, rsa_id FROM ${RSA_OFFLINE_HISTORY_TABLE}
+            const statusChanged = existing.order_status !== orderStatus;
+            const latestHistory = await queryDB(
+                `SELECT id, driver_name, rsa_id FROM ${RSA_OFFLINE_HISTORY_TABLE}
              WHERE order_id = ?
              ORDER BY id DESC
              LIMIT 1`,
-            [request_id],
-            connection
-        );
-
-        if (!latestHistory || statusChanged) {
-            await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
-                'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
-            ], [
-                request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, cancellationRemarks,
-            ], connection);
-        } else {
-            const historyUpdate = { rider_id };
-            if ((driverInfo.driver_name || null) !== (latestHistory.driver_name || null)) {
-                historyUpdate.driver_name = driverInfo.driver_name;
-            }
-            if ((driverInfo.rsa_id || null) !== (latestHistory.rsa_id || null)) {
-                historyUpdate.rsa_id = driverInfo.rsa_id;
-            }
-            if (isCancelled) {
-                historyUpdate.remarks = cancellationRemarks;
-            }
-            await updateRecord(
-                RSA_OFFLINE_HISTORY_TABLE,
-                historyUpdate,
-                ['id'],
-                [latestHistory.id],
+                [request_id],
                 connection
             );
+
+            if (!latestHistory || statusChanged) {
+                await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
+                    'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
+                ], [
+                    request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, cancellationRemarks,
+                ], connection);
+            } else {
+                const historyUpdate = { rider_id };
+                if ((driverInfo.driver_name || null) !== (latestHistory.driver_name || null)) {
+                    historyUpdate.driver_name = driverInfo.driver_name;
+                }
+                if ((driverInfo.rsa_id || null) !== (latestHistory.rsa_id || null)) {
+                    historyUpdate.rsa_id = driverInfo.rsa_id;
+                }
+                if (isCancelled) {
+                    historyUpdate.remarks = cancellationRemarks;
+                }
+                await updateRecord(
+                    RSA_OFFLINE_HISTORY_TABLE,
+                    historyUpdate,
+                    ['id'],
+                    [latestHistory.id],
+                    connection
+                );
+            }
+
+            // Earlier history rows of a "not completed" booking may have been saved without a rider.
+            if (rider_id) {
+                await connection.execute(
+                    `UPDATE ${RSA_OFFLINE_HISTORY_TABLE} SET rider_id = ? WHERE order_id = ? AND rider_id IS NULL`,
+                    [rider_id, request_id]
+                );
+            }
+
+            await commitTransaction(connection);
+            connection = null;
+
+            // WhatsApp only for newly created riders when booking is Completed (PU).
+            const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
+                isCompleted,
+                isNewRider,
+                request_id,
+                customer_name,
+                country_code,
+                mobile_no: mobileNo,
+                rider_id,
+                logPrefix: 'editOfflineRSABooking',
+            });
+
+            return resp.json({
+                status: 1,
+                code: 200,
+                message: ['Offline RSA booking updated successfully!'],
+                request_id,
+                rider_id,
+                is_booking_completed: bookingCompleted,
+                invoice_id,
+                order_status: orderStatus,
+                previous_status: existing.order_status,
+                rsa_id: driverInfo.rsa_id,
+                driver_name: driverInfo.driver_name,
+                proof_of_transaction: savedProof,
+                booking_date: bookingDate,
+                booking_completed_date: completedDate,
+                cancellation_remarks: cancellationRemarks,
+                cancelled_by: cancelledBy,
+                invoice_created: isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
+                whatsapp_status,
+                whatsapp_campaign_id,
+            });
+        } catch (error) {
+            if (connection) {
+                await rollbackTransaction(connection);
+            }
+            console.error('[editOfflineRSABooking] error:', error);
+            return resp.json({ status: 0, code: 500, message: ['Failed to update offline RSA booking.'] });
         }
 
-        // Earlier history rows of a "not completed" booking may have been saved without a rider.
-        if (rider_id) {
-            await connection.execute(
-                `UPDATE ${RSA_OFFLINE_HISTORY_TABLE} SET rider_id = ? WHERE order_id = ? AND rider_id IS NULL`,
-                [rider_id, request_id]
-            );
-        }
-
-        await commitTransaction(connection);
-        connection = null;
-
-        // WhatsApp only for newly created riders when booking is Completed (PU).
-        const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
-            isCompleted,
-            isNewRider,
-            request_id,
-            customer_name,
-            country_code,
-            mobile_no: mobileNo,
-            rider_id,
-            logPrefix: 'editOfflineRSABooking',
-        });
-
-        return resp.json({
-            status: 1,
-            code: 200,
-            message: ['Offline RSA booking updated successfully!'],
-            request_id,
-            rider_id,
-            is_booking_completed: bookingCompleted,
-            invoice_id,
-            order_status: orderStatus,
-            previous_status: existing.order_status,
-            rsa_id: driverInfo.rsa_id,
-            driver_name: driverInfo.driver_name,
-            proof_of_transaction: savedProof,
-            booking_date: bookingDate,
-            booking_completed_date: completedDate,
-            cancellation_remarks: cancellationRemarks,
-            cancelled_by: cancelledBy,
-            invoice_created: isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
-            whatsapp_status,
-            whatsapp_campaign_id,
-        });
     } catch (error) {
-        if (connection) {
-            await rollbackTransaction(connection);
-        }
         console.error('[editOfflineRSABooking] error:', error);
-        return resp.json({ status: 0, code: 500, message: ['Failed to update offline RSA booking.'] });
+        return resp.json({ status: 0, code: 500, message: ['Failed to edit offline RSA booking.'] });
     }
 });
 
