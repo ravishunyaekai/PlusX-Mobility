@@ -631,6 +631,7 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
                 b.mode_of_payment,
                 b.rsa_id,
                 b.proof_of_transaction,
+                b.service_terms_condition,
                 b.cancellation_remarks,
                 b.cancelled_by,
 
@@ -721,6 +722,11 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
         bookingData.proof_of_transaction_url =
             bookingData.proof_of_transaction
                 ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${bookingData.proof_of_transaction}`
+                : null;
+
+        bookingData.service_terms_condition_url =
+            bookingData.service_terms_condition
+                ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_SERVICE_TERMS_FOLDER}/${bookingData.service_terms_condition}`
                 : null;
 
         bookingData.booking_completed_by =
@@ -818,7 +824,7 @@ export const offlineRSABookingListOld = asyncHandler(async (req, resp) => {
             (SELECT h.driver_name FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
                 WHERE h.order_id = ${RSA_OFFLINE_BOOKING_TABLE}.request_id ORDER BY h.id DESC LIMIT 1) AS driver_name,
             (SELECT r.rsa_name FROM rsa AS r WHERE r.rsa_id = ${RSA_OFFLINE_BOOKING_TABLE}.rsa_id LIMIT 1) AS rsa_name,
-            price, order_status, payment_status, mode_of_payment, transaction_id, proof_of_transaction,
+            price, order_status, payment_status, mode_of_payment, transaction_id, proof_of_transaction, service_terms_condition,
             DATE_FORMAT(booking_date, '%Y-%m-%d') AS booking_date,
             DATE_FORMAT(booking_completed_date, '%Y-%m-%d') AS booking_completed_date,
             cancellation_remarks, cancelled_by,
@@ -1086,6 +1092,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
     } = mergeParam(req);
 
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
+    const serviceTermsCondition = req.files?.['service_terms_condition']?.[0]?.filename || null;
     const email = toNullableText(email_id || emailId);
     const mobileNo = toNullableText(phone_number);
     const mode_of_payment = toNullableText(payment_mode);
@@ -1221,12 +1228,12 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
         const insert = await insertRecord(RSA_OFFLINE_BOOKING_TABLE, [
             'request_id', 'rider_id', 'is_booking_completed', 'customer_name', 'mobile_no', 'email_id', 'country_code', 'location_link', 'address',
             'city', 'state', 'price', 'jump_start_required', 'battery_level', 'vehicle_data', 'booking_price',
-            'order_status', 'payment_status', 'mode_of_payment', 'rsa_id', 'transaction_id', 'proof_of_transaction',
+            'order_status', 'payment_status', 'mode_of_payment', 'rsa_id', 'transaction_id', 'proof_of_transaction', 'service_terms_condition',
             'booking_date', 'booking_completed_date', 'cancellation_remarks', 'cancelled_by',
         ], [
             temporaryRequestId, rider_id, bookingCompleted, savedCustomerName, savedMobileNo, savedEmail, savedCountryCode, location_link || null, toNullableText(address),
             savedCity, savedState, bookingPrice, jumpStart, batteryLevel, vehicleData, bookingPrice,
-            orderStatus, payment_status || 'Pending', modeOfPayment, driverInfo.rsa_id, transaction_id || null, proofOfTransaction,
+            orderStatus, payment_status || 'Pending', modeOfPayment, driverInfo.rsa_id, transaction_id || null, proofOfTransaction, serviceTermsCondition,
             bookingDate, completedDate, cancellationRemarks, cancelledBy,
         ], connection);
 
@@ -1290,6 +1297,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             rsa_id: driverInfo.rsa_id,
             driver_name: driverInfo.driver_name,
             proof_of_transaction: proofOfTransaction,
+            service_terms_condition: serviceTermsCondition,
             booking_date: bookingDate,
             booking_completed_date: completedDate,
             cancellation_remarks: cancellationRemarks,
@@ -1317,6 +1325,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         } = mergeParam(req);
 
         const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
+        const serviceTermsCondition = req.files?.['service_terms_condition']?.[0]?.filename || null;
         const email = toNullableText(email_id || emailId);
         const mobileNo = toNullableText(phone_number);
 
@@ -1325,7 +1334,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         }
 
         const existing = await queryDB(
-            `SELECT request_id, rider_id, mobile_no, email_id, is_booking_completed, order_status, proof_of_transaction
+            `SELECT request_id, rider_id, mobile_no, email_id, is_booking_completed, order_status, proof_of_transaction, service_terms_condition
          FROM ${RSA_OFFLINE_BOOKING_TABLE}
          WHERE request_id = ?
          LIMIT 1`,
@@ -1412,6 +1421,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         const jumpStart = toYesNo(jump_start_required);
         const vehicleData = buildVehicleData(vehicle_make, vehicle_model);
         const savedProof = proofOfTransaction || existing.proof_of_transaction || null;
+        const savedServiceTermsCondition = serviceTermsCondition || existing.service_terms_condition || null;
         const modeOfPayment = isCancelled ? null : (mode_of_payment || null);
 
         let connection;
@@ -1507,6 +1517,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 rsa_id: driverInfo.rsa_id,
                 transaction_id: transaction_id || null,
                 proof_of_transaction: savedProof,
+                service_terms_condition: savedServiceTermsCondition,
                 booking_date: bookingDate,
                 booking_completed_date: completedDate,
                 cancellation_remarks: cancellationRemarks,
