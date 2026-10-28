@@ -74,9 +74,16 @@ export const RiderList = async (req, resp) => {
             )`);
             params.whereValue.push(1);
             params.whereOperator.push('=');
+        } else {
+            params.whereField.push(`(
+                EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = riders.rider_id)
+                OR EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = riders.rider_id)
+            )`);
+            params.whereValue.push(1);
+            params.whereOperator.push('=');
         }
-        
-        if (country_id){
+
+        if (country_id) {
             params.whereField.push('country_id');
             params.whereValue.push(country_id);
             params.whereOperator.push('=');
@@ -335,6 +342,13 @@ export const DeletedRiderList = async (req, resp) => {
             )`);
             params.whereValue.push(1);
             params.whereOperator.push('=');
+        } else {
+            params.whereField.push(`(
+                EXISTS (SELECT 1 FROM riders_vehicles rv WHERE rv.rider_id = deleted_riders.rider_id)
+                OR EXISTS (SELECT 1 FROM rider_address ra WHERE ra.rider_id = deleted_riders.rider_id)
+            )`);
+            params.whereValue.push(1);
+            params.whereOperator.push('=');
         }
          if (country_id){
             params.whereField.push('country_id');
@@ -378,7 +392,21 @@ export const mobilityDashboardData = async (req, resp) => {
         }
         // (SELECT COUNT(*) FROM failed_cycle_booking WHERE DATE(created_at) >= ?) AS failed_charging_service,
         const [counts] = await db.execute(`SELECT 
-            (SELECT COUNT(*) FROM riders WHERE added_from !='admin' and DATE(created_at) >= ? ) AS total_rider,
+            (SELECT COUNT(*)
+                FROM riders
+                WHERE added_from != 'admin'
+                AND DATE(created_at) >= ?
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM riders_vehicles rv
+                    WHERE rv.rider_id = riders.rider_id
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM rider_address ra
+                    WHERE ra.rider_id = riders.rider_id
+                )
+            ) AS total_rider,
             (SELECT COUNT(*) FROM mobility_station_list ) AS total_station,
             (SELECT COUNT(*) FROM cycle_booking WHERE status = 'ON' and DATE(created_at) >= ?) AS on_going_bookings, 
             (SELECT COUNT(*) FROM cycle_booking WHERE status = 'PNR' and DATE(created_at) >= ?) AS incomplete_bookings, 

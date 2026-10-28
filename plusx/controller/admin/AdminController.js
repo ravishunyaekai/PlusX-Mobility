@@ -22,7 +22,22 @@ export const getDashboardData = async (req, resp) => {
         const currentDate = moment().startOf('day') .subtract(4, 'hours') .format('YYYY-MM-DD HH:mm:ss');
         console.log(currentDate);
         const countSql = ` SELECT
-            (SELECT COUNT(*) FROM riders WHERE created_at >= ?) AS total_rider,
+            (SELECT COUNT(*)
+                FROM riders
+                WHERE created_at >= ?
+                AND (
+                    EXISTS (
+                        SELECT 1
+                        FROM riders_vehicles rv
+                        WHERE rv.rider_id = riders.rider_id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM rider_address ra
+                        WHERE ra.rider_id = riders.rider_id
+                    )
+                )
+            ) AS total_rider,
             (SELECT COUNT(*) FROM rsa WHERE status = 1) AS total_rsa,
             (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != 'PNR') AS total_road_assistance,
 

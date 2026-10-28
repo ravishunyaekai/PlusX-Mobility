@@ -13,6 +13,7 @@ import {
     adminCancelCSBooking, failedBookingList, failedbookingDetails
 } from "../controller/admin/PickAndDropController.js";
 import { addPublicCharger, editPublicCharger, stationDetail, stationList, deletePublicCharger, deletePublicChargerGallery, stationData } from "../controller/admin/PublicChargerController.js";
+import { riderDetailsElectricDB } from "../../mobility/controller/admin/UserController.js";
 
 import { chargerInstallationDetails, chargerInstallationList, eVChargerAdd, eVChargerList, chargerBrandList, chargerBrandCreate, chargerBrandUpdate, allChargerBrand, evChargerDetails, eVChargerEdit, AccessoriesAdd, AccessoriesList, AccessoriesDetails, AccessoriesEdit, deleteEVChargerGallery, PurchaseHistoryAdd, PurchaseHistoryList, PurchaseHistoryDetails, PurchaseHistoryEdit, eVChargerCoverImgDelete } from "../controller/admin/ChargerInstallationController.js";
 
@@ -49,6 +50,8 @@ import { swipeStationList, stationDetails, addStation, editStation } from "../co
 import { addChargShare, chargeShareDetail, chargeShareList, chargeshareForMap, outputAndConnector, chargeShareDelete, editChargShare, rejectChargShare, acceptChargShare } from "../controller/admin/ChargeShareController.js";
 import { RiderList } from "../../mobility/controller/admin/AdminMobilityController.js";
 
+import { communityList, communityDetail, addCommunity, editCommunity, allCommunityList, addResidentMulti, editResidentMulti, residentListMulti, residentListMultiOld, residentDetailMulti, residentSearchMulti, communityAreaList, getInvoiceData, createScanChargeInvoice, scanChargeInvoiceList, scanChargeInvoiceDetail, sessionList, sessionDetail } from "../../mobility/controller/admin/CommunityController.js";
+
 const router = Router();
 
 const adminAuthRoutes = [
@@ -65,6 +68,7 @@ const adminRoutes = [
     { method: 'post', path: '/dashboard', handler: getDashboardData },
     { method: 'post', path: '/electric-customer-list', handler: RiderList },
     { method: 'post', path: '/plusx-notification-list', handler: notificationList },
+    { method: 'post',   path: '/rider-details-electric-dashboard',                handler: riderDetailsElectricDB},
 
     { method: 'post', path: '/location-list', handler: locationList },
     { method: 'post', path: '/location-area-list', handler: areaList },
@@ -188,6 +192,37 @@ const adminRoutes = [
 
 
     { method: 'post', path: '/charge-share-detail', handler: chargeShareDetail },
+    // Community Routes
+    { method: 'post',  path: '/community-add',       handler: addCommunity },
+    { method: 'post',  path: '/community-edit',      handler: editCommunity },
+    { method: 'post',  path: '/community-list',      handler: communityList },
+    { method: 'post',  path: '/community-details',   handler: communityDetail },
+    { method: 'post',  path: '/all-community-list',  handler: allCommunityList },
+    { method: 'post',  path: '/community-area-list', handler: communityAreaList },
+ 
+    // Resident Routes -- existing routes
+    // { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    // { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    // { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    // { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    // { method: 'post',  path: '/resident-search',            handler : residentSearchMulti },
+ 
+    // Resident Routes (multi-community — CommunityControllerNew)
+    { method: 'post',  path: '/resident-add',     handler: addResidentMulti },
+    { method: 'post',  path: '/resident-edit',    handler: editResidentMulti },
+    { method: 'post',  path: '/resident-list',    handler: residentListMulti },
+    { method: 'post',  path: '/resident-list-old', handler: residentListMultiOld },
+    // { method: 'post',  path: '/resident-list-single-old', handler: residentListOld }, // handler commented out in CommunityController
+    { method: 'post',  path: '/resident-details', handler: residentDetailMulti },
+    { method: 'post',  path: '/resident-search',  handler: residentSearchMulti },
+
+    { method: 'post',  path: '/get-invoice-data',           handler : getInvoiceData }, 
+    { method: 'post',  path: '/create-scan-charge-invoice', handler : createScanChargeInvoice },
+    { method: 'post',  path: '/scan-charge-invoice-list',   handler : scanChargeInvoiceList },
+    { method: 'post',  path: '/scan-charge-invoice-detail', handler : scanChargeInvoiceDetail },
+
+    { method: 'post',  path: '/session-list',    handler : sessionList },
+    { method: 'post',  path: '/session-detail',  handler : sessionDetail },
 
 
 ];
