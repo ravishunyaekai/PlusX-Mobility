@@ -15,6 +15,14 @@ import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 
+const isIncompleteOfflineRider = (rider) => {
+    if (!rider) return false;
+    const source = String(rider.added_from || '').trim();
+    if (!OFFLINE_RIDER_SOURCES.includes(source)) return false;
+    // Admin-created riders usually have no access_token until first app login/register.
+    return !rider.access_token || Number(rider.status) === 0;
+};
+
 export const notificationList = asyncHandler(async (req, resp) => {
     const { rider_id, page_no } = mergeParam(req);
 

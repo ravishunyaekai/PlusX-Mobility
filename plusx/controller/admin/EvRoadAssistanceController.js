@@ -726,7 +726,7 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
 
         bookingData.service_terms_condition_url =
             bookingData.service_terms_condition
-                ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_SERVICE_TERMS_FOLDER}/${bookingData.service_terms_condition}`
+                ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${bookingData.service_terms_condition}`
                 : null;
 
         bookingData.booking_completed_by =
