@@ -137,7 +137,7 @@ export const addRoadAssistance = asyncHandler(async (req, resp) => {
 
 
         if (!riderAddress) return resp.json({ message: ["Address Id not valid!"], status: 0, code: 422, error: true });
-        // if(riderAddress.chek_slot == 0) return resp.json({ message : ["Sorry for the inconvenience. Our team is currently busy with bookings. For more details, please call us at +971 54 279 6424."], status: 0, code: 422, error: true });
+        // if(riderAddress.chek_slot == 0) return resp.json({ message : ["Sorry for the inconvenience. Our team is currently busy with bookings. For more details, please call us at +91 54 279 6424."], status: 0, code: 422, error: true });
 
 
         if (riderAddress.slot_price < 1) {
@@ -344,7 +344,7 @@ export const roadAssistanceDetail = asyncHandler(async (req, resp) => {
             SELECT 
                 request_id,
                 customer_name AS name,
-                '+971' AS country_code,
+                '+91' AS country_code,
                 mobile_no AS contact_no,
                 address AS pickup_address,
                 location_link,
@@ -468,128 +468,67 @@ export const roadAssistanceInvoiceList = asyncHandler(async (req, resp) => {
     });
 });
 
-const { isValid, errors } = validateFields(mergeParam(req), {
-    rider_id: ["required"],
-    booking_id: ["required"]
-});
-
-if (!isValid) {
-    return resp.json({
-        status: 0,
-        code: 422,
-        message: errors
+export const roadAssistanceInvoiceDetail = asyncHandler(async (req, resp) => {
+    const { rider_id, booking_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        rider_id   : ["required"], 
+        booking_id : ["required"]
     });
-}
-
-// Online invoice
-// Explicitly use the same collation for string-to-string comparisons.
-const data = await queryDB(`
-    SELECT
-        rsi.request_id AS booking_id,
-        rsi.invoice_id,
-        rsi.invoice_date,
-        r.name AS user_name,
-        r.country_code,
-        r.contact_no,
-        r.pickup_address AS address,
-        rsi.price_details
-    FROM road_assistance_invoice AS rsi
-    LEFT JOIN road_assistance AS r
-        ON r.request_id COLLATE utf8mb4_unicode_ci =
-           rsi.request_id COLLATE utf8mb4_unicode_ci
-    WHERE
-        rsi.request_id = ?
-        AND rsi.rider_id = ?
-`, [booking_id, rider_id]);
-
-if (data) {
-    // Support price_details stored as either JSON text or an object.
-    const priceDetails = typeof data.price_details === "string"
-        ? JSON.parse(data.price_details)
-        : (data.price_details || {});
-
-    data.booking_price = priceDetails.amount;
-    data.discount = priceDetails.discount_prcnt;
-
-    data.kw_consume = priceDetails.kw_consume;
-    data.dewa_unit_price = priceDetails.dewa_unit_price;
-    data.cpo_unit_price = priceDetails.cpo_unit_price;
-
-    data.kw_dewa_amt = priceDetails.kw_dewa_amt;
-    data.kw_cpo_amt = priceDetails.kw_cpo_amt;
-    data.delivry_charge = priceDetails.delivry_charge;
-
-    data.vat_amount = priceDetails.vat_amount;
-    data.discount_amt = priceDetails.discount_amt;
-    data.price = Math.round(Number(priceDetails.total_price) || 0);
-
-    data.vat_percetange = "5%";
-    data.price_details = {};
-
-    return resp.json({
-        message: ["Road Assistance Invoice Details fetch successfully!"],
-        data,
-        vat_percetange: "5%",
-        status: 1,
-        code: 200
-    });
-}
-
-// Offline invoice fallback
-// Match request_id and mobile_no using consistent collations.
-let offlineData = await queryDB(`
-    SELECT
-        roi.request_id AS booking_id,
-        roi.invoice_id,
-        roi.invoice_date,
-        roi.amount,
-        roi.payment_status,
-        roi.transaction_id,
-        rob.customer_name AS user_name,
-        '+971' AS country_code,
-        rob.mobile_no AS contact_no,
-        rob.address,
-        rob.booking_price,
-        rob.price AS service_price,
-        rob.vehicle_data,
-        rob.email_id,
-        rob.jump_start_required,
-        rob.battery_level,
-        'aed' AS currency
-    FROM rsa_offline_invoice AS roi
-    INNER JOIN rsa_offline_booking AS rob
-        ON rob.request_id COLLATE utf8mb4_unicode_ci =
-           roi.request_id COLLATE utf8mb4_unicode_ci
-    WHERE
-        roi.request_id = ?
-        AND (
-            rob.rider_id = ?
-            OR roi.rider_id = ?
-            OR rob.mobile_no COLLATE utf8mb4_unicode_ci = (
-                SELECT riders.rider_mobile COLLATE utf8mb4_unicode_ci
-                FROM riders
-                WHERE riders.rider_id = ?
-                LIMIT 1
-            )
-        )
-    LIMIT 1
-`, [booking_id, rider_id, rider_id, rider_id]);
-
-// If no invoice row exists, fall back to offline booking payment fields.
-if (!offlineData) {
-    offlineData = await queryDB(`
-        SELECT
-            rob.request_id AS booking_id,
-            '' AS invoice_id,
-            DATE_FORMAT(
-                CONVERT_TZ(rob.created_at, 'UTC', 'Asia/Dubai'),
-                '%Y-%m-%d %H:%i:%s'
-            ) AS invoice_date,
-            rob.booking_price AS amount,
-            rob.payment_status,
-            rob.transaction_id,
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+ 
+    const data = await queryDB(`
+        SELECT 
+            rsi.request_id as booking_id, invoice_id, invoice_date, r.name as user_name, r.country_code, r.contact_no, r.pickup_address as address,
+            price_details
+        FROM 
+            road_assistance_invoice AS rsi
+        LEFT JOIN
+            road_assistance AS r ON r.request_id = rsi.request_id
+        WHERE 
+            rsi.request_id = ? AND rsi.rider_id = ?
+    `, [ booking_id, rider_id ]);
+ 
+    // Online invoice from road_assistance_invoice (existing flow)
+    if (data) {
+        data.booking_price = data.price_details.amount ;   
+        data.discount      = data.price_details.discount_prcnt ;   
+ 
+        data.kw_consume      = data.price_details.kw_consume ; 
+        data.dewa_unit_price = data.price_details.dewa_unit_price ; 
+        data.cpo_unit_price  = data.price_details.cpo_unit_price ; 
+ 
+        data.kw_dewa_amt    = data.price_details.kw_dewa_amt ; 
+        data.kw_cpo_amt     = data.price_details.kw_cpo_amt ; 
+        data.delivry_charge = data.price_details.delivry_charge ; 
+ 
+        data.vat_amount   = data.price_details.vat_amount ; 
+        data.discount_amt = data.price_details.discount_amt ; 
+        data.price        = Math.round(data.price_details.total_price) ; 
+        
+        data.vat_percetange = '5%';
+        data.price_details = {};
+ 
+        return resp.json({
+            message        : ["Road Assistance Invoice Details fetch successfully!"],
+            data           : data,
+            vat_percetange : '5%',
+            status         : 1,
+            code           : 200,
+        });
+    }
+ 
+    // Fallback: offline invoice from rsa_offline_invoice joined with rsa_offline_booking
+    // booking_id = request_id from offline booking; rider matched via rider_id or mobile_no
+    let offlineData = await queryDB(`
+        SELECT 
+            roi.request_id AS booking_id,
+            roi.invoice_id,
+            roi.invoice_date,
+            roi.amount,
+            roi.payment_status,
+            roi.transaction_id,
             rob.customer_name AS user_name,
-            '+971' AS country_code,
+            '+91' AS country_code,
             rob.mobile_no AS contact_no,
             rob.address,
             rob.booking_price,
@@ -599,58 +538,84 @@ if (!offlineData) {
             rob.jump_start_required,
             rob.battery_level,
             'aed' AS currency
-        FROM rsa_offline_booking AS rob
-        WHERE
-            rob.request_id = ?
+        FROM 
+            rsa_offline_invoice AS roi
+        INNER JOIN
+            rsa_offline_booking AS rob ON rob.request_id = roi.request_id
+        WHERE 
+            roi.request_id = ?
             AND (
                 rob.rider_id = ?
-                OR rob.mobile_no COLLATE utf8mb4_unicode_ci = (
-                    SELECT riders.rider_mobile COLLATE utf8mb4_unicode_ci
-                    FROM riders
-                    WHERE riders.rider_id = ?
-                    LIMIT 1
-                )
+                OR roi.rider_id = ?
+                OR rob.mobile_no = (SELECT rider_mobile FROM riders WHERE rider_id = ? LIMIT 1)
             )
         LIMIT 1
-    `, [booking_id, rider_id, rider_id]);
-}
-
-if (!offlineData) {
+    `, [ booking_id, rider_id, rider_id, rider_id ]);
+ 
+    // If invoice row not created yet, fallback to offline booking payment fields
+    if (!offlineData) {
+        offlineData = await queryDB(`
+            SELECT 
+                request_id AS booking_id,
+                '' AS invoice_id,
+                DATE_FORMAT(CONVERT_TZ(created_at, 'UTC', 'Asia/Dubai'), '%Y-%m-%d %H:%i:%s') AS invoice_date,
+                booking_price AS amount,
+                payment_status,
+                transaction_id,
+                customer_name AS user_name,
+                '+91' AS country_code,
+                mobile_no AS contact_no,
+                address,
+                booking_price,
+                price AS service_price,
+                vehicle_data,
+                email_id,
+                jump_start_required,
+                battery_level,
+                'aed' AS currency
+            FROM 
+                rsa_offline_booking
+            WHERE 
+                request_id = ?
+                AND (
+                    rider_id = ?
+                    OR mobile_no = (SELECT rider_mobile FROM riders WHERE rider_id = ? LIMIT 1)
+                )
+            LIMIT 1
+        `, [ booking_id, rider_id, rider_id ]);
+    }
+ 
+    if (!offlineData) {
+        return resp.json({ status: 0, code: 404, message: ["There are no invoices available for the provided booking ID."] });
+    }
+ 
+    const bookingPrice = parseFloat(offlineData.booking_price) || 0;
+    const totalPrice   = Math.round(parseFloat(offlineData.amount) || 0);
+    const vatAmount    = Math.max(totalPrice - bookingPrice, 0);
+ 
+    // Map offline invoice to the same response shape as online (kWh fields not applicable for offline)
+    offlineData.discount         = 0;
+    offlineData.kw_consume       = 0;
+    offlineData.dewa_unit_price  = 0;
+    offlineData.cpo_unit_price   = 0;
+    offlineData.kw_dewa_amt      = 0;
+    offlineData.kw_cpo_amt       = 0;
+    offlineData.delivry_charge   = 0;
+    offlineData.discount_amt     = 0;
+    offlineData.vat_amount       = vatAmount;
+    offlineData.price            = totalPrice;
+    offlineData.vat_percetange   = '5%';
+    offlineData.is_offline       = 1;
+    offlineData.country_code     = '+91';
+    offlineData.currency         = 'aed'; // match online road_assistance_invoice currency for AED display in app
+ 
     return resp.json({
-        status: 0,
-        code: 404,
-        message: [
-            "There are no invoices available for the provided booking ID."
-        ]
+        message        : ["Road Assistance Invoice Details fetch successfully!"],
+        data           : offlineData,
+        vat_percetange : '5%',
+        status         : 1,
+        code           : 200,
     });
-}
-
-const bookingPrice = parseFloat(offlineData.booking_price) || 0;
-const totalPrice = Math.round(parseFloat(offlineData.amount) || 0);
-const vatAmount = Math.max(totalPrice - bookingPrice, 0);
-
-// Map offline invoice fields to the existing response format.
-offlineData.discount = 0;
-offlineData.kw_consume = 0;
-offlineData.dewa_unit_price = 0;
-offlineData.cpo_unit_price = 0;
-offlineData.kw_dewa_amt = 0;
-offlineData.kw_cpo_amt = 0;
-offlineData.delivry_charge = 0;
-offlineData.discount_amt = 0;
-offlineData.vat_amount = vatAmount;
-offlineData.price = totalPrice;
-offlineData.vat_percetange = "5%";
-offlineData.is_offline = 1;
-offlineData.country_code = "+971";
-offlineData.currency = "aed";
-
-return resp.json({
-    message: ["Road Assistance Invoice Details fetch successfully!"],
-    data: offlineData,
-    vat_percetange: "5%",
-    status: 1,
-    code: 200
 });
 
 

@@ -1565,7 +1565,7 @@ const getOfflineBookingPrefill = async (mobile, email = null) => {
         last_name,
         rider_email  : booking.email_id || null,
         rider_mobile : booking.mobile_no || mobile || null,
-        country_code : booking.country_code || '+971',
+        country_code : booking.country_code || '+91',
         emirates     : booking.emirates || null,
     };
 };
@@ -1577,7 +1577,7 @@ const getRiderPrefill = (rider) => {
         last_name    : rider.last_name || '',
         rider_email  : rider.rider_email || null,
         rider_mobile : rider.rider_mobile || null,
-        country_code : rider.country_code || '+971',
+        country_code : rider.country_code || '+91',
         emirates     : rider.emirates || null,
         rider_id     : rider.rider_id || null,
     };

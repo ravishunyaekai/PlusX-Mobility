@@ -167,7 +167,7 @@ export const addCommunity = asyncHandler(async (req, resp) => {
     try {
         const {
             community_name, area_name, total_residence, chargers, kwValues,
-            manager_name, manager_email, manager_contact, country_code = '+971', password
+            manager_name, manager_email, manager_contact, country_code = '+91', password
         } = req.body;
 
         // return resp.json({ status : 0, message : "Community added successfully.", body : req.body });
@@ -227,7 +227,7 @@ export const addCommunity = asyncHandler(async (req, resp) => {
         const hashedPswd = await bcrypt.hash(password, 10);
         const managerInsert = await insertRecord('community_managers',
             ['manager_id', 'community_id', 'manager_name', 'manager_email', 'country_code', 'manager_contact', 'password', 'status'],
-            ['manager_id', community_id, manager_name, manager_email, country_code || '+971', manager_contact, hashedPswd, 1]
+            ['manager_id', community_id, manager_name, manager_email, country_code || '+91', manager_contact, hashedPswd, 1]
         );
         if (managerInsert.affectedRows == 0) {
             return resp.json({ status: 0, message: "Community added but failed to add community manager. Please try again." });
@@ -248,7 +248,7 @@ export const editCommunity = asyncHandler(async (req, resp) => {
     try {
         const {
             community_id, community_name, area_name, total_residence, chargers, kwValues,
-            manager_name, manager_email, manager_contact, country_code = '+971', password
+            manager_name, manager_email, manager_contact, country_code = '+91', password
         } = req.body;
 
         // return resp.json({ status : 0, message : "Community added successfully.", body : req.body });
@@ -300,7 +300,7 @@ export const editCommunity = asyncHandler(async (req, resp) => {
             );
         }
 
-        const managerUpdtObj = { manager_name, manager_email, manager_contact, country_code: country_code || '+971' };
+        const managerUpdtObj = { manager_name, manager_email, manager_contact, country_code: country_code || '+91' };
         if (password) {
             managerUpdtObj.password = await bcrypt.hash(password, 10);
         }
@@ -348,7 +348,7 @@ export const communityAreaList = asyncHandler(async (req, resp) => {
 // export const addResident = asyncHandler(async (req, resp) => {
 //     try {
 //         const {
-//             resident_name, mobile_number, country_code = '+971', resident_email, community_id, address, monthly_session_allocation,
+//             resident_name, mobile_number, country_code = '+91', resident_email, community_id, address, monthly_session_allocation,
 //             alloted_time, kwh_allocated, per_kwh_charge, extra_charge
 //         } = req.body;
 
@@ -387,7 +387,7 @@ export const communityAreaList = asyncHandler(async (req, resp) => {
 //         [
 //             'resident_id', 'community_id', 'resident_name', 'country_code', 'resident_mobile', 'resident_email', 'address', 'monthly_session_allocation', 'alloted_time', 'kwh_allocated', 'per_kwh_charge', 'extra_charge', 'status',
 //         ], [
-//             'resident_id', community_id, resident_name, country_code || '+971', mobile_number, resident_email, address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, 1, 
+//             'resident_id', community_id, resident_name, country_code || '+91', mobile_number, resident_email, address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, 1, 
 //         ]);
 
 //         if(insert.affectedRows == 0) return resp.json({status:0, message: "Failed to add Please try again after some time."});
@@ -598,7 +598,7 @@ export const communityAreaList = asyncHandler(async (req, resp) => {
 // export const editResident = asyncHandler(async (req, resp) => {
 //     try {
 //         const {
-//             resident_id, resident_name, mobile_number, country_code = '+971', resident_email, community_id, address, monthly_session_allocation,
+//             resident_id, resident_name, mobile_number, country_code = '+91', resident_email, community_id, address, monthly_session_allocation,
 //             alloted_time, kwh_allocated, per_kwh_charge, extra_charge
 //         } = req.body;
 
@@ -637,7 +637,7 @@ export const communityAreaList = asyncHandler(async (req, resp) => {
 //         const updtObj = { 
 //             resident_name,
 //             resident_email,
-//             country_code    : country_code || '+971',
+//             country_code    : country_code || '+91',
 //             resident_mobile : mobile_number, 
 //             community_id, 
 //             address, 
@@ -666,7 +666,7 @@ export const communityAreaList = asyncHandler(async (req, resp) => {
 export const addResidentMulti = asyncHandler(async (req, resp) => {
     try {
         const {
-            resident_name, mobile_number, country_code = '+971', resident_email, community_ids,
+            resident_name, mobile_number, country_code = '+91', resident_email, community_ids,
             address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge
         } = req.body;
 
@@ -714,7 +714,7 @@ export const addResidentMulti = asyncHandler(async (req, resp) => {
                 'resident_id', 'community_id', 'resident_name', 'country_code', 'resident_mobile', 'resident_email',
                 'address', 'monthly_session_allocation', 'alloted_time', 'kwh_allocated', 'per_kwh_charge', 'extra_charge', 'status',
             ], [
-            'resident_id', primaryCommunityId, resident_name, country_code || '+971', mobile_number, resident_email,
+            'resident_id', primaryCommunityId, resident_name, country_code || '+91', mobile_number, resident_email,
             address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge, 1,
         ]);
 
@@ -936,7 +936,7 @@ export const residentSearchMulti = asyncHandler(async (req, resp) => {
 export const editResidentMulti = asyncHandler(async (req, resp) => {
     try {
         const {
-            resident_id, resident_name, mobile_number, country_code = '+971', resident_email, community_ids,
+            resident_id, resident_name, mobile_number, country_code = '+91', resident_email, community_ids,
             address, monthly_session_allocation, alloted_time, kwh_allocated, per_kwh_charge, extra_charge
         } = req.body;
 
@@ -985,7 +985,7 @@ export const editResidentMulti = asyncHandler(async (req, resp) => {
         const updtObj = {
             resident_name,
             resident_email,
-            country_code: country_code || '+971',
+            country_code: country_code || '+91',
             resident_mobile: mobile_number,
             community_id: primaryCommunityId,
             address,

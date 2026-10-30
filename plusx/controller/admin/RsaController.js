@@ -389,7 +389,7 @@ export const oldrsaAdd = asyncHandler(async (req, resp) => {
     const insert = await insertRecord('rsa', [
         'rsa_id', 'rsa_name', 'email', 'country_code', 'mobile', 'booking_type', 'password', 'status', 'running_order', 'profile_img'
     ], [
-        `${rsaNameArr[0]}-${generateUniqueId({ length: 5 })}`, rsa_name, rsa_email, '+971', mobile, service_type, hashedPswd, 0, 0, profile_image
+        `${rsaNameArr[0]}-${generateUniqueId({ length: 5 })}`, rsa_name, rsa_email, '+91', mobile, service_type, hashedPswd, 0, 0, profile_image
     ]);
 
     return resp.json({
