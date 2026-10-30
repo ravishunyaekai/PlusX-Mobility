@@ -734,12 +734,12 @@ export const register = asyncHandler(async (req, resp) => {
             [
                 'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'state', 'status', 'added_from'
             ], [
-            'ER', first_name, last_name, rider_email, country_code, rider_mobile, state,
+            'PM', first_name, last_name, rider_email, country_code, rider_mobile, state,
             0, platform
         ]);
         if (!rider) return resp.json({ status: 0, code: 405, message: ["Failed to register. Please Try Again"], error: true });
 
-        riderId = 'ER' + String(rider.insertId).padStart(4, '0');
+        riderId = 'PM' + String(rider.insertId).padStart(4, '0');
         await updateRecord('riders', {
             rider_id: riderId,
             access_token: token,

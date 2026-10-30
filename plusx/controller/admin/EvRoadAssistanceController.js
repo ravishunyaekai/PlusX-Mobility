@@ -201,7 +201,7 @@ const findOrCreateRiderByMobile = async ({
             'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code',
             'rider_mobile', 'state', 'status', 'added_from',
         ], [
-            'ER', firstName, lastName, riderEmail, country_code || '+91',
+            'PM', firstName, lastName, riderEmail, country_code || '+91',
             mobile, state || null, 0, RSA_OFFLINE_ADDED_FROM,
         ], connection);
 
@@ -209,7 +209,7 @@ const findOrCreateRiderByMobile = async ({
             throw new Error('Failed to create rider for offline booking');
         }
 
-        const riderId = 'ER' + String(insert.insertId).padStart(4, '0');
+        const riderId = 'PM' + String(insert.insertId).padStart(4, '0');
         await updateRecord('riders', { rider_id: riderId }, ['id'], [insert.insertId], connection);
         return { rider_id: riderId, isNewRider: true };
     } catch (error) {

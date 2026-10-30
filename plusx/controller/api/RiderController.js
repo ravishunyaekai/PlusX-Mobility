@@ -90,11 +90,11 @@ export const register = asyncHandler(async (req, resp) => {
     
     const rider = await insertRecord('riders', [
         'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'emirates', 'status', 'added_from' 
-    ],[ 'ER', first_name, last_name, rider_email, country_code, rider_mobile, emirates,  0, added_from || 'Android' ]);
+    ],[ 'PM', first_name, last_name, rider_email, country_code, rider_mobile, emirates,  0, added_from || 'Android' ]);
     
     if(!rider) return resp.json({status:0, code:405, message: ["Failed to register. Please Try Again"], error: true}); 
 
-    const riderId = 'ER' + String(rider.insertId).padStart(4, '0');
+    const riderId = 'PM' + String(rider.insertId).padStart(4, '0');
     await db.execute('UPDATE riders SET rider_id = ? WHERE id = ?', [riderId, rider.insertId]);
     
     const result = {
