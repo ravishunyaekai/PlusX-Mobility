@@ -143,7 +143,7 @@ export const updateProfile = asyncHandler(async (req, resp) => {
         profile_image = files ? files['profile_image'][0].filename : '';
     }
 
-    const { rider_id, first_name, last_name, rider_email, country_code = '+91', rider_mobile = '', emirates = '', city_id = '', state_id = '' } = mergeParam(req);
+    const { rider_id, first_name, last_name, rider_email, country_code = '+91', rider_mobile = '',  city_id = '', state_id = '' } = mergeParam(req);
 
     const { isValid, errors } = validateFields(mergeParam(req), {
         rider_id: ["required"],
@@ -151,8 +151,7 @@ export const updateProfile = asyncHandler(async (req, resp) => {
         // last_name    : ["required"], 
         // rider_email  : ["required"], 
         // country_code : ["required"], 
-        // rider_mobile : ["required"], 
-        // emirates     : ["required"]
+        // rider_mobile : ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
@@ -555,7 +554,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     const fullMobile = `${country_code}${mobile}`;
  
     const existingRider = await queryDB(
-        `SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, emirates,
+        `SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state,
                 access_token, status, added_from
          FROM riders
          WHERE rider_mobile = ?
@@ -622,7 +621,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
 
 export const register = asyncHandler(async (req, resp) => {
     const { 
-        first_name, last_name, rider_email, country_code, rider_mobile, emirates, added_from, otp, fcm_token =""  
+        first_name, last_name, rider_email, country_code, rider_mobile, state, added_from, otp, fcm_token =""  
     } = mergeParam(req);
     
     let validationRules = {
@@ -631,7 +630,7 @@ export const register = asyncHandler(async (req, resp) => {
         rider_email  : ["required", "email"],
         country_code : ["required"],
         rider_mobile : ["required"],
-        emirates     : ["required"],
+        state     : ["required"],
         otp          : ["required"],
         // fcm_token    : ["required"],
     };
@@ -683,7 +682,7 @@ export const register = asyncHandler(async (req, resp) => {
             last_name    : last_name,
             rider_email  : rider_email,
             country_code : country_code,
-            emirates     : emirates,
+            state     : state,
             access_token : token,
             status       : 1,
             fcm_token    : fcm_token,
@@ -692,9 +691,9 @@ export const register = asyncHandler(async (req, resp) => {
     } else {
         const rider = await insertRecord('riders',
         [
-            'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'emirates', 'status', 'added_from'
+            'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'state', 'status', 'added_from'
         ],[
-            'ER', first_name, last_name, rider_email, country_code, rider_mobile, emirates,
+            'ER', first_name, last_name, rider_email, country_code, rider_mobile, state,
             0, platform
         ]);
         if(!rider) return resp.json({status:0, code:405, message: ["Failed to register. Please Try Again"], error: true});
@@ -708,11 +707,11 @@ export const register = asyncHandler(async (req, resp) => {
         }, ['id'], [ rider.insertId ]);
     }
  
-    // If offline booking matches signup mobile OR email, push rider_id / name / emirates onto it.
+    // If offline booking matches signup mobile OR email, push rider_id / name / state onto it.
     try {
         await linkOfflineRsaToRider(riderId, rider_mobile, rider_email, {
             customer_name : `${first_name} ${last_name}`.trim(),
-            emirates,
+            state,
         });
     } catch (linkErr) {
         console.error('[register] offline RSA link skipped:', linkErr.message);
@@ -737,7 +736,7 @@ export const register = asyncHandler(async (req, resp) => {
         profile_img  : null,
         country_code : country_code,
         rider_mobile : rider_mobile,
-        emirates     : emirates,
+        state     : state,
         access_token : token,
         is_resident  : !rsidentData ? 0 : 1,
     };
@@ -754,7 +753,7 @@ export const login = asyncHandler(async (req, resp) => {
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
     const [[rider]] = await db.execute(
-        `SELECT rider_id, rider_name, rider_email, profile_img, country_code, country, emirates, status, password, rider_mobile FROM riders WHERE rider_mobile = ? AND country_code = ? LIMIT 1`,
+        `SELECT rider_id, rider_name, rider_email, profile_img, country_code, country, state, status, password, rider_mobile FROM riders WHERE rider_mobile = ? AND country_code = ? LIMIT 1`,
         [mobile, country_code]
     );
 
@@ -775,7 +774,7 @@ export const login = asyncHandler(async (req, resp) => {
             country_code: rider.country_code,
             rider_mobile: rider.rider_mobile,
             country: rider.country,
-            emirates: rider.emirates,
+            state: rider.state,
             access_token: token
         };
 
@@ -857,7 +856,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
     // is_resident > 0 when mapped to any community (multi-community aware)
     const riderData = await queryDB(`
         SELECT
-            rider_id, rider_name, last_name, rider_email, profile_img, country, emirates, status,
+            rider_id, rider_name, last_name, rider_email, profile_img, country, state, status,
             ( SELECT CASE
                 WHEN ( SELECT COUNT(DISTINCT crm.community_id)
                        FROM community_resident cr
@@ -911,7 +910,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
             riderData.rider_email,
             {
                 customer_name : `${riderData.rider_name || ''} ${riderData.last_name || ''}`.trim(),
-                emirates      : riderData.emirates,
+                state      : riderData.state,
             }
         );
     } catch (linkErr) {
@@ -927,7 +926,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
         profile_img   : riderData.profile_img,
         rider_mobile  : mobile,
         country_code  : country_code,        
-        emirates      : riderData.emirates,
+        state         : riderData.state,
         access_token  : token,
         is_resident   : riderData.resident_count,
     };
@@ -1489,7 +1488,7 @@ const splitCustomerName = (fullName = '') => {
 };
  
 // Link admin offline RSA bookings (and invoice/history) by mobile and/or email.
-// On match, set rider_id + overwrite customer_name & emirates from the signup user.
+// On match, set rider_id + overwrite customer_name & state from the signup user.
 const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, profile = {}) => {
     const mobile = riderMobile || null;
     const email  = riderEmail || null;
@@ -1499,7 +1498,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
         `UPDATE rsa_offline_booking
          SET rider_id = ?,
              customer_name = ?,
-             emirates = ?,
+             state = ?,
              email_id = COALESCE(NULLIF(TRIM(email_id), ''), ?),
              mobile_no = COALESCE(NULLIF(TRIM(mobile_no), ''), ?)
          WHERE rider_id IS NULL
@@ -1510,7 +1509,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
         [
             riderId,
             profile.customer_name || null,
-            profile.emirates || null,
+            profile.state || null,
             email,
             mobile,
             mobile, mobile,
@@ -1547,7 +1546,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
  
 const getOfflineBookingPrefill = async (mobile, email = null) => {
     const booking = await queryDB(
-        `SELECT customer_name, mobile_no, email_id, country_code, emirates
+        `SELECT customer_name, mobile_no, email_id, country_code, state
          FROM rsa_offline_booking
          WHERE (
                 (? IS NOT NULL AND mobile_no = ?)
@@ -1566,7 +1565,7 @@ const getOfflineBookingPrefill = async (mobile, email = null) => {
         rider_email  : booking.email_id || null,
         rider_mobile : booking.mobile_no || mobile || null,
         country_code : booking.country_code || '+91',
-        emirates     : booking.emirates || null,
+        state     : booking.state || null,
     };
 };
  
@@ -1578,7 +1577,7 @@ const getRiderPrefill = (rider) => {
         rider_email  : rider.rider_email || null,
         rider_mobile : rider.rider_mobile || null,
         country_code : rider.country_code || '+91',
-        emirates     : rider.emirates || null,
+        state        : rider.state || null,
         rider_id     : rider.rider_id || null,
     };
 };
