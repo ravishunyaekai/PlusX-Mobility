@@ -1318,10 +1318,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
     try {
 
         const {
-            request_id, customer_name, phone_number, email_id, emailId, country_code = '+91', location_link, address, state, city,
-            price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment,
-            transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null,
-            booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
+            request_id, customer_name, phone_number, email_id, emailId, country_code = '+91', location_link, address, state, city, price, vehicle_make, vehicle_model, battery_level, jump_start_required, payment_status, mode_of_payment, transaction_id, booking_status, driver_name = null, booking_completed_by = null, rsa_id = null, booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
         } = mergeParam(req);
 
         const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
@@ -1346,13 +1343,24 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
 
         // Not sent by older clients — keep the stored value. No -> Yes is allowed; Yes -> No is not (rider already created).
         const existingBookingCompleted = existing.is_booking_completed || 'Yes';
-        const bookingCompleted = parseBookingCompletedFlag(is_booking_completed) || existingBookingCompleted;
-        if (existingBookingCompleted === 'Yes' && bookingCompleted === 'No') {
-            return resp.json({ status: 0, code: 422, message: ['A completed booking cannot be changed to not completed.'] });
-        }
+        const parsedBookingCompleted = parseBookingCompletedFlag(is_booking_completed);
+        const bookingCompleted =
+            parsedBookingCompleted || existingBookingCompleted;
+
         const isBookingNotCompleted = bookingCompleted === 'No';
 
-        // Booking not completed: no field is mandatory, but at least mobile or email is needed to identify the customer later.
+        if (
+            existingBookingCompleted === 'Yes' &&
+            bookingCompleted === 'No'
+        ) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: [
+                    'A completed booking cannot be changed to not completed.',
+                ],
+            });
+        }
         if (isBookingNotCompleted) {
             if (!mobileNo && !email) {
                 return resp.json({ status: 0, code: 422, message: ['mobile_no or email_id is required.'] });
@@ -1386,9 +1394,12 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 return resp.json({ status: 0, code: 422, message: errors });
             }
         }
-
         const statusInput = toNullableText(booking_status) || (isBookingNotCompleted ? 'CNF' : '');
-        const orderStatus = RSA_OFFLINE_STATUS_MAP[statusInput.toUpperCase()];
+
+        const normalizedStatus = statusInput.toUpperCase();
+
+        const orderStatus = RSA_OFFLINE_STATUS_MAP[normalizedStatus];
+
         if (!orderStatus) {
             return resp.json({
                 status: 0,
@@ -1404,8 +1415,9 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         // PU applies completion fields; C requires cancellation remarks unless the booking is not completed.
         const isCompleted = orderStatus === 'PU';
         const isCancelled = orderStatus === 'C';
-        const cancellationRemarks = isCancelled ? toNullableText(cancellation_remarks) : null;
-        if (isCancelled && !cancellationRemarks && !isBookingNotCompleted) {
+
+        const resolvedCancellationRemarks = isCancelled ? toNullableText(cancellation_remarks) : null;
+        if (isCancelled && !resolvedCancellationRemarks && !isBookingNotCompleted) {
             return resp.json({ status: 0, code: 422, message: ['cancellation_remarks is required when booking status is Cancelled.'] });
         }
         const cancelledBy = isCancelled ? 'Admin' : null;
@@ -1494,8 +1506,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                     await linkUnassignedOfflineBookings(rider_id, mobileNo, email, connection);
                 }
             }
-
-            const update = await updateRecord(RSA_OFFLINE_BOOKING_TABLE, {
+            const updateData = {
                 rider_id,
                 is_booking_completed: bookingCompleted,
                 customer_name: savedCustomerName,
@@ -1520,9 +1531,17 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 service_terms_condition: savedServiceTermsCondition,
                 booking_date: bookingDate,
                 booking_completed_date: completedDate,
-                cancellation_remarks: cancellationRemarks,
+                cancellation_remarks: resolvedCancellationRemarks,
                 cancelled_by: cancelledBy,
-            }, ['request_id'], [request_id], connection);
+            };
+
+            const update = await updateRecord(
+                RSA_OFFLINE_BOOKING_TABLE,
+                updateData,
+                ['request_id'],
+                [request_id],
+                connection
+            );
 
             if (update.affectedRows === 0) {
                 await rollbackTransaction(connection);
@@ -1530,17 +1549,18 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 return resp.json({ status: 0, code: 500, message: ['Failed to update offline booking. Please try again.'] });
             }
 
-            let invoice_id = null;
             const existingInvoice = await queryDB(
                 `SELECT invoice_id FROM ${RSA_OFFLINE_INVOICE_TABLE} WHERE request_id = ? LIMIT 1`,
                 [request_id],
                 connection
             );
 
+            let invoice_id = null;
+
             if (isCompleted) {
                 if (existingInvoice?.invoice_id) {
                     invoice_id = existingInvoice.invoice_id;
-                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, {
+                    const invoiceUpdate = await updateRecord(RSA_OFFLINE_INVOICE_TABLE, {
                         rider_id,
                         amount: bookingPrice,
                         payment_status: payment_status || 'Pending',
@@ -1560,16 +1580,31 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                         throw new Error('Failed to create offline RSA invoice');
                     }
 
-                    invoice_id = buildOfflineInvoiceId(invoiceInsert.insertId);
-                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { invoice_id }, ['id'], [invoiceInsert.insertId], connection);
+                    invoice_id = buildOfflineInvoiceId(
+                        invoiceInsert.insertId
+                    );
+
+                    const invoiceIdUpdate = await updateRecord(
+                        RSA_OFFLINE_INVOICE_TABLE,
+                        { invoice_id },
+                        ['id'],
+                        [invoiceInsert.insertId],
+                        connection
+                    );
                 }
             } else {
                 invoice_id = existingInvoice?.invoice_id || null;
+
                 if (existingInvoice?.invoice_id) {
-                    await updateRecord(RSA_OFFLINE_INVOICE_TABLE, { rider_id }, ['request_id'], [request_id], connection);
+                    const invoiceRiderUpdate = await updateRecord(
+                        RSA_OFFLINE_INVOICE_TABLE,
+                        { rider_id },
+                        ['request_id'],
+                        [request_id],
+                        connection
+                    );
                 }
             }
-
             const statusChanged = existing.order_status !== orderStatus;
             const latestHistory = await queryDB(
                 `SELECT id, driver_name, rsa_id FROM ${RSA_OFFLINE_HISTORY_TABLE}
@@ -1581,10 +1616,10 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
             );
 
             if (!latestHistory || statusChanged) {
-                await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
+                const historyInsert = await insertRecord(RSA_OFFLINE_HISTORY_TABLE, [
                     'order_id', 'rider_id', 'driver_name', 'rsa_id', 'order_status', 'remarks',
                 ], [
-                    request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, cancellationRemarks,
+                    request_id, rider_id, driverInfo.driver_name, driverInfo.rsa_id, orderStatus, resolvedCancellationRemarks,
                 ], connection);
             } else {
                 const historyUpdate = { rider_id };
@@ -1595,9 +1630,11 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                     historyUpdate.rsa_id = driverInfo.rsa_id;
                 }
                 if (isCancelled) {
-                    historyUpdate.remarks = cancellationRemarks;
+                    historyUpdate.remarks =
+                        resolvedCancellationRemarks;
                 }
-                await updateRecord(
+
+                const historyUpdateResult = await updateRecord(
                     RSA_OFFLINE_HISTORY_TABLE,
                     historyUpdate,
                     ['id'],
@@ -1608,8 +1645,12 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
 
             // Earlier history rows of a "not completed" booking may have been saved without a rider.
             if (rider_id) {
-                await connection.execute(
-                    `UPDATE ${RSA_OFFLINE_HISTORY_TABLE} SET rider_id = ? WHERE order_id = ? AND rider_id IS NULL`,
+
+                const [historyLinkResult] = await connection.execute(
+                    `UPDATE ${RSA_OFFLINE_HISTORY_TABLE}
+                     SET rider_id = ?
+                     WHERE order_id = ?
+                     AND rider_id IS NULL`,
                     [rider_id, request_id]
                 );
             }
@@ -1629,10 +1670,12 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 logPrefix: 'editOfflineRSABooking',
             });
 
-            return resp.json({
+            const responseData = {
                 status: 1,
                 code: 200,
-                message: ['Offline RSA booking updated successfully!'],
+                message: [
+                    'Offline RSA booking updated successfully!',
+                ],
                 request_id,
                 rider_id,
                 is_booking_completed: bookingCompleted,
@@ -1644,25 +1687,60 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 proof_of_transaction: savedProof,
                 booking_date: bookingDate,
                 booking_completed_date: completedDate,
-                cancellation_remarks: cancellationRemarks,
+                cancellation_remarks: resolvedCancellationRemarks,
                 cancelled_by: cancelledBy,
-                invoice_created: isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
+                invoice_created:
+                    isCompleted &&
+                    !wasCompleted &&
+                    !!invoice_id &&
+                    !existingInvoice,
                 whatsapp_status,
                 whatsapp_campaign_id,
-            });
+            };
+
+            return resp.json(responseData);
+
         } catch (error) {
             if (connection) {
-                await rollbackTransaction(connection);
+                try {
+                    await rollbackTransaction(connection);
+                } catch (rollbackError) {
+                    console.error(
+                        '[EDIT RSA] Rollback failed:',
+                        rollbackError.message
+                    );
+                }
             }
-            console.error('[editOfflineRSABooking] error:', error);
-            return resp.json({ status: 0, code: 500, message: ['Failed to update offline RSA booking.'] });
-        }
 
+            return resp.json({
+                status: 0,
+                code: 500,
+                message: [
+                    'Failed to update offline RSA booking.',
+                ],
+            });
+        }
     } catch (error) {
-        console.error('[editOfflineRSABooking] error:', error);
-        return resp.json({ status: 0, code: 500, message: ['Failed to edit offline RSA booking.'] });
+        console.error(
+            '[EDIT RSA] Outer controller error:',
+            error.message,
+            error.stack
+        );
+
+        console.error(
+            '========== EDIT OFFLINE RSA BOOKING: FATAL ERROR ==========\n'
+        );
+
+        return resp.json({
+            status: 0,
+            code: 500,
+            message: [
+                'Failed to edit offline RSA booking.',
+            ],
+        });
     }
 });
+
 
 export const evRoadAssistanceCancelBooking = asyncHandler(async (req, resp) => {
     const { request_id, rider_id, reason } = req.body;

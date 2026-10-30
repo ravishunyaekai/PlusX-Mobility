@@ -15,6 +15,7 @@ import Razorpay from "razorpay";
 
 import emailQueue from "../../emailQueue.js";
 
+const OFFLINE_RIDER_SOURCES = ['Rsa Offline', 'CI Offline', 'Admin Offline', 'Admin Offl'];
 const isIncompleteOfflineRider = (rider) => {
     if (!rider) return false;
     const source = String(rider.added_from || '').trim();
@@ -143,7 +144,7 @@ export const updateProfile = asyncHandler(async (req, resp) => {
         profile_image = files ? files['profile_image'][0].filename : '';
     }
 
-    const { rider_id, first_name, last_name, rider_email, country_code = '+91', rider_mobile = '',  city_id = '', state_id = '' } = mergeParam(req);
+    const { rider_id, first_name, last_name, rider_email, country_code = '+91', rider_mobile = '', city_id = '', state_id = '' } = mergeParam(req);
 
     const { isValid, errors } = validateFields(mergeParam(req), {
         rider_id: ["required"],
@@ -540,110 +541,150 @@ export const stateCountry = asyncHandler(async (req, resp) => {
 });
 
 export const regsCreateOTP = asyncHandler(async (req, resp) => {
-    const { mobile, country_code, rider_email } = mergeParam(req);
+    const { first_name, last_name = '', mobile, country_code, rider_email } = mergeParam(req);
+    console.log(first_name, last_name, mobile, country_code, rider_email);
     const { isValid, errors } = validateFields(mergeParam(req), {
-        mobile       : ["required"], 
-        country_code : ["required"],
-        rider_email  : ["required"]
+        first_name: ["required"],
+        mobile: ["required"],
+        country_code: ["required"],
+        rider_email: ["required"]
     });
-    if (!isValid) return resp.json({ status : 0, code : 422, message : errors });
- 
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
     const res = checkNumber(country_code, mobile);
-    if(res.status == 0) return resp.json({ status : 0, code : 422, message : res.msg });
- 
-    const fullMobile = `${country_code}${mobile}`;
- 
-    const existingRider = await queryDB(
-        `SELECT rider_id, rider_name, last_name, rider_email, country_code, rider_mobile, state,
-                access_token, status, added_from
-         FROM riders
-         WHERE rider_mobile = ?
-         LIMIT 1`,
-        [mobile]
-    );
- 
-    const [[rsaRow]] = await db.execute(
-        `SELECT COUNT(*) AS rsa_mob FROM rsa WHERE mobile = ?`,
-        [fullMobile]
-    );
-    if (rsaRow.rsa_mob > 0) {
-        return resp.json({ status: 0, code: 422, message: ['The provided number already exists.'] });
+    if (res.status == 0) return resp.json({ status: 0, code: 422, message: res.msg });
+
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
+    // (SELECT COUNT(*) FROM rsa WHERE rsa.mobile = ? ) AS rsa_mob
+
+    const [[isExist]] = await db.execute(`
+    SELECT
+        rider_id,
+        rider_name,
+        last_name,
+        rider_email,
+        country_code,
+        rider_mobile,
+        state,
+        access_token,
+        status,
+        added_from
+    FROM riders
+    WHERE rider_mobile = ?
+    LIMIT 1
+`, [mobile]);
+
+    console.log('isExist:', isExist);
+
+    // Check if mobile belongs to an existing rider
+    if (isExist) {
+
+        // Allow incomplete offline riders to continue registration
+        if (!isIncompleteOfflineRider(isExist)) {
+            return resp.json({
+                status: 0,
+                code: 422,
+                message: [
+                    'The provided number already exists. Please login.'
+                ]
+            });
+        }
+
+        // If incomplete offline rider, allow registration
     }
- 
-    if (existingRider && !isIncompleteOfflineRider(existingRider)) {
+
+    // Check whether email belongs to another rider
+    const emailTaken = await queryDB(`
+    SELECT rider_id
+    FROM riders
+    WHERE rider_email = ?
+    AND rider_id != ?
+    LIMIT 1
+`, [rider_email, isExist?.rider_id || '']);
+
+    if (emailTaken?.rider_id) {
         return resp.json({
-            status  : 0,
-            code    : 422,
-            message : ['The provided number already exists. Please login.'],
+            status: 0,
+            code: 422,
+            message: ['Email already registered.']
         });
     }
- 
-    const emailTaken = await queryDB(
-        `SELECT rider_id FROM riders
-         WHERE rider_email = ? AND rider_id != ?
-         LIMIT 1`,
-        [rider_email, existingRider?.rider_id || '']
-    );
-    if (emailTaken?.rider_id) {
-        return resp.json({ status: 0, code: 422, message: ['Email already registered.'] });
-    }
- 
-    let prefill = getRiderPrefill(existingRider);
+
+    let prefill = getRiderPrefill(isExist);
+
     if (!prefill) {
         prefill = await getOfflineBookingPrefill(mobile, rider_email);
     }
- 
+
     const otp = generateOTP(4);
     storeOTP(fullMobile, otp);
-    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); //for testing server 
- 
-    sendOtp( fullMobile,
-        `Your One-Time Password (OTP) for sign-up is: ${otp}. Do not share this OTP with anyone. Thank you for choosing PlusX Electric App!. A6NKWsZKgrz`
-    )
-    .then(result => {
-        if (result.status === 0) return resp.json(result);
-        return resp.json({
-            status                   : 1,
-            code                     : 200,
-            data                     : '',
-            message                  : ['OTP sent successfully!'],
-            can_register             : 1,
-            incomplete_offline_rider : existingRider && isIncompleteOfflineRider(existingRider) ? 1 : 0,
-            has_offline_booking      : prefill && !existingRider ? 1 : 0,
-            prefill                  : prefill || null,
-        });
-    })
-    .catch(err => {
-        tryCatchErrorHandler(req.originalUrl, err, resp, 'Failed to send OTP' );
-    }); 
-    
-});
 
+    const html = `<html>
+        <body>
+            <h4>Hello ${first_name} ${last_name},</h4>
+            <p>Thank you for signing up with PlusX Electric.</p> 
+            <p>Your One-Time Password (OTP) for completing the signup process is: ${otp} </p>
+            
+            <p>Please enter this code to verify your account. For your security, do not share this OTP with anyone.</p>                         
+            <p>If you did not request this, please ignore this email.</p> 
+            
+            <p>Best regards, <br/> PlusX Electric Team</p>
+        </body>
+    </html>`;
+    emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
+    console.log(`OTP ${otp} sent to ${fullMobile} and email ${rider_email}`);
+
+   return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
+
+    sendOtp(fullMobile, 35, otp)
+        .then(result => {
+            if (result.status === 0) return resp.json(result);
+            return resp.json({
+                status: 1,
+                code: 200,
+                data: '',
+                message: ['OTP sent successfully!'],
+                can_register: 1,
+                incomplete_offline_rider: isExist && isIncompleteOfflineRider(isExist) ? 1 : 0,
+                has_offline_booking: prefill && !isExist ? 1 : 0,
+                prefill: prefill || null,
+            });
+        })
+        .catch(err => {
+            tryCatchErrorHandler(req.originalUrl, err, resp, 'Failed to send OTP');
+        });
+
+});
+const resolveAppPlatform = (added_from = '') => {
+    return added_from === 'iOS' ? 'iOS' : 'Android';
+};
 export const register = asyncHandler(async (req, resp) => {
-    const { 
-        first_name, last_name, rider_email, country_code, rider_mobile, state, added_from, otp, fcm_token =""  
+    const {
+        first_name, last_name, rider_email, country_code, rider_mobile, state, added_from, otp, fcm_token = ""
     } = mergeParam(req);
-    
+
     let validationRules = {
-        first_name   : ["required"],
-        last_name    : ["required"],
-        rider_email  : ["required", "email"],
-        country_code : ["required"],
-        rider_mobile : ["required"],
-        state     : ["required"],
-        otp          : ["required"],
+        first_name: ["required"],
+        last_name: ["required"],
+        rider_email: ["required", "email"],
+        country_code: ["required"],
+        rider_mobile: ["required"],
+        city_id: ["required"],
+        state_id: ["required"],
+        country_id: ["required"],
+        otp: ["required"],
         // fcm_token    : ["required"],
     };
     const { isValid, errors } = validateFields(mergeParam(req), validationRules);
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
- 
+
     const res = checkNumber(country_code, rider_mobile);
-    if(res.status == 0) return resp.json({ status : 0, code : 422, message : res.msg });
- 
-    const fullMobile = `${country_code}${rider_mobile}`;
-    const cachedOtp  = getOTP(fullMobile);
+    if (res.status == 0) return resp.json({ status: 0, code: 422, message: res.msg });
+
+    const fullMobile = `${country_code}${rider_mobile}`.replace("+", "");
+    const cachedOtp = getOTP(fullMobile);
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] });
- 
+
     const existingRider = await queryDB(
         `SELECT id, rider_id, rider_email, access_token, status, added_from
          FROM riders
@@ -651,15 +692,15 @@ export const register = asyncHandler(async (req, resp) => {
          LIMIT 1`,
         [rider_mobile]
     );
- 
+
     if (existingRider && !isIncompleteOfflineRider(existingRider)) {
         return resp.json({
-            status  : 0,
-            code    : 422,
-            message : ['The provided number already exists. Please login.'],
+            status: 0,
+            code: 422,
+            message: ['The provided number already exists. Please login.'],
         });
     }
- 
+
     const emailTaken = await queryDB(
         `SELECT rider_id FROM riders
          WHERE rider_email = ? AND rider_id != ?
@@ -669,78 +710,81 @@ export const register = asyncHandler(async (req, resp) => {
     if (emailTaken?.rider_id) {
         return resp.json({ status: 0, code: 422, message: ['Email already registered.'] });
     }
- 
+
     const platform = resolveAppPlatform(added_from);
-    const token    = crypto.randomBytes(12).toString('hex');
+    const token = crypto.randomBytes(12).toString('hex');
     let riderId;
- 
+
     if (existingRider && isIncompleteOfflineRider(existingRider)) {
         // Complete admin-created offline rider instead of inserting a duplicate.
         riderId = existingRider.rider_id;
         await updateRecord('riders', {
-            rider_name   : first_name,
-            last_name    : last_name,
-            rider_email  : rider_email,
-            country_code : country_code,
-            state     : state,
-            access_token : token,
-            status       : 1,
-            fcm_token    : fcm_token,
-            added_from   : platform,
+            rider_name: first_name,
+            last_name: last_name,
+            rider_email: rider_email,
+            country_code: country_code,
+            state: state,
+            access_token: token,
+            status: 1,
+            fcm_token: fcm_token,
+            added_from: platform,
         }, ['id'], [existingRider.id]);
     } else {
         const rider = await insertRecord('riders',
-        [
-            'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'state', 'status', 'added_from'
-        ],[
+            [
+                'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'state', 'status', 'added_from'
+            ], [
             'ER', first_name, last_name, rider_email, country_code, rider_mobile, state,
             0, platform
         ]);
-        if(!rider) return resp.json({status:0, code:405, message: ["Failed to register. Please Try Again"], error: true});
- 
+        if (!rider) return resp.json({ status: 0, code: 405, message: ["Failed to register. Please Try Again"], error: true });
+
         riderId = 'ER' + String(rider.insertId).padStart(4, '0');
         await updateRecord('riders', {
-            rider_id     : riderId,
-            access_token : token,
-            status       : 1,
-            fcm_token    : fcm_token
-        }, ['id'], [ rider.insertId ]);
+            rider_id: riderId,
+            access_token: token,
+            status: 1,
+            fcm_token: fcm_token
+        }, ['id'], [rider.insertId]);
     }
- 
+
     // If offline booking matches signup mobile OR email, push rider_id / name / state onto it.
     try {
         await linkOfflineRsaToRider(riderId, rider_mobile, rider_email, {
-            customer_name : `${first_name} ${last_name}`.trim(),
+            customer_name: `${first_name} ${last_name}`.trim(),
             state,
         });
     } catch (linkErr) {
         console.error('[register] offline RSA link skipped:', linkErr.message);
     }
- 
+
     delOTP(fullMobile);
- 
+
     // Resident if community_resident row exists (map may be populated by admin after signup)
     const rsidentData = await queryDB(`
         SELECT resident_name
         FROM community_resident
         WHERE resident_mobile = ?`,
-        [ rider_mobile ]
+        [rider_mobile]
     );
- 
+
     const result = {
-        image_url    : `${process.env.DIR_UPLOADS}rider_profile/`,
-        rider_id     : riderId,
-        rider_name   : first_name,
-        last_name    : last_name,
-        rider_email  : rider_email,
-        profile_img  : null,
-        country_code : country_code,
-        rider_mobile : rider_mobile,
-        state     : state,
-        access_token : token,
-        is_resident  : !rsidentData ? 0 : 1,
+        image_url: `${process.env.DIR_UPLOADS}rider_profile/`,
+        rider_id: riderId,
+        rider_name: first_name,
+        last_name: last_name,
+        rider_email: rider_email,
+        profile_img: null,
+        country_code: country_code,
+        rider_mobile: rider_mobile,
+        city_id: city_id,
+        state_id: state_id,
+        access_token: token,
+        is_resident: !rsidentData ? 0 : 1,
     };
-    return resp.json({ status : 1, code : 200, message : ["Rider registered successfully"], result : result});
+    await createNotification(`New User Signup`, `${first_name} ${last_name} signed up`, `mobility`, 'Admin', 'user', riderId, '', `app-signup/app-signup-details/${riderId}`);
+    io.emit('notification-list', { msCount: 1 });
+    return resp.json({ status: 1, code: 200, message: ["User registered successfully"], result: result });
 });
 
 export const login = asyncHandler(async (req, resp) => {
@@ -787,72 +831,86 @@ export const login = asyncHandler(async (req, resp) => {
 export const createOTP = asyncHandler(async (req, resp) => {
     const { mobile, country_code } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), {
-        mobile       : ["required"], 
-        country_code : ["required"]
+        mobile: ["required"],
+        country_code: ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
- 
+
     const res = checkNumber(country_code, mobile);
-    if(res.status == 0) return resp.json({ status:0, code:422, message: res.msg });
-    
+    if (res.status == 0) return resp.json({ status: 0, code: 422, message: res.msg });
+
+    const riderData = await queryDB(`
+        SELECT rider_name, last_name, rider_email  
+        FROM riders 
+        WHERE rider_mobile = ? AND country_code = ?`, [mobile, country_code]
+    );
+    if (!riderData) return resp.json({ status: 0, code: 422, message: ['The provided mobile number is not registered.'] });
+
     let checkCountQuery = 'SELECT COUNT(id) AS count FROM riders WHERE rider_mobile =? AND country_code =?';
-    
-    const [rows]     = await db.execute(checkCountQuery, [mobile, country_code]);
+
+    const [rows] = await db.execute(checkCountQuery, [mobile, country_code]);
     const checkCount = rows[0].count;
-    
+
     if (checkCount == 0) {
         const bookingPrefill = await getOfflineBookingPrefill(mobile);
         return resp.json({
-            status              : 0,
-            code                : 422,
-            message             : ['The provided mobile number is not registered. Kindly sign up.'],
-            needs_registration  : 1,
-            has_offline_booking : bookingPrefill ? 1 : 0,
-            prefill             : bookingPrefill || null,
+            status: 0,
+            code: 422,
+            message: ['The provided mobile number is not registered. Kindly sign up.'],
+            needs_registration: 1,
+            has_offline_booking: bookingPrefill ? 1 : 0,
+            prefill: bookingPrefill || null,
         });
     }
-    
-    const fullMobile = `${country_code}${mobile}`;
-    let otp          = ( mobile == 508509508 || mobile == '508509508') ? "2404" : generateOTP(4);
-        otp          = ( mobile == 509508509 || mobile == '509508509') ? "2207" : otp;
- 
+
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
+    let otp = (mobile == '9459459459' || mobile == '9410934120' || mobile == '9879879879') ? "9404" : generateOTP(4);
     storeOTP(fullMobile, otp);
-    // return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); //this is for testing server
- 
-    if( mobile == 508509508 || mobile == '508509508') {
+
+    const html = `<html>
+        <body>
+            <h4>Hello ${riderData.rider_name} ${riderData.last_name},</h4>
+            <p>Thank you for signing in with PlusX Electric.</p> 
+            <p>Your One-Time Password (OTP) for completing the signin process is: ${otp} </p>
+            
+            <p>Please enter this code to verify your account. For your security, do not share this OTP with anyone.</p>                         
+            <p>If you did not request this, please ignore this email.</p> 
+            
+            <p>Best regards, <br/> PlusX Electric Team</p>
+        </body>
+    </html>`;
+    emailQueue.addEmail(riderData.rider_email, `Your OTP for Signin - PlusX Electric`, html);
+    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); //this is for testing server
+
+    if (mobile == '9459459459' || mobile == '9410934120' || mobile == '9879879879') {
         return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
-        
-    } else if( mobile == 509508509 || mobile == '509508509') {
-        return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
-        
+
     } else {
-        sendOtp( fullMobile,
-            `Your One-Time Password (OTP) for sign-in is: ${otp}. Do not share this OTP with anyone. Thank you for choosing PlusX Electric App!. A6NKWsZKgrz`
-        )
-        .then(result => {
-            if (result.status === 0) return resp.json(result);
-            return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
-        })
-        .catch(err => {
-            console.error('Error in otpController:', err.message);
-            return resp.json({ status: 'error', msg: 'Failed to send OTP' });
-        }); 
+        sendOtp(fullMobile, 34, otp)
+            .then(result => {
+                if (result.status === 0) return resp.json(result);
+                return resp.json({ status: 1, code: 200, data: '', message: ['OTP sent successfully!'] });
+            })
+            .catch(err => {
+                console.error('Error in otpController:', err.message);
+                return resp.json({ status: 'error', msg: 'Failed to send OTP' });
+            });
     }
 });
 
 
 
 export const verifyOTP = asyncHandler(async (req, resp) => {
-    const { mobile, country_code, fcm_token, otp, device_name ='', added_from = '' } = mergeParam(req);
-    
-    const { isValid, errors } = validateFields(mergeParam(req), { 
-        mobile       : ["required"], 
-        country_code : ["required"], 
-        fcm_token    : ["required"], 
-        otp          : ["required"] 
+    const { mobile, country_code, fcm_token, otp, device_name = '', added_from = '' } = mergeParam(req);
+
+    const { isValid, errors } = validateFields(mergeParam(req), {
+        mobile: ["required"],
+        country_code: ["required"],
+        fcm_token: ["required"],
+        otp: ["required"]
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
- 
+
     // is_resident > 0 when mapped to any community (multi-community aware)
     const riderData = await queryDB(`
         SELECT
@@ -875,20 +933,20 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
         WHERE rider_mobile = ? AND country_code = ?
         LIMIT 1`, [mobile, mobile, mobile, mobile, country_code]
     );
- 
-    if(!riderData) return resp.json({ 
-        status  : 0, code: 422, 
-        message : ["The mobile number is not registered with us. Kindly sign up."] 
+
+    if (!riderData) return resp.json({
+        status: 0, code: 422,
+        message: ["The mobile number is not registered with us. Kindly sign up."]
     });
-    if(riderData.status == 2){
-        return resp.json({status: 1, code: 422, message: ["You can not login as your status is inactive. Kindly contact to customer care"]});
+    if (riderData.status == 2) {
+        return resp.json({ status: 1, code: 422, message: ["You can not login as your status is inactive. Kindly contact to customer care"] });
     }
-    const fullMobile = `${country_code}${mobile}`;
-    const cachedOtp  = getOTP(fullMobile);
-    
+    const fullMobile = `${country_code}${mobile}`.replace("+", "");
+    const cachedOtp = getOTP(fullMobile);
+
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] });
- 
-    const token    = crypto.randomBytes(12).toString('hex');
+
+    const token = crypto.randomBytes(12).toString('hex');
     const platform = resolveAppPlatform(added_from);
     await db.execute(
         `UPDATE riders
@@ -900,37 +958,42 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
          WHERE rider_mobile = ? AND country_code = ?`,
         [token, fcm_token, device_name, platform, mobile, country_code]
     );
- 
+
     delOTP(fullMobile);
- 
+
     try {
         await linkOfflineRsaToRider(
             riderData.rider_id,
             mobile,
             riderData.rider_email,
             {
-                customer_name : `${riderData.rider_name || ''} ${riderData.last_name || ''}`.trim(),
-                state      : riderData.state,
+                customer_name: `${riderData.rider_name || ''} ${riderData.last_name || ''}`.trim(),
+                state: riderData.state,
             }
         );
     } catch (linkErr) {
         console.error('[verifyOTP] offline RSA link skipped:', linkErr.message);
     }
- 
+
     let respResult = {
-        image_url     : `${process.env.DIR_UPLOADS}rider_profile/`,
-        rider_id      : riderData.rider_id,
-        rider_name    : riderData.rider_name,
-        last_name     : riderData.last_name,
-        rider_email   : riderData.rider_email,
-        profile_img   : riderData.profile_img,
-        rider_mobile  : mobile,
-        country_code  : country_code,        
-        state         : riderData.state,
-        access_token  : token,
-        is_resident   : riderData.resident_count,
+        image_url: `${process.env.DIR_UPLOADS}rider_profile/`,
+        rider_id: riderData.rider_id,
+        rider_name: riderData.rider_name,
+        last_name: riderData.last_name,
+        rider_email: riderData.rider_email,
+        profile_img: riderData.profile_img,
+        rider_mobile: mobile,
+        country_code: country_code,
+        state: riderData.state,
+        access_token: token,
+        is_resident: riderData.resident_count,
     };
-    return resp.json({message: [ "Login successful!" ], status: 1, code: 200, is_login: 1, result: respResult});
+    if (riderData.customer_id === "" || riderData.customer_id === null) {
+
+        newcreateCustomer(riderData.rider_id);
+        console.log("background customer created");
+    }
+    return resp.json({ message: ["Login successful!"], status: 1, code: 200, is_login: 1, result: respResult });
 });
 
 
@@ -1483,17 +1546,17 @@ const splitCustomerName = (fullName = '') => {
     if (!parts.length) return { first_name: '', last_name: '' };
     return {
         first_name: parts[0],
-        last_name : parts.length > 1 ? parts.slice(1).join(' ') : '',
+        last_name: parts.length > 1 ? parts.slice(1).join(' ') : '',
     };
 };
- 
+
 // Link admin offline RSA bookings (and invoice/history) by mobile and/or email.
 // On match, set rider_id + overwrite customer_name & state from the signup user.
 const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, profile = {}) => {
     const mobile = riderMobile || null;
-    const email  = riderEmail || null;
+    const email = riderEmail || null;
     if (!mobile && !email) return;
- 
+
     await db.execute(
         `UPDATE rsa_offline_booking
          SET rider_id = ?,
@@ -1516,7 +1579,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
             email, email,
         ]
     );
- 
+
     await db.execute(
         `UPDATE rsa_offline_invoice roi
          INNER JOIN rsa_offline_booking rob ON rob.request_id = roi.request_id
@@ -1529,7 +1592,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
            )`,
         [riderId, mobile, mobile, email, email, riderId]
     );
- 
+
     await db.execute(
         `UPDATE rsa_offline_order_history roh
          INNER JOIN rsa_offline_booking rob ON rob.request_id = roh.order_id
@@ -1543,7 +1606,7 @@ const linkOfflineRsaToRider = async (riderId, riderMobile, riderEmail = null, pr
         [riderId, mobile, mobile, email, email, riderId]
     );
 };
- 
+
 const getOfflineBookingPrefill = async (mobile, email = null) => {
     const booking = await queryDB(
         `SELECT customer_name, mobile_no, email_id, country_code, state
@@ -1557,27 +1620,27 @@ const getOfflineBookingPrefill = async (mobile, email = null) => {
         [mobile, mobile, email, email]
     );
     if (!booking) return null;
- 
+
     const { first_name, last_name } = splitCustomerName(booking.customer_name);
     return {
         first_name,
         last_name,
-        rider_email  : booking.email_id || null,
-        rider_mobile : booking.mobile_no || mobile || null,
-        country_code : booking.country_code || '+91',
-        state     : booking.state || null,
+        rider_email: booking.email_id || null,
+        rider_mobile: booking.mobile_no || mobile || null,
+        country_code: booking.country_code || '+91',
+        state: booking.state || null,
     };
 };
- 
+
 const getRiderPrefill = (rider) => {
     if (!rider) return null;
     return {
-        first_name   : rider.rider_name || '',
-        last_name    : rider.last_name || '',
-        rider_email  : rider.rider_email || null,
-        rider_mobile : rider.rider_mobile || null,
-        country_code : rider.country_code || '+91',
-        state        : rider.state || null,
-        rider_id     : rider.rider_id || null,
+        first_name: rider.rider_name || '',
+        last_name: rider.last_name || '',
+        rider_email: rider.rider_email || null,
+        rider_mobile: rider.rider_mobile || null,
+        country_code: rider.country_code || '+91',
+        state: rider.state || null,
+        rider_id: rider.rider_id || null,
     };
 };
