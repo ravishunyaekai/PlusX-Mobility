@@ -634,7 +634,7 @@ export const regsCreateOTP = asyncHandler(async (req, resp) => {
     emailQueue.addEmail(rider_email, `Your OTP for Signup - PlusX Electric`, html);
     console.log(`OTP ${otp} sent to ${fullMobile} and email ${rider_email}`);
 
-   return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
+    return resp.json({ status: 1, code: 200, data: otp, message: ['OTP sent successfully!'] }); /// Only for Testing Local
 
     sendOtp(fullMobile, 35, otp)
         .then(result => {
@@ -660,8 +660,8 @@ const resolveAppPlatform = (added_from = '') => {
 };
 export const register = asyncHandler(async (req, resp) => {
     const {
-        first_name, last_name, rider_email, country_code, rider_mobile, state, added_from, otp, fcm_token = ""
-    } = mergeParam(req);
+        first_name, last_name, rider_email, country_code, rider_mobile, added_from, city_id, state_id, state, country_id, device_name = "", otp, fcm_token = ''
+    } = req.body;
 
     let validationRules = {
         first_name: ["required"],
@@ -686,7 +686,7 @@ export const register = asyncHandler(async (req, resp) => {
     if (!cachedOtp || cachedOtp !== otp) return resp.json({ status: 0, code: 422, message: ["OTP invalid!"] });
 
     const existingRider = await queryDB(
-        `SELECT id, rider_id, rider_email, access_token, status, added_from
+        `SELECT id, rider_id, rider_email, access_token, city_id, status, added_from
          FROM riders
          WHERE rider_mobile = ?
          LIMIT 1`,
@@ -730,13 +730,9 @@ export const register = asyncHandler(async (req, resp) => {
             added_from: platform,
         }, ['id'], [existingRider.id]);
     } else {
-        const rider = await insertRecord('riders',
-            [
-                'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'state', 'status', 'added_from'
-            ], [
-            'PM', first_name, last_name, rider_email, country_code, rider_mobile, state,
-            0, platform
-        ]);
+        const rider = await insertRecord('riders', [
+            'rider_id', 'rider_name', 'last_name', 'rider_email', 'country_code', 'rider_mobile', 'status', 'added_from', 'city_id', 'state_id', 'state', 'country_id', 'device_name'
+        ], ['PM', first_name, last_name, rider_email, country_code, rider_mobile, 0, added_from || 'Android', city_id, state_id, state, country_id, device_name]);
         if (!rider) return resp.json({ status: 0, code: 405, message: ["Failed to register. Please Try Again"], error: true });
 
         riderId = 'PM' + String(rider.insertId).padStart(4, '0');
@@ -911,10 +907,7 @@ export const verifyOTP = asyncHandler(async (req, resp) => {
     });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
 
-    // is_resident > 0 when mapped to any community (multi-community aware)
-    const riderData = await queryDB(`
-        SELECT
-            rider_id, rider_name, last_name, rider_email, profile_img, country, state, status,
+    const riderData = await queryDB(`SELECT    customer_id ,rider_id, rider_name, last_name, rider_email, profile_img, state, status,
             ( SELECT CASE
                 WHEN ( SELECT COUNT(DISTINCT crm.community_id)
                        FROM community_resident cr
