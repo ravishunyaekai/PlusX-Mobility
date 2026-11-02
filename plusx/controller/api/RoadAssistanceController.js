@@ -4,7 +4,7 @@ import emailQueue from "../../../emailQueue.js";
 import validateFields from "../../../validation.js";
 import { insertRecord, queryDB, getPaginatedData, updateRecord } from '../../../dbUtils.js';
 import db from "../../../config/indiadb.js";
-import { asyncHandler, createNotification, formatDateTimeInQuery, mergeParam, checkCoupon } from '../../../utils.js';
+import { asyncHandler, createNotification, formatDateTimeInQuery, mergeParam, checkCoupon, termsForNewBooking, getStoredTerms } from '../../../utils.js';
 dotenv.config();
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 import { io } from '../../../server.js';
@@ -195,11 +195,14 @@ export const addRoadAssistance = asyncHandler(async (req, resp) => {
         const area = riderAddress.landmark;
         const vehicle_data = riderAddress.vehicle_data;
 
-        const insert = await insertRecord('road_assistance', [
-            'request_id', 'rider_id', 'name', 'country_code', 'contact_no', 'address_id', 'pickup_address', 'pickup_latitude', 'pickup_longitude', 'parking_number', 'parking_floor', 'vehicle_id', 'price', 'order_status', 'device_name', 'area', 'current_percent', 'vehicle_data', 'booking_price', 'state', 'city', 'pincode', 'country', 'coupon_code'
+        const { termsVersionId, termsAcceptedAt } = await termsForNewBooking('road-assistance');
 
+        const insert = await insertRecord('road_assistance', [
+            'request_id', 'rider_id', 'name', 'country_code', 'contact_no', 'address_id', 'pickup_address', 'pickup_latitude', 'pickup_longitude', 'parking_number', 'parking_floor', 'vehicle_id', 'price', 'order_status', 'device_name', 'area', 'current_percent', 'vehicle_data', 'booking_price', 'state', 'city', 'pincode', 'country', 'coupon_code',
+            'terms_version_id', 'terms_accepted_at'
         ], [
-            'RAO', rider_id, user_name, country_code, contact_no, address_id, address, latitude, longitude, parking_number, parking_floor, vehicle_id, service_price, 'PNR', device_name, area, battery_percent, vehicle_data, booking_price, state, city, pincode, country, coupon_code]);
+            'RAO', rider_id, user_name, country_code, contact_no, address_id, address, latitude, longitude, parking_number, parking_floor, vehicle_id, service_price, 'PNR', device_name, area, battery_percent, vehicle_data, booking_price, state, city, pincode, country, coupon_code, termsVersionId, termsAcceptedAt
+        ]);
 
         if (insert.affectedRows === 0) return resp.json({ status: 0, code: 200, message: ['Oops! There is something went wrong! Please Try Again.'] });
 
@@ -325,8 +328,8 @@ export const roadAssistanceDetail = asyncHandler(async (req, resp) => {
 
     const [[bookingWithNull]] = await db.execute(`
         SELECT 
-            request_id, name, country_code, contact_no, pickup_address, order_status, ROUND(road_assistance.price/100, 2) AS price, ${formatDateTimeInQuery(['created_at'])},
-            (select concat(rsa_name, ",", country_code, " ", mobile) from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_data, vehicle_id, vehicle_data, current_percent
+            request_id, name, country_code, contact_no, pickup_address, order_status, ROUND(road_assistance.price/100, 2) AS price, ${formatDateTimeInQuery(['created_at', 'terms_accepted_at'])},
+            (select concat(rsa_name, ",", country_code, " ", mobile) from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_data, vehicle_id, vehicle_data, current_percent, terms_version_id
         FROM 
             road_assistance 
         WHERE 
@@ -373,6 +376,11 @@ export const roadAssistanceDetail = asyncHandler(async (req, resp) => {
     }
 
     if (!bookingRow) return resp.json({ status: 0, code: 404, message: ["There are no booking available for the provided booking ID."] });
+
+    const termsVersionId = isOfflineBooking ? null : bookingRow.terms_version_id;
+    const termsAcceptedAt = isOfflineBooking ? null : bookingRow.terms_accepted_at;
+    delete bookingRow.terms_version_id;
+    delete bookingRow.terms_accepted_at;
 
     const roadAssistance = Object.fromEntries(
         Object.entries(bookingRow).map(([key, value]) => [
@@ -422,6 +430,8 @@ export const roadAssistanceDetail = asyncHandler(async (req, resp) => {
         `, [order_id, rider_id]);
         newHistory = makeOfflineBookingHistory(history, roadAssistance.created_at, roadAssistance.order_status);
     }
+
+    roadAssistance.terms  = await getStoredTerms(termsVersionId, termsAcceptedAt);
     return resp.json({
         message: ["Road Assistance Details fetched successfully!"],
         order_data: roadAssistance,
