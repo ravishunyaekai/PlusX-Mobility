@@ -533,9 +533,14 @@ export const deleteFile = (directory, filename) => {
 };
 
 export const asyncHandler = (fn) => {
-    return function (req, res, next) {
-        fn(req, res, next).catch(next);
-    };
+    try {
+            return function (req, res, next) {
+                fn(req, res, next).catch(next);
+            };
+    }catch (error) {
+        console.error('Error in asyncHandler:', error);
+        throw error;
+    }
 };
 
 /* Generates a PDF from an EJS template. - M1 Not supported using puppeter */
