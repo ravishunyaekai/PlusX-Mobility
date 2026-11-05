@@ -6,7 +6,7 @@ import emailQueue from "../../../emailQueue.js";
 import validateFields from "../../../validation.js";
 import { queryDB, getPaginatedData, insertRecord, updateRecord } from '../../../dbUtils.js';
 import db from "../../../config/indiadb.js";
-import { asyncHandler, createNotification, formatDateInQuery, formatDateTimeInQuery, mergeParam, pushNotification, checkCoupon } from "../../../utils.js";
+import { asyncHandler, createNotification, formatDateInQuery, formatDateTimeInQuery, mergeParam, pushNotification, checkCoupon, termsForNewBooking, getStoredTerms } from "../../../utils.js";
 dotenv.config();
 import { tryCatchErrorHandler } from "../../../middleware/errorHandler.js";
 import { io } from '../../../server.js';
@@ -272,19 +272,20 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
             payable_amount: finalAmount
         };
 
+        const { termsVersionId, termsAcceptedAt } = await termsForNewBooking('portable-charger');
         const [insert] = await connection.execute(`
             INSERT INTO portable_charger_booking (
                 booking_id, rider_id, vehicle_id, service_name, service_price, service_type, service_feature,
                 user_name, country_code, contact_no, slot, slot_date, slot_time, address, latitude, longitude,
                 status, address_alert, parking_number, parking_floor, address_id, device_name, area,
-                vehicle_data, current_percent, state, city, pincode, package_data
+                vehicle_data, current_percent, state, city, pincode, package_data, terms_version_id, terms_accepted_at
             )
-            VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
+            VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )
         `, [
             'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "",
             user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude,
             'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area,
-            vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails
+            vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails, termsVersionId, termsAcceptedAt
         ]);
         if (insert.affectedRows === 0) {
 
@@ -545,13 +546,16 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
     const booking = await queryDB(`
         SELECT 
             booking_id, rescheduled_booking, rider_id, rsa_id, charger_id, vehicle_id, vehicle_data, service_name, service_type, service_feature, status, user_name, country_code, contact_no, slot, slot_date, slot_time, address, pod_id, parking_number, parking_floor, payment_intent_id, address_id, area, device_name, ROUND(portable_charger_booking.service_price / 100, 2) AS service_price, 
-            ${formatDateTimeInQuery(['created_at', 'updated_at'])}, ${formatDateInQuery(['slot_date'])} 
+            ${formatDateTimeInQuery(['created_at', 'updated_at', 'terms_accepted_at'])}, ${formatDateInQuery(['slot_date'])}, terms_version_id 
         FROM 
             portable_charger_booking 
         WHERE 
             rider_id = ? AND booking_id = ? 
         LIMIT 1`, 
     [rider_id, booking_id]);
+
+    if(!booking) return resp.json({ status: 0, code: 404, message: ["There are no booking available for the provided booking ID."] });
+    
 
     if(booking.vehicle_data == '' || booking.vehicle_data == null) {
         const vehicledata = await queryDB(`
@@ -585,6 +589,14 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
         const lastValue                 = matchingIndexes[matchingIndexes.length - 1];
         history[lastValue].order_status = 'RS'
     }
+
+    const termsVersionId  = booking.terms_version_id;
+    const termsAcceptedAt = booking.terms_accepted_at;
+    booking.terms         = await getStoredTerms(termsVersionId, termsAcceptedAt);
+
+    delete booking.terms_version_id;
+    delete booking.terms_accepted_at;
+    
     return resp.json({
         message         : ["Charging Booking Details Service fetched successfully!"],
         data            : booking,

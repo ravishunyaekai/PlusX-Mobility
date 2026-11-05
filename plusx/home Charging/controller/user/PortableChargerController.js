@@ -6,7 +6,7 @@ import emailQueue from "../../../../emailQueue.js";
 import validateFields from "../../../../validation.js";
 import { queryDB, getPaginatedData, insertRecord, updateRecord } from '../../../../dbUtils.js';
 import db from "../../../../config/indiadb.js";
-import { asyncHandler, createNotification, formatDateInQuery, formatDateTimeInQuery, mergeParam, pushNotification, checkCoupon, sendNotification } from "../../../../utils.js";
+import { asyncHandler, createNotification, formatDateInQuery, formatDateTimeInQuery, mergeParam, pushNotification, checkCoupon, termsForNewBooking, getStoredTerms } from "../../../../utils.js";
 dotenv.config();
 import { tryCatchErrorHandler } from "../../../../middleware/errorHandler.js";
 import { io } from '../../../../server.js';
@@ -345,10 +345,12 @@ export const chargerBooking = asyncHandler(async (req, resp) => {
             payable_amount: finalAmount
         };
        
+        const { termsVersionId, termsAcceptedAt } = await termsForNewBooking('portable-charger');
+
         const insert = await insertRecord('portable_charger_booking', [
-            'booking_id', 'rider_id', 'vehicle_id', 'service_name', 'service_price', 'service_type', 'service_feature', 'user_name', 'country_code', 'contact_no', 'slot', 'slot_date', 'slot_time', 'address', 'latitude', 'longitude', 'status', 'address_alert', 'parking_number', 'parking_floor', 'address_id', 'device_name', 'area', 'vehicle_data', 'current_percent', 'state', 'city', 'pincode', 'package_data'
+            'booking_id', 'rider_id', 'vehicle_id', 'service_name', 'service_price', 'service_type', 'service_feature', 'user_name', 'country_code', 'contact_no', 'slot', 'slot_date', 'slot_time', 'address', 'latitude', 'longitude', 'status', 'address_alert', 'parking_number', 'parking_floor', 'address_id', 'device_name', 'area', 'vehicle_data', 'current_percent', 'state', 'city', 'pincode', 'package_data', 'terms_version_id', 'terms_accepted_at'
         ], [
-            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails
+            'PCB', rider_id, vehicle_id, service_name, service_price, service_type, "", user_name, country_code, contact_no, slot_id, fSlotDate, slot_time, address, latitude, longitude, 'PNR', addressAlert, parking_number, parking_floor, address_id, device_name, area, vehicle_data, battery_percent, riderAddress.state, riderAddress.city, riderAddress.pincode, packageDetails, termsVersionId, termsAcceptedAt
         ]);
         if (insert.affectedRows == 0) {
             return resp.json({ status: 0, code: 200, message: ["Oops! Something went wrong. Please try again."] });
@@ -505,7 +507,8 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
             area, 
             device_name, 
             ROUND(portable_charger_booking.service_price, 2) AS service_price, 
-            ${formatDateTimeInQuery(['created_at', 'updated_at'])}, ${formatDateInQuery(['slot_date'])} 
+            ${formatDateTimeInQuery(['created_at', 'updated_at', 'terms_accepted_at'])}, ${formatDateInQuery(['slot_date'])},
+            terms_version_id 
         FROM 
             portable_charger_booking 
         WHERE 
@@ -573,6 +576,14 @@ export const chargerBookingDetail = asyncHandler(async (req, resp) => {
             history[lastValue].order_status = 'RS'
         }
         const newHistory = await makeBookingHistory(history);
+        
+        const termsVersionId  = booking.terms_version_id;
+        const termsAcceptedAt = booking.terms_accepted_at;
+        booking.terms         = await getStoredTerms(termsVersionId, termsAcceptedAt);
+
+        delete booking.terms_version_id;
+        delete booking.terms_accepted_at;
+
         return resp.json({
             message: ["Mobile EV Charging Booking Details Service fetched successfully!"],
             data: booking,
