@@ -1216,17 +1216,17 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
         await commitTransaction(connection);
         connection = null;
  
-        // WhatsApp only for newly created riders when booking is Completed (PU).
-        const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
-            isCompleted,
-            isNewRider,
-            request_id,
-            customer_name,
-            country_code,
-            mobile_no : mobileNo,
-            rider_id,
-            logPrefix: 'addOfflineRSABooking',
-        });
+        // // WhatsApp only for newly created riders when booking is Completed (PU).
+        // const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
+        //     isCompleted,
+        //     isNewRider,
+        //     request_id,
+        //     customer_name,
+        //     country_code,
+        //     mobile_no : mobileNo,
+        //     rider_id,
+        //     logPrefix: 'addOfflineRSABooking',
+        // });
  
         return resp.json({
             status               : 1,
@@ -1594,17 +1594,17 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         await commitTransaction(connection);
         connection = null;
  
-        // WhatsApp only for newly created riders when booking is Completed (PU).
-        const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
-            isCompleted,
-            isNewRider,
-            request_id,
-            customer_name,
-            country_code,
-            mobile_no : mobileNo,
-            rider_id,
-            logPrefix: 'editOfflineRSABooking',
-        });
+        // // WhatsApp only for newly created riders when booking is Completed (PU).
+        // const { whatsapp_status, whatsapp_campaign_id } = await sendOfflineBookingWhatsApp({
+        //     isCompleted,
+        //     isNewRider,
+        //     request_id,
+        //     customer_name,
+        //     country_code,
+        //     mobile_no : mobileNo,
+        //     rider_id,
+        //     logPrefix: 'editOfflineRSABooking',
+        // });
  
         return resp.json({
             status               : 1,
