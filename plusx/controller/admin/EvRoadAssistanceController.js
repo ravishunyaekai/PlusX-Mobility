@@ -650,7 +650,8 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
                 COALESCE(
                     b.transaction_id,
                     inv.transaction_id
-                ) AS transaction_id
+                ) AS transaction_id,
+                rv.pod_name
 
             FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
 
@@ -661,7 +662,7 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
             LEFT JOIN rsa AS r
                 ON r.rsa_id COLLATE utf8mb4_unicode_ci =
                    b.rsa_id COLLATE utf8mb4_unicode_ci
-
+            LEFT JOIN roadside_vans AS rv ON rv.pod_id = b.van_id
             WHERE b.request_id = ?
             LIMIT 1
         `, [request_id]);
@@ -1006,6 +1007,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
         transaction_id, booking_status, lead_status = null, driver_name = null, booking_completed_by = null, rsa_id = null,
         booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
         reason_for_non_conversion = null, lead_remarks = null,
+        podId = null,
     } = mergeParam(req);
     console.log('addOfflineRSABooking called with:', mergeParam(req));
 
@@ -1033,6 +1035,9 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
                 return resp.json({ status: 0, code: 422, message: emailErrors });
             }
         }
+        if (!podId) {
+            return resp.json({ status: 0, code: 422, message: ['Van ID is required.'] });
+        }
     } else {
         const { isValid, errors } = validateFields({
             ...mergeParam(req),
@@ -1042,8 +1047,8 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             customer_name : ["required"],
             mobile_no     : ["required"],
             email_id      : ["required"],
-            state: ["required"],
-            city: ["required"],
+            state         : ["required"],
+            city          : ["required"],
             location_link : ["required"],
             address       : ["required"],
             price         : ["required"],
@@ -1138,7 +1143,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             }, existingRider);
             rider_id          = filled.rider_id;
             savedCustomerName = filled.customer_name;
-            savedCity = filled.city;
+            savedCity         = filled.city;
             savedMobileNo     = filled.mobile_no;
             savedEmail        = filled.email_id;
             savedCountryCode  = filled.country_code;
@@ -1171,6 +1176,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             'service_terms_condition',
             'booking_date', 'booking_completed_date', 'cancellation_remarks', 'cancelled_by',
             'reason_for_non_conversion', 'lead_remarks',
+            'van_id',
         ], [
             temporaryRequestId, rider_id, bookingCompleted, savedCustomerName, savedMobileNo, savedEmail, savedCountryCode, location_link || null, toNullableText(address),
             savedCity, savedState, bookingPrice, jumpStart, batteryLevel, vehicleData, bookingPrice,
@@ -1178,6 +1184,7 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             serviceTermsCondition,
             bookingDate, completedDate, cancellationRemarks, cancelledBy,
             savedNonConversionReason, savedLeadRemarks,
+            podId
         ], connection);
  
         if (insert.affectedRows === 0) {
@@ -1266,6 +1273,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         transaction_id, booking_status, lead_status = null, driver_name = null, booking_completed_by = null, rsa_id = null,
         booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
         reason_for_non_conversion = null, lead_remarks = null,
+        podId = null
     } = mergeParam(req);
 
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
@@ -1312,6 +1320,9 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
                 return resp.json({ status: 0, code: 422, message: emailErrors });
             }
         }
+        if (!podId) {
+            return resp.json({ status: 0, code: 422, message: ['Van id is required.'] });
+        }
     } else {
         const { isValid, errors } = validateFields({
             ...mergeParam(req),
@@ -1322,7 +1333,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
             mobile_no     : ["required"],
             email_id      : ["required"],
             city          : ["required"],
-            state        : ["required"],
+            state         : ["required"],
             location_link : ["required"],
             address       : ["required"],
             price         : ["required"],
@@ -1499,6 +1510,7 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
             cancelled_by              : cancelledBy,
             reason_for_non_conversion : savedNonConversionReason,
             lead_remarks              : savedLeadRemarks,
+            van_id                    : podId
         }, ['request_id'], [request_id], connection);
  
         if (update.affectedRows === 0) {
@@ -2236,3 +2248,285 @@ export const rsaDeleteSlot = async (req, resp) => {
         return resp.json({ status: 0, message: 'Error deleting time slot' });
     }
 }
+
+// Van Related FUnction
+
+// POD Device Start
+export const rsaVanList = async (req, resp) => {
+    try {
+        const { page_no, search_text = '' } = req.body;
+        const { isValid, errors } = validateFields(req.body, { page_no: ["required"] });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const result = await getPaginatedData({
+            tableName: 'roadside_vans',
+            columns: `pod_id, pod_name, device_id, design_model, inverter, charger, ${formatDateInQuery(['date_of_manufacturing'])}, status, ${formatDateTimeInQuery(['created_at'])}, 
+                (SELECT AVG(percentage) FROM roadside_vans_battery as pb where pb.pod_id = roadside_vans.pod_id) AS avgBattery`,
+            sortColumn: 'pod_name',
+            sortOrder: 'ASC',
+            page_no,
+            limit: 10,
+            liveSearchFields: ['pod_id', 'pod_name'],
+            liveSearchTexts: [search_text, search_text],
+            whereField: 'status',
+            whereValue: 1
+        });
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["RSA van List fetch successfully!"],
+            data: result.data,
+            total_page: result.totalPage,
+            total: result.total,
+        });
+    } catch (error) {
+        console.error('Error fetching device list:', error);
+        resp.status(500).json({ message: 'Error fetching device lists' });
+    }
+};
+
+export const rsaVanDetails = async (req, resp) => {
+    try {
+        const { pod_id, } = req.body;
+
+        const { isValid, errors } = validateFields(req.body, {
+            pod_id: ["required"]
+        });
+
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const [chargerDetails] = await db.execute(`
+            SELECT 
+                pod_id, pod_name, device_id, design_model, inverter, charger, ${formatDateInQuery(['date_of_manufacturing'])}, status, ${formatDateTimeInQuery(['created_at'])}, temp1, temp2
+            FROM 
+                roadside_vans 
+            WHERE 
+                pod_id = ?`,
+            [pod_id]
+        );
+        const [batteryData] = await db.execute(`
+            SELECT 
+                id, battery_id as batteryId, capacity, cells, temp1, temp2, temp3, current, voltage, percentage, charge_cycle, ${formatDateTimeInQuery(['updated_at'])}
+            FROM 
+                roadside_vans_battery 
+            WHERE 
+                pod_id = ?`,
+            [pod_id]
+        );
+
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["Van Details fetched successfully!"],
+            data: chargerDetails[0],
+            batteryData
+        });
+    } catch (error) {
+        console.error('Error fetching device details:', error);
+        return resp.status(500).json({ status: 0, message: 'Error fetching device details' });
+    }
+};
+
+export const addRSAVan = async (req, resp) => {
+    try {
+        const { podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing, status = 1, battery_ids, capacities } = req.body;
+        // Validation
+        const { isValid, errors } = validateFields({
+            podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing, battery_ids, capacities
+        }, {
+            podId: ["required"],
+            podName: ["required"],
+            deviceId: ["required"],
+            device_model: ["required"],
+            charger: ["required"],
+            inverter: ["required"],
+            date_of_manufacturing: ["required"],
+            battery_ids: ["required"],
+            capacities: ["required"]
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        if (!Array.isArray(battery_ids) || !Array.isArray(capacities)) {
+            return resp.json({ status: 0, code: 422, message: 'Battery data must be in array format.' });
+        }
+        if (battery_ids.length !== capacities.length) {
+            return resp.json({ status: 0, code: 422, message: 'All input arrays must have the same length.' });
+        }
+        const [[isExist]] = await db.execute(`
+            SELECT 
+                (SELECT COUNT(id) FROM roadside_vans where device_id = ? ) AS check_device,
+                (SELECT COUNT(id) FROM roadside_vans where pod_id = ? ) AS check_pod
+            FROM 
+                users
+            LIMIT 1
+        `, [deviceId, podId]);
+
+        if (isExist.check_device) return resp.json({ status: 0, code: 422, message: 'Device Id is already registered.' });
+        if (isExist.check_pod) return resp.json({ status: 0, code: 422, message: 'POD Id is already registered.' });
+
+        let date_manufacturing = date_of_manufacturing.split("-");
+        const dateOfManufacturing = date_manufacturing[2] + '-' + date_manufacturing[1] + '-' + date_manufacturing[0];
+
+        const insert = await insertRecord('roadside_vans', [
+            'pod_id', 'pod_name', 'device_id', 'design_model', 'charger', 'inverter', 'date_of_manufacturing', 'status'
+        ], [
+            podId, podName, deviceId, device_model, charger, inverter, dateOfManufacturing, status
+        ]);
+
+        const values = []; const placeholders = [];
+        for (let i = 0; i < battery_ids.length; i++) {
+
+            values.push(podId, deviceId, battery_ids[i], capacities[i], 1);
+            placeholders.push('(?, ?, ?, ?, ?)');
+        }
+        const query = `INSERT INTO roadside_vans_battery (pod_id, device_id, battery_id, capacity, status) VALUES ${placeholders.join(', ')}`;
+        await db.execute(query, values);
+
+        return resp.json({
+            code: 200,
+            message: insert.affectedRows > 0 ? ['RSA Van added successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            status: insert.affectedRows > 0 ? 1 : 0
+        });
+    } catch (error) {
+        console.error('Something went wrong:', error);
+        resp.status(500).json({ message: 'Something went wrong' });
+    }
+};
+
+export const editRSAVan = async (req, resp) => {
+    try {
+        const {
+            podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing, battery_ids, capacities
+        } = req.body;
+
+        const { isValid, errors } = validateFields({
+            podId, podName, deviceId, device_model, charger, inverter, date_of_manufacturing
+        }, {
+            podId: ["required"],
+            podName: ["required"],
+            deviceId: ["required"],
+            device_model: ["required"],
+            charger: ["required"],
+            inverter: ["required"],
+            date_of_manufacturing: ["required"]
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        if (!Array.isArray(battery_ids) || !Array.isArray(capacities)) {
+            return resp.json({ status: 0, code: 422, message: 'Battery data must be in array format.' });
+        }
+        if (battery_ids.length !== capacities.length) {
+            return resp.json({ status: 0, code: 422, message: 'All input arrays must have the same length.' });
+        }
+
+        const [[isExist]] = await db.execute(`
+            SELECT 
+                (SELECT COUNT(id) FROM roadside_vans where device_id = ? and pod_id != ? ) AS check_device,
+                (SELECT COUNT(id) FROM roadside_vans as pd1 where pd1.pod_id = ? and pd1.id != pd.id) AS check_pod
+            FROM 
+                roadside_vans as pd
+            WHERE 
+                pd.pod_id = ? 
+            LIMIT 1
+        `, [deviceId, podId, podId, podId]);
+
+        const err = [];
+        if (isExist.length == 0) return resp.json({ status: 0, code: 422, message: 'Van Id is not registered.' });
+        if (isExist.check_device) return resp.json({ status: 0, code: 422, message: 'Device Id is already registered.' });
+        if (isExist.check_pod) return resp.json({ status: 0, code: 422, message: 'POD Id is already registered.' });
+
+        let date_manufacturing = date_of_manufacturing.split("-");
+        const dateOfManufacturing = date_manufacturing[2] + '-' + date_manufacturing[1] + '-' + date_manufacturing[0];
+
+        const updates = {
+            device_id: deviceId,
+            pod_name: podName,
+            design_model: device_model,
+            charger,
+            inverter,
+            date_of_manufacturing: dateOfManufacturing,
+        };
+        const update = await updateRecord('roadside_vans', updates, ['pod_id'], [podId]);
+
+        let errMsg = [];
+        for (let i = 0; i < battery_ids.length; i++) {
+
+            const [isExist] = await db.execute(`
+                SELECT 
+                    id 
+                FROM 
+                    roadside_vans_battery
+                WHERE 
+                    battery_id = ? and pod_id = ? 
+                LIMIT 1
+            `, [battery_ids[i], podId]);
+            if (isExist.length > 0) {
+
+                const [updateResult] = await db.execute(`UPDATE roadside_vans_battery SET capacity = ? 
+                    WHERE battery_id = ? AND pod_id = ?`, [capacities[i], battery_ids[i], podId]
+                );
+                if (updateResult.affectedRows === 0)
+                    errMsg.push(`Failed to update ${capacities[i]} for battery_ids ${battery_ids[i]}.`);
+
+            } else {
+
+                const [insertResult] = await db.execute(`INSERT INTO roadside_vans_battery (pod_id, device_id, battery_id, capacity, status)  VALUES (?, ?, ?, ?, ?)`,
+                    [podId, deviceId, battery_ids[i], capacities[i], 1]
+                );
+                if (insertResult.affectedRows === 0)
+                    errMsg.push(`Failed to add ${capacities[i]} for slot_date ${battery_ids[i]}.`);
+            }
+        }
+        if (errMsg.length > 0) {
+            return resp.json({ status: 0, code: 400, message: errMsg.join(" | ") });
+        }
+        return resp.json({
+            status: update.affectedRows > 0 ? 1 : 0,
+            code: 200,
+            message: update.affectedRows > 0 ? ['RSA Van updated successfully!'] : ['Oops! Something went wrong. Please try again.'],
+        });
+
+    } catch (error) {
+        console.error('Something went wrong:', error);
+        resp.status(500).json({ message: 'Something went wrong' });
+    }
+};
+
+export const deleteRSAVan = async (req, resp) => {
+    try {
+        const { deviceId } = req.body;
+        const { isValid, errors } = validateFields(req.body, {
+            deviceId: ["required"]
+        });
+        if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+        const [del] = await db.execute(`DELETE FROM roadside_vans WHERE device_id = ?`, [deviceId]);
+        return resp.json({
+            code: 200,
+            message: del.affectedRows > 0 ? ['RSA Van deleted successfully!'] : ['Oops! Something went wrong. Please try again.'],
+            status: del.affectedRows > 0 ? 1 : 0
+        });
+    } catch (err) {
+        console.error('Error deleting portable charger', err);
+        return resp.json({ status: 0, message: 'Error deleting portable charger' });
+    }
+};
+
+export const AllVanList = async (req, resp) => {
+    try {
+
+        const [allDevice] = await db.execute(`
+            SELECT pod_id as value, pod_name as label FROM roadside_vans WHERE status = 1`
+        );
+        return resp.json({
+            status: 1,
+            code: 200,
+            message: ["All Van List fetch successfully!"],
+            data: allDevice,
+        });
+    } catch (error) {
+        console.error('Error fetching device list:', error);
+        return resp.json({ message: 'Error fetching device lists' });
+    }
+};

@@ -27,7 +27,7 @@ import { carsList, carDetail, carAdd, carEdit, carDelete, carGalleryDelete } fro
 import { bikeDetail, bikesList, bikeAdd, bikeEdit, bikeDelete, bikeGalleryDelete } from "../controller/admin/ElectricBikeRentalController.js";
 
 import {
-    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails, rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList, offlineRSARiderLookup,vehicleBrandList, bikeVehicleBrandList
+    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails, rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList, offlineRSARiderLookup,vehicleBrandList, bikeVehicleBrandList, rsaVanList, addRSAVan, rsaVanDetails, editRSAVan, deleteRSAVan, AllVanList
 } from '../controller/admin/EvRoadAssistanceController.js'
 
 import { interestList } from "../controller/admin/RegisterInterestController.js";
@@ -225,6 +225,14 @@ const adminRoutes = [
 
     { method: 'post',  path: '/session-list',    handler : sessionList },
     { method: 'post',  path: '/session-detail',  handler : sessionDetail },
+
+    /* RSA Van Routes */ 
+    { method: 'post',  path: '/rsa-van-list',       handler: rsaVanList },
+    { method: 'post',  path: '/rsa-van-add',        handler: addRSAVan },
+    { method: 'post',  path: '/rsa-van-details',    handler: rsaVanDetails },
+    { method: 'post',  path: '/rsa-van-update',     handler: editRSAVan },
+    { method: 'post',  path: '/rsa-van-delete',     handler: deleteRSAVan },
+    { method: 'post',  path: '/all-rsa-van-list',   handler: AllVanList },
 
 
 ];

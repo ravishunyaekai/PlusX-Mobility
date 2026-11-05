@@ -127,7 +127,7 @@ export const rejectBooking = asyncHandler(async (req, resp) => {
 
 /* Charging booking action helper */
 const acceptBooking = async (req, resp) => {
-    const { booking_id, rsa_id, latitude, longitude } = mergeParam(req);
+    const { booking_id, rsa_id, latitude, longitude, old_booking_id = null } = mergeParam(req);
 
     const checkOrder = await queryDB(`
         SELECT rider_id, 
@@ -147,6 +147,10 @@ const acceptBooking = async (req, resp) => {
     );
 
     if (ordHistoryCount.count === 0) {
+
+        if (old_booking_id) {
+            await prevBookingReachedOffice(old_booking_id, rsa_id, latitude, longitude)
+        }
         await updateRecord('road_assistance', { order_status: 'A', rsa_id }, ['request_id'], [booking_id]);
 
         const href = `road_assistance/${booking_id}`;
@@ -251,8 +255,9 @@ const reachedLocation = async (req, resp) => {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
 };
-const chargingStart = async (req, resp) => {
-    const { booking_id, rsa_id, latitude, longitude, pod_id = '', remark = '' } = mergeParam(req);
+
+const chargingStart = async (req, resp) => { //pod_id = '', 
+    const { booking_id, rsa_id, latitude, longitude, pod_id = '', remark = '', jump_Start = 1 } = mergeParam(req);
 
     if (!req.files || !req.files['image']) return resp.status(405).json({ message: ["Vehicle Image is required"], status: 0, code: 405, error: true });
 
@@ -263,9 +268,8 @@ const chargingStart = async (req, resp) => {
             order_assign
         WHERE 
             order_id = ? AND rsa_id = ? AND status = 1
-        LIMIT 1
-    `, [booking_id, rsa_id]);
-
+        LIMIT 1 `, [booking_id, rsa_id]
+    );
     const images = req.files['image'] ? req.files['image'].map(file => file.filename).join('*') : '';
 
     if (!checkOrder) {
@@ -277,18 +281,18 @@ const chargingStart = async (req, resp) => {
 
     if (ordHistoryCount.count === 0) {
 
-        const podBatteryData = await getPodBatteryData(pod_id);
-        const podData = podBatteryData.data.length > 0 ? JSON.stringify(podBatteryData.data) : null;
-        const sumOfLevel = podBatteryData.sum ? podBatteryData.sum : '';
+        // const podBatteryData = await getPodBatteryData(pod_id);
+        const podData = null; //podBatteryData.data.length > 0 ? JSON.stringify(podBatteryData.data) : 
+        const sumOfLevel = ""; //podBatteryData.sum ?  podBatteryData.sum : '';
 
         const insert = await db.execute(
             'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data, image, remarks) VALUES (?, ?, "CS", ?, ?, ?, ?, ?, ?)',
             [booking_id, checkOrder.rider_id, rsa_id, latitude, longitude, podData, images, remark]
         );
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
-
-        await updateRecord('road_assistance', { order_status: 'CS', rsa_id, pod_id, start_charging_level: sumOfLevel }, ['request_id'], [booking_id]);
-        await updateRecord('pod_devices', { charging_status: 1, latitude, longitude }, ['pod_id'], [pod_id]);
+        //pod_id, 
+        await updateRecord('road_assistance', { order_status: 'CS', rsa_id, start_charging_level: sumOfLevel, current_percent: jump_Start }, ['request_id'], [booking_id]);
+        // await updateRecord('pod_devices', { charging_status : 1, latitude, longitude}, ['pod_id'], [pod_id] );
 
         const href = `road_assistance/${booking_id}`;
         const title = 'EV Roadside Assistance';
@@ -302,9 +306,12 @@ const chargingStart = async (req, resp) => {
         return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
     }
 };
+
 const chargingComplete = async (req, resp) => {
-    const { booking_id, rsa_id, latitude, longitude } = mergeParam(req);
-    // 
+    const { booking_id, rsa_id, latitude, longitude, remark = '' } = mergeParam(req);
+
+    if (!req.files || !req.files['image']) return resp.json({ message: ["Vehicle Image is required"], status: 0, code: 405, error: true });
+
     const checkOrder = await queryDB(`
         SELECT rider_id, 
             (SELECT fcm_token FROM riders WHERE rider_id = order_assign.rider_id limit 1) AS fcm_token,
@@ -313,8 +320,9 @@ const chargingComplete = async (req, resp) => {
             order_assign
         WHERE 
             order_id = ? AND rsa_id = ? AND status = 1
-        LIMIT 1
-    `, [booking_id, rsa_id]);
+        LIMIT 1 `, [booking_id, rsa_id]
+    );
+    const images = req.files['image'] ? req.files['image'].map(file => file.filename).join('*') : '';
 
     if (!checkOrder) {
         return resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
@@ -329,8 +337,8 @@ const chargingComplete = async (req, resp) => {
         const sumOfLevel = podBatteryData.sum ? podBatteryData.sum : 0;
 
         const insert = await db.execute(
-            'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data) VALUES (?, ?, "CC", ?, ?, ?, ?)',
-            [booking_id, checkOrder.rider_id, rsa_id, latitude, longitude, podData]
+            'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data, image, remarks) VALUES (?, ?, "CC", ?, ?, ?, ?, ?, ?)',
+            [booking_id, checkOrder.rider_id, rsa_id, latitude, longitude, podData, images, remark]
         );
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
 
@@ -593,6 +601,20 @@ const rsaInvoice = async (rider_id, request_id) => {
     }
 };
 
+
+const parseBookingPackageData = (packageData) => {
+    if (!packageData) return null;
+    if (typeof packageData === 'object') return packageData;
+    if (typeof packageData === 'string' && packageData !== '') {
+        try {
+            return JSON.parse(packageData);
+        } catch {
+            return null;
+        }
+    }
+    return null;
+};
+
 const makeInvoicePriceDetails = async (amount, discount) => {
     console.log("amount, discount", amount, discount)
     let baseAmount = Number(amount) || 0;
@@ -665,3 +687,62 @@ const makeInvoicePriceDetails = async (amount, discount) => {
     return priceDetails;
 
 };
+
+const prevBookingReachedOffice = async (booking_id, rsa_id, latitude, longitude) => {
+    // (select pod_id from road_assistance as rs where rs.request_id = order_assign.order_id limit 1) as pod_id
+    const checkOrder = await queryDB(`
+        SELECT rider_id
+        FROM order_assign
+        WHERE order_id = ? AND rsa_id = ? AND status = 1
+        LIMIT 1 `, [booking_id, rsa_id]
+    );
+    if (!checkOrder) {
+        return false;
+        // resp.json({ message: [`Sorry no booking found with this booking id ${booking_id}`], status: 0, code: 404 });
+    }
+    const ordHistoryCount = await queryDB(
+        'SELECT COUNT(*) as count FROM order_history WHERE rsa_id = ? AND order_status = "RO" AND order_id = ?', [rsa_id, booking_id]
+    );
+    if (ordHistoryCount.count === 0) {
+        // const insert = await db.execute(
+        //     'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude) VALUES (?, ?, "RO", ?, ?, ? )',
+        //     [booking_id, checkOrder.rider_id, rsa_id, latitude, longitude]
+        // );
+        // if(insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
+
+        // await updateRecord('road_assistance', {order_status: 'RO', rsa_id}, ['request_id'], [booking_id] );
+        await db.execute(`DELETE FROM order_assign WHERE rsa_id = ? and order_id = ?`, [rsa_id, booking_id]);
+
+        // if(checkOrder.pod_id) {
+        //     await updateRecord('pod_devices', { latitude, longitude}, ['pod_id'], [checkOrder.pod_id] );
+        // }
+        return true;
+        // resp.json({ message: ['POD reached the office successfully!'], status: 1, code: 200 });
+    } else {
+        return false;
+        // return resp.json({ message: ['Sorry this is a duplicate entry!'], status: 0, code: 200 });
+    }
+};
+
+// All Van list 
+export const getActiveVanList = asyncHandler(async (req, resp) => {
+    const { booking_id } = mergeParam(req);
+    const { isValid, errors } = validateFields(mergeParam(req), { booking_id: ["required"] });
+    if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
+
+    let query = `SELECT pickup_latitude AS lat, pickup_longitude AS lon FROM road_assistance WHERE request_id = ?`;
+    const [[{ van_id }]] = await db.execute(`SELECT van_id FROM road_assistance where request_id = ?`, [booking_id]);
+    let active_pod_id = van_id;
+
+    const data = await queryDB(query, [booking_id]);
+    if (!data) return resp.json({ status: 0, code: 422, message: ["Invalid booking id."] });
+
+    const [result] = await db.execute(`SELECT 
+        pod_id, pod_name, design_model,
+        (6367 * ACOS(COS(RADIANS(?)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(latitude)))) AS distance 
+        FROM roadside_vans
+        ORDER BY CAST(SUBSTRING(pod_name, LOCATE(' ', pod_name) + 1) AS UNSIGNED)
+    `, [data.lat, data.lon, data.lat]);
+
+    return resp.json({ status: 1, code: 200, message: ["RSA Van List fetch successfully!"], active_pod_id, data: result });
+});
