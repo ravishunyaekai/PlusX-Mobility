@@ -662,8 +662,15 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
             LEFT JOIN rsa AS r
                 ON r.rsa_id COLLATE utf8mb4_unicode_ci =
                    b.rsa_id COLLATE utf8mb4_unicode_ci
-            LEFT JOIN roadside_vans AS rv ON rv.pod_id = b.van_id
-            WHERE b.request_id = ?
+
+            LEFT JOIN roadside_vans AS rv
+                ON rv.pod_id COLLATE utf8mb4_unicode_ci =
+                   b.van_id COLLATE utf8mb4_unicode_ci
+
+            WHERE
+                b.request_id COLLATE utf8mb4_unicode_ci =
+                ? COLLATE utf8mb4_unicode_ci
+
             LIMIT 1
         `, [request_id]);
 
@@ -684,7 +691,7 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
                 ${formatDateTimeInQuery(['created_at'])}
             FROM ${RSA_OFFLINE_HISTORY_TABLE}
             WHERE order_id COLLATE utf8mb4_unicode_ci =
-                  ? COLLATE utf8mb4_unicode_ci
+                ? COLLATE utf8mb4_unicode_ci
             ORDER BY id ASC
         `, [request_id]);
 
