@@ -1014,10 +1014,10 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
         transaction_id, booking_status, lead_status = null, driver_name = null, booking_completed_by = null, rsa_id = null,
         booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
         reason_for_non_conversion = null, lead_remarks = null,
-        podId = null,
+        pod_id = null,
     } = mergeParam(req);
     console.log('addOfflineRSABooking called with:', mergeParam(req));
-
+    const podId = pod_id ||null;
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
     const serviceTermsCondition = req.files?.['service_terms_condition']?.[0]?.filename || null;
     const email = toNullableText(email_id || emailId);
@@ -1261,8 +1261,8 @@ export const addOfflineRSABooking = asyncHandler(async (req, resp) => {
             cancelled_by              : cancelledBy,
             reason_for_non_conversion : savedNonConversionReason,
             lead_remarks              : savedLeadRemarks,
-            whatsapp_status,
-            whatsapp_campaign_id,
+            // whatsapp_status,
+            // whatsapp_campaign_id,
         });
     } catch (error) {
         if (connection) {
@@ -1280,9 +1280,10 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         transaction_id, booking_status, lead_status = null, driver_name = null, booking_completed_by = null, rsa_id = null,
         booking_date = null, booking_completed_date = null, cancellation_remarks = null, is_booking_completed,
         reason_for_non_conversion = null, lead_remarks = null,
-        podId = null
+        pod_id = null
     } = mergeParam(req);
 
+    const podId = pod_id;
     const proofOfTransaction = req.files?.['proof_of_transaction']?.[0]?.filename || null;
     const serviceTermsCondition = req.files?.['service_terms_condition']?.[0]?.filename || null;
     const email = toNullableText(email_id || emailId);
@@ -1626,17 +1627,17 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
         // });
  
         return resp.json({
-            status               : 1,
-            code                 : 200,
-            message              : ['Offline RSA booking updated successfully!'],
+            status                    : 1,
+            code                      : 200,
+            message                   : ['Offline RSA booking updated successfully!'],
             request_id,
             rider_id,
-            is_booking_completed : bookingCompleted,
+            is_booking_completed      : bookingCompleted,
             invoice_id,
-            order_status         : orderStatus,
-            previous_status      : existing.order_status,
-            rsa_id               : driverInfo.rsa_id,
-            driver_name            : driverInfo.driver_name,
+            order_status              : orderStatus,
+            previous_status           : existing.order_status,
+            rsa_id                    : driverInfo.rsa_id,
+            driver_name               : driverInfo.driver_name,
             proof_of_transaction      : savedProof,
             service_terms_condition   : savedServiceTerms,
             booking_date              : bookingDate,
@@ -1646,8 +1647,8 @@ export const editOfflineRSABooking = asyncHandler(async (req, resp) => {
             reason_for_non_conversion : savedNonConversionReason,
             lead_remarks              : savedLeadRemarks,
             invoice_created           : isCompleted && !wasCompleted && !!invoice_id && !existingInvoice,
-            whatsapp_status,
-            whatsapp_campaign_id,
+            // whatsapp_status,
+            // whatsapp_campaign_id,
         });
     } catch (error) {
         if (connection) {

@@ -534,9 +534,9 @@ export const deleteFile = (directory, filename) => {
 
 export const asyncHandler = (fn) => {
     try {
-            return function (req, res, next) {
-                fn(req, res, next).catch(next);
-            };
+        return function (req, res, next) {
+            fn(req, res, next).catch(next);
+        };
     }catch (error) {
         console.error('Error in asyncHandler:', error);
         throw error;
