@@ -1514,7 +1514,7 @@ export const ChargingPackageDetails = asyncHandler(async (req, resp) => {
 
         const packageData = await db.execute(
             `SELECT * FROM home_ev_charging_packages
-             WHERE id=? AND is_deleted=0`,
+             WHERE package_id=? AND is_deleted=0`,
             [id]
         );
 
