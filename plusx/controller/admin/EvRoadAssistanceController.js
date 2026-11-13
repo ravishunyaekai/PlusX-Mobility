@@ -418,40 +418,163 @@ const parsePriceDetails = (value) => {
 };
 
 // Roadside assistance bookings.
+
 export const bookingList = asyncHandler(async (req, resp) => {
-    const { start_date, end_date, search_text = '', status, page_no, rowSelected } = req.body;
+    const {
+        start_date,
+        end_date,
+        search_text = '',
+        status,
+        page_no,
+        rowSelected
+    } = req.body;
 
-    const whereFields = ['order_status', `COALESCE(device_name, '')`]
-    const whereValues = ['PNR', RSA_OFFLINE_DEVICE_NAME]
-    const whereOperators = ["!=", "!="]
+    const whereFields = [];
+    const whereValues = [];
+    const whereOperators = [];
 
+    let createdStart = null;
+    let createdEnd = null;
+
+    // Date filter
     if (start_date && end_date) {
-        // Created-at window: start of day minus 4 hours through 19:59:59 UTC (end of Gulf day).
-        const start = moment(`${start_date} 00:00:01`, "YYYY-MM-DD HH:mm:ss").subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
-        const end = moment(end_date, "YYYY-MM-DD").format("YYYY-MM-DD") + " 19:59:59";
+        // Created-at window: start of day minus 4 hours through 19:59:59 UTC.
+        createdStart = moment(
+            `${start_date} 00:00:01`,
+            "YYYY-MM-DD HH:mm:ss"
+        ).subtract(4, "hours").format("YYYY-MM-DD HH:mm:ss");
+
+        createdEnd = moment(end_date, "YYYY-MM-DD")
+            .format("YYYY-MM-DD") + " 19:59:59";
 
         whereFields.push('created_at', 'created_at');
-        whereValues.push(start, end);
+        whereValues.push(createdStart, createdEnd);
         whereOperators.push('>=', '<=');
     }
+
+    // Status filter
     if (status) {
         whereFields.push('order_status');
         whereValues.push(status);
         whereOperators.push('=');
     }
+
+    // Combined online and offline bookings
+    const combinedBookings = `
+        (
+            SELECT
+                ra.city,
+                ra.request_id COLLATE utf8mb4_0900_ai_ci AS request_id,
+                ra.rider_id COLLATE utf8mb4_0900_ai_ci AS rider_id,
+                ra.name COLLATE utf8mb4_0900_ai_ci AS name,
+                ROUND(ra.price / 100, 2) AS price,
+                ra.order_status COLLATE utf8mb4_0900_ai_ci AS order_status,
+                ra.created_at,
+                (
+                    SELECT r.rsa_name COLLATE utf8mb4_0900_ai_ci
+                    FROM rsa AS r
+                    WHERE r.rsa_id COLLATE utf8mb4_0900_ai_ci =
+                          ra.rsa_id COLLATE utf8mb4_0900_ai_ci
+                    LIMIT 1
+                ) AS rsa_name,
+                'Online' AS booking_source
+            FROM road_assistance AS ra
+            WHERE ra.order_status != 'PNR'
+              AND COALESCE(ra.device_name, '') != '${RSA_OFFLINE_DEVICE_NAME}'
+
+            UNION ALL
+
+            SELECT
+                NULL AS city,
+                b.request_id COLLATE utf8mb4_0900_ai_ci AS request_id,
+                b.rider_id COLLATE utf8mb4_0900_ai_ci AS rider_id,
+                b.customer_name COLLATE utf8mb4_0900_ai_ci AS name,
+                ROUND(COALESCE(b.price, 0), 2) AS price,
+                b.order_status COLLATE utf8mb4_0900_ai_ci AS order_status,
+                b.created_at,
+                (
+                    SELECT r.rsa_name COLLATE utf8mb4_0900_ai_ci
+                    FROM rsa AS r
+                    WHERE r.rsa_id COLLATE utf8mb4_0900_ai_ci =
+                          b.rsa_id COLLATE utf8mb4_0900_ai_ci
+                    LIMIT 1
+                ) AS rsa_name,
+                'Offline' AS booking_source
+            FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
+            WHERE b.order_status = 'PU'
+        ) AS bookings
+    `;
+
+    // Fetch combined paginated bookings
     const result = await getPaginatedData({
-        tableName: 'road_assistance',
-        columns: `city,request_id, rider_id, name, ROUND(road_assistance.price/100, 2) AS price, order_status, ${formatDateTimeInQuery(['created_at'])}, (select rsa_name from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_name`,
+        tableName: combinedBookings,
+
+        columns: `
+            city,
+            request_id,
+            rider_id,
+            name,
+            price,
+            order_status,
+            booking_source,
+            ${formatDateTimeInQuery(['created_at'])},
+            rsa_name
+        `,
+
         liveSearchFields: ['request_id', 'name'],
         liveSearchTexts: [search_text, search_text],
-        sortColumn: 'id',
+
+        sortColumn: 'created_at',
         sortOrder: 'DESC',
+
         page_no,
         limit: rowSelected || 10,
+
         whereField: whereFields,
         whereValue: whereValues,
         whereOperator: whereOperators
     });
+
+    // Count completed offline bookings
+    const offlineCountFilters = [`order_status = 'PU'`];
+    const offlineCountParams = [];
+
+    if (createdStart && createdEnd) {
+        offlineCountFilters.push(
+            'created_at >= ?',
+            'created_at <= ?'
+        );
+
+        offlineCountParams.push(createdStart, createdEnd);
+    }
+
+    if (status) {
+        offlineCountFilters.push('order_status = ?');
+        offlineCountParams.push(status);
+    }
+
+    const trimmedSearch = String(search_text || '').trim();
+
+    if (trimmedSearch) {
+        offlineCountFilters.push(
+            '(request_id LIKE ? OR customer_name LIKE ?)'
+        );
+
+        offlineCountParams.push(
+            `%${trimmedSearch}%`,
+            `%${trimmedSearch}%`
+        );
+    }
+
+    const offlineCount = await queryDB(
+        `
+            SELECT COUNT(*) AS offline_completed_count
+            FROM ${RSA_OFFLINE_BOOKING_TABLE}
+            WHERE ${offlineCountFilters.join(' AND ')}
+        `,
+        offlineCountParams
+    );
+
     return resp.json({
         status: 1,
         code: 200,
@@ -459,8 +582,12 @@ export const bookingList = asyncHandler(async (req, resp) => {
         data: result.data,
         total_page: result.totalPage,
         total: result.total,
+        offline_completed_count: Number(
+            offlineCount?.offline_completed_count || 0
+        )
     });
 });
+
 
 export const bookingData = asyncHandler(async (req, resp) => {
     try {

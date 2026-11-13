@@ -39,7 +39,10 @@ export const getDashboardData = async (req, resp) => {
                 )
             ) AS total_rider,
             (SELECT COUNT(*) FROM rsa WHERE status = 1) AS total_rsa,
-            (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != 'PNR') AS total_road_assistance,
+            (
+                (SELECT COUNT(*) FROM road_assistance WHERE created_at >= ? AND order_status != "PNR")
+                + (SELECT COUNT(*) FROM rsa_offline_booking WHERE created_at >= ? AND order_status = "PU")
+            ) AS total_road_assistance,
 
             (SELECT COUNT(*) FROM charging_installation_service WHERE created_at >= ?) AS total_installation,
             (SELECT COUNT(*) FROM public_charging_station_list) AS total_station,
@@ -56,6 +59,7 @@ export const getDashboardData = async (req, resp) => {
             db.execute(countSql, [
                 currentDate, // riders
                 currentDate, // road assistance
+                currentDate, // road assistance offline booking
                 currentDate, // installation
                 currentDate, // accessories
                 currentDate, // charger
