@@ -86,7 +86,7 @@ const sendOfflineBookingWhatsApp = async ({
             recordIdField: 'request_id',
             recordId: request_id,
             customerName: customer_name,
-            countryCode: country_code || '+971',
+            countryCode: country_code || '+91',
             mobile: mobile_no,
             campaignName: `RSA_Offline_${request_id}`,
         });
@@ -149,7 +149,7 @@ const resolveOfflineLeadDetails = ({
             lead_remarks: existingLeadRemarks ?? null,
         };
     }
- 
+
     const reason = normalizeNonConversionReason(reason_for_non_conversion);
     if (!reason) {
         const missing = !String(reason_for_non_conversion ?? '').trim();
@@ -159,7 +159,7 @@ const resolveOfflineLeadDetails = ({
                 : RSA_OFFLINE_NON_CONVERSION_REASON_MSG,
         };
     }
- 
+
     return {
         reason_for_non_conversion: reason,
         lead_remarks: toNullableText(lead_remarks),
@@ -589,80 +589,488 @@ export const bookingList = asyncHandler(async (req, resp) => {
 });
 
 
+// export const bookingData = asyncHandler(async (req, resp) => {
+//     try {
+//         const { request_id } = req.body;
+//         if (!request_id) {
+//             return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
+//         }
+
+//         const booking = await queryDB(`
+//             SELECT 
+//                 request_id, rider_id, ${formatDateTimeInQuery(['created_at'])}, name, country_code, contact_no, order_status, pickup_address, pickup_latitude, pickup_longitude, ROUND(road_assistance.price/100, 2) AS price, parking_number, parking_floor, 
+//                 (select concat(rsa_name, ",", country_code, "-", mobile) from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_data, vehicle_id, vehicle_data,
+//                 (select pod_name from pod_devices as pd where pd.pod_id = road_assistance.pod_id) as pod_name, current_percent
+//             FROM 
+//                 road_assistance 
+//             WHERE 
+//                 request_id = ?
+//             LIMIT 1`,
+//             [request_id]);
+//         if (!booking) {
+//             return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
+//         }
+//         if (booking.vehicle_data == '' || booking.vehicle_data == null) {
+//             const vehicledata = await queryDB(`
+//                 SELECT                 
+//                     vehicle_make, vehicle_model, vehicle_specification, state, city, vehicle_code, vehicle_number
+//                 FROM 
+//                     riders_vehicles
+//                 WHERE 
+//                     rider_id = ? and vehicle_id = ? 
+//                 LIMIT 1 `,
+//                 [booking.rider_id, booking.vehicle_id]);
+//             if (vehicledata) {
+//                 booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_specification + ", " + vehicledata.state + "-" + vehicledata.city + "-" + vehicledata.vehicle_code + "-" + vehicledata.vehicle_number;
+//             }
+//         }
+//         const [bookingHistory] = await db.execute(`
+//             SELECT 
+//                 order_status, cancel_by, cancel_reason as reason, rsa_id, ${formatDateTimeInQuery(['created_at'])}, image, remarks,   
+//                 (select rsa.rsa_name from rsa where rsa.rsa_id = order_history.rsa_id) as rsa_name
+//             FROM 
+//                 order_history 
+//             WHERE 
+//                 order_id = ?`,
+//             [request_id]
+//         );
+//         booking.imageUrl = `${process.env.DIR_UPLOADS}road-assistance/`;
+//         booking.price = booking.price.toFixed(2);
+
+//         const feedBack = await queryDB(`
+//             SELECT 
+//                 rating, description, ${formatDateTimeInQuery(['created_at'])} 
+//             FROM 
+//                 road_assistance_feedback 
+//             WHERE 
+//                 request_id = ?
+//             LIMIT 1`,
+//             [request_id]);
+
+//         return resp.json({
+//             status: 1,
+//             code: 200,
+//             message: ["Booking details fetched successfully!"],
+//             data: {
+//                 booking: booking,
+//                 history: bookingHistory,
+//                 feedBack
+//             },
+//         });
+//     } catch (error) {
+//         console.error('Error fetching booking details:', error);
+//         return resp.json({
+//             status: 0,
+//             code: 500,
+//             message: ['Error fetching booking details']
+//         });
+//     }
+// });
+
+// Shared offline booking payload.
+// Used by the dedicated offline details API and the main booking details API.
+
+const loadOfflineBookingDetails = async (request_id) => {
+    const booking = await queryDB(`
+        SELECT
+            b.request_id,
+            b.rider_id,
+            b.is_booking_completed,
+
+            ${formatDateTimeInQuery(['b.created_at'])},
+
+            DATE_FORMAT(b.booking_date, '%Y-%m-%d') AS booking_date,
+            DATE_FORMAT(b.booking_completed_date, '%Y-%m-%d') AS booking_completed_date,
+
+            b.customer_name AS name,
+            b.mobile_no AS contact_no,
+            b.email_id AS email,
+            b.country_code,
+
+            b.order_status,
+            b.address AS pickup_address,
+            b.state,
+            b.city,
+            b.location_link,
+
+            b.vehicle_data,
+            b.battery_level,
+            b.jump_start_required,
+
+            b.price,
+            b.booking_price,
+            b.mode_of_payment,
+            b.rsa_id,
+            b.proof_of_transaction,
+            b.service_terms_condition,
+
+            b.cancellation_remarks,
+            b.cancelled_by,
+            b.reason_for_non_conversion,
+            b.lead_remarks,
+
+            (
+                SELECT h.driver_name
+                FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
+                WHERE
+                    h.order_id COLLATE utf8mb4_unicode_ci =
+                    b.request_id COLLATE utf8mb4_unicode_ci
+                ORDER BY h.id DESC
+                LIMIT 1
+            ) AS driver_name,
+
+            r.rsa_name,
+            r.country_code AS driver_country_code,
+            r.mobile AS driver_mobile_no,
+
+            inv.invoice_id,
+
+            COALESCE(
+                b.payment_status,
+                inv.payment_status
+            ) AS payment_status,
+
+            COALESCE(
+                b.transaction_id,
+                inv.transaction_id
+            ) AS transaction_id,
+
+            rv.pod_name
+
+        FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
+
+        LEFT JOIN ${RSA_OFFLINE_INVOICE_TABLE} AS inv
+            ON inv.request_id COLLATE utf8mb4_unicode_ci =
+               b.request_id COLLATE utf8mb4_unicode_ci
+
+        LEFT JOIN rsa AS r
+            ON r.rsa_id COLLATE utf8mb4_unicode_ci =
+               b.rsa_id COLLATE utf8mb4_unicode_ci
+
+        LEFT JOIN roadside_vans AS rv
+            ON rv.pod_id COLLATE utf8mb4_unicode_ci =
+               b.van_id COLLATE utf8mb4_unicode_ci
+
+        WHERE
+            b.request_id COLLATE utf8mb4_unicode_ci =
+            CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+
+        LIMIT 1
+    `, [request_id]);
+
+    if (!booking) return null;
+
+    // Fetch offline booking history.
+    const [history] = await db.execute(`
+        SELECT
+            order_status,
+            driver_name,
+            remarks,
+            ${formatDateTimeInQuery(['created_at'])}
+        FROM ${RSA_OFFLINE_HISTORY_TABLE}
+        WHERE
+            order_id COLLATE utf8mb4_unicode_ci =
+            CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        ORDER BY id ASC
+    `, [request_id]);
+
+    // vehicle_data is stored as "Make, Model".
+    // Separate it for the edit form dropdowns.
+    const [
+        vehicleMake = null,
+        ...vehicleModelParts
+    ] = String(booking.vehicle_data || '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    // Prepare driver contact.
+    const driverContact = [
+        booking.driver_country_code,
+        booking.driver_mobile_no
+    ].filter(Boolean).join('-');
+
+    // Prepare booking data.
+    booking.price = Number(booking.price || 0).toFixed(2);
+
+    booking.vehicle_make = vehicleMake;
+    booking.vehicle_model = vehicleModelParts.join(', ') || null;
+
+    booking.mobile_no = booking.contact_no;
+    booking.booking_source = 'Offline';
+
+    booking.rsa_data = [
+        booking.rsa_name,
+        driverContact
+    ].filter(Boolean).join(',');
+
+    // Offline bookings do not have online vehicle/location fields.
+    booking.pickup_latitude = null;
+    booking.pickup_longitude = null;
+
+    booking.parking_number = null;
+    booking.parking_floor = null;
+    booking.vehicle_id = null;
+
+    booking.current_percent = booking.battery_level;
+
+    // Upload paths.
+    booking.imageUrl =
+        `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/`;
+
+    booking.proof_of_transaction_url =
+        booking.proof_of_transaction
+            ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${booking.proof_of_transaction}`
+            : null;
+
+    booking.service_terms_condition_url =
+        booking.service_terms_condition
+            ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${booking.service_terms_condition}`
+            : null;
+
+    booking.booking_completed_by = booking.driver_name;
+
+    if (booking.is_booking_completed === 'No') {
+        booking.lead_status = booking.order_status;
+    }
+
+    return {
+        booking,
+        history
+    };
+};
+
+
+// ======================================================
+// MAIN BOOKING DETAILS API
+// Supports both Online and Completed Offline bookings.
+// ======================================================
+
 export const bookingData = asyncHandler(async (req, resp) => {
     try {
         const { request_id } = req.body;
+
         if (!request_id) {
-            return resp.json({ status: 0, code: 400, message: ['Booking ID is required.'] });
+            return resp.json({
+                status: 0,
+                code: 400,
+                message: ['Booking ID is required.']
+            });
         }
 
+        // First check online booking.
         const booking = await queryDB(`
-            SELECT 
-                request_id, rider_id, ${formatDateTimeInQuery(['created_at'])}, name, country_code, contact_no, order_status, pickup_address, pickup_latitude, pickup_longitude, ROUND(road_assistance.price/100, 2) AS price, parking_number, parking_floor, 
-                (select concat(rsa_name, ",", country_code, "-", mobile) from rsa where rsa.rsa_id = road_assistance.rsa_id) as rsa_data, vehicle_id, vehicle_data,
-                (select pod_name from pod_devices as pd where pd.pod_id = road_assistance.pod_id) as pod_name, current_percent
-            FROM 
-                road_assistance 
-            WHERE 
-                request_id = ?
-            LIMIT 1`,
-            [request_id]);
+            SELECT
+                request_id,
+                rider_id,
+                ${formatDateTimeInQuery(['created_at'])},
+                name,
+                country_code,
+                contact_no,
+                order_status,
+                pickup_address,
+                pickup_latitude,
+                pickup_longitude,
+                ROUND(road_assistance.price / 100, 2) AS price,
+                parking_number,
+                parking_floor,
+
+                (
+                    SELECT CONCAT(
+                        rsa_name,
+                        ',',
+                        country_code,
+                        '-',
+                        mobile
+                    )
+                    FROM rsa
+                    WHERE
+                        rsa.rsa_id COLLATE utf8mb4_unicode_ci =
+                        road_assistance.rsa_id COLLATE utf8mb4_unicode_ci
+                ) AS rsa_data,
+
+                vehicle_id,
+                vehicle_data,
+
+                (
+                    SELECT pod_name
+                    FROM pod_devices AS pd
+                    WHERE
+                        pd.pod_id COLLATE utf8mb4_unicode_ci =
+                        road_assistance.pod_id COLLATE utf8mb4_unicode_ci
+                ) AS pod_name,
+
+                current_percent
+
+            FROM road_assistance
+
+            WHERE
+                request_id COLLATE utf8mb4_unicode_ci =
+                CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+
+            LIMIT 1
+        `, [request_id]);
+
+        // If online booking does not exist, check offline booking.
         if (!booking) {
-            return resp.json({ status: 0, code: 404, message: ['Booking not found.'] });
+
+            const offline = await loadOfflineBookingDetails(request_id);
+
+            // Main booking details API should return only completed
+            // offline bookings.
+            if (
+                !offline ||
+                offline.booking.order_status !== 'PU'
+            ) {
+                return resp.json({
+                    status: 0,
+                    code: 404,
+                    message: ['Booking not found.']
+                });
+            }
+
+            const history = offline.history.map((row) => ({
+                order_status: row.order_status,
+                cancel_by: null,
+                reason: row.remarks,
+                rsa_id: offline.booking.rsa_id,
+                created_at: row.created_at,
+                image: null,
+                remarks: row.remarks,
+                rsa_name:
+                    row.driver_name || offline.booking.rsa_name
+            }));
+
+            return resp.json({
+                status: 1,
+                code: 200,
+                message: [
+                    'Booking details fetched successfully!'
+                ],
+                data: {
+                    booking: offline.booking,
+                    history,
+                    feedBack: null
+                }
+            });
         }
-        if (booking.vehicle_data == '' || booking.vehicle_data == null) {
+
+        // ==================================================
+        // ONLINE BOOKING
+        // ==================================================
+
+        booking.booking_source = 'Online';
+
+        // Fetch vehicle details if vehicle_data is empty.
+        if (
+            booking.vehicle_data === '' ||
+            booking.vehicle_data === null
+        ) {
             const vehicledata = await queryDB(`
-                SELECT                 
-                    vehicle_make, vehicle_model, vehicle_specification, state, city, vehicle_code, vehicle_number
-                FROM 
-                    riders_vehicles
-                WHERE 
-                    rider_id = ? and vehicle_id = ? 
-                LIMIT 1 `,
-                [booking.rider_id, booking.vehicle_id]);
+                SELECT
+                    vehicle_make,
+                    vehicle_model,
+                    vehicle_specification,
+                    state,
+                    city,
+                    vehicle_code,
+                    vehicle_number
+
+                FROM riders_vehicles
+
+                WHERE rider_id = ?
+                    AND vehicle_id = ?
+
+                LIMIT 1
+            `, [
+                booking.rider_id,
+                booking.vehicle_id
+            ]);
+
             if (vehicledata) {
-                booking.vehicle_data = vehicledata.vehicle_make + ", " + vehicledata.vehicle_model + ", " + vehicledata.vehicle_specification + ", " + vehicledata.state + "-" + vehicledata.city + "-" + vehicledata.vehicle_code + "-" + vehicledata.vehicle_number;
+                booking.vehicle_data =
+                    vehicledata.vehicle_make + ', ' +
+                    vehicledata.vehicle_model + ', ' +
+                    vehicledata.vehicle_specification + ', ' +
+                    vehicledata.state + '-' +
+                    vehicledata.city + '-' +
+                    vehicledata.vehicle_code + '-' +
+                    vehicledata.vehicle_number;
             }
         }
-        const [bookingHistory] = await db.execute(`
-            SELECT 
-                order_status, cancel_by, cancel_reason as reason, rsa_id, ${formatDateTimeInQuery(['created_at'])}, image, remarks,   
-                (select rsa.rsa_name from rsa where rsa.rsa_id = order_history.rsa_id) as rsa_name
-            FROM 
-                order_history 
-            WHERE 
-                order_id = ?`,
-            [request_id]
-        );
-        booking.imageUrl = `${process.env.DIR_UPLOADS}road-assistance/`;
-        booking.price = booking.price.toFixed(2);
 
+        // Fetch online booking history.
+        const [bookingHistory] = await db.execute(`
+            SELECT
+                order_status,
+                cancel_by,
+                cancel_reason AS reason,
+                rsa_id,
+                ${formatDateTimeInQuery(['created_at'])},
+                image,
+                remarks,
+
+                (
+                    SELECT rsa.rsa_name
+                    FROM rsa
+                    WHERE
+                        rsa.rsa_id COLLATE utf8mb4_unicode_ci =
+                        order_history.rsa_id COLLATE utf8mb4_unicode_ci
+                ) AS rsa_name
+
+            FROM order_history
+
+            WHERE
+                order_id COLLATE utf8mb4_unicode_ci =
+                CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        `, [request_id]);
+
+        booking.imageUrl =
+            `${process.env.DIR_UPLOADS}road-assistance/`;
+
+        booking.price = Number(booking.price || 0).toFixed(2);
+
+        // Fetch feedback.
         const feedBack = await queryDB(`
-            SELECT 
-                rating, description, ${formatDateTimeInQuery(['created_at'])} 
-            FROM 
-                road_assistance_feedback 
-            WHERE 
-                request_id = ?
-            LIMIT 1`,
-            [request_id]);
+            SELECT
+                rating,
+                description,
+                ${formatDateTimeInQuery(['created_at'])}
+
+            FROM road_assistance_feedback
+
+            WHERE
+                request_id COLLATE utf8mb4_unicode_ci =
+                CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci
+
+            LIMIT 1
+        `, [request_id]);
 
         return resp.json({
             status: 1,
             code: 200,
-            message: ["Booking details fetched successfully!"],
+            message: [
+                'Booking details fetched successfully!'
+            ],
             data: {
-                booking: booking,
+                booking,
                 history: bookingHistory,
                 feedBack
-            },
+            }
         });
+
     } catch (error) {
-        console.error('Error fetching booking details:', error);
+        console.error(
+            'Error fetching booking details:',
+            error
+        );
+
         return resp.json({
             status: 0,
             code: 500,
-            message: ['Error fetching booking details']
+            message: [
+                'Error fetching booking details'
+            ]
         });
     }
 });
@@ -705,6 +1113,9 @@ export const offlineRSAVehicleList = asyncHandler(async (req, resp) => {
     });
 });
 
+// ======================================================
+// DEDICATED OFFLINE RSA BOOKING DETAILS API
+// ======================================================
 
 export const offlineRSABookingData = asyncHandler(async (req, resp) => {
     try {
@@ -718,141 +1129,14 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
             });
         }
 
-        const booking = await queryDB(`
-            SELECT
-                b.request_id,
-                b.rider_id,
-                b.is_booking_completed,
-                ${formatDateTimeInQuery(['b.created_at'])},
+        const offline = await loadOfflineBookingDetails(request_id);
 
-                DATE_FORMAT(b.booking_date, '%Y-%m-%d') AS booking_date,
-                DATE_FORMAT(b.booking_completed_date, '%Y-%m-%d') AS booking_completed_date,
-
-                b.customer_name AS name,
-                b.mobile_no AS contact_no,
-                b.email_id AS email,
-                b.country_code,
-                b.order_status,
-                b.address AS pickup_address,
-                b.state,
-                b.city,
-                b.location_link,
-
-                b.vehicle_data,
-                b.battery_level,
-                b.jump_start_required,
-
-                b.price,
-                b.booking_price,
-                b.mode_of_payment,
-                b.rsa_id,
-                b.proof_of_transaction,
-                b.service_terms_condition,
-                b.cancellation_remarks,
-                b.cancelled_by,
-                b.reason_for_non_conversion,
-                b.lead_remarks,
-
-                (
-                    SELECT h.driver_name
-                    FROM ${RSA_OFFLINE_HISTORY_TABLE} AS h
-                    WHERE
-                        h.order_id COLLATE utf8mb4_unicode_ci =
-                        b.request_id COLLATE utf8mb4_unicode_ci
-                    ORDER BY h.id DESC
-                    LIMIT 1
-                ) AS driver_name,
-
-                r.rsa_name,
-                r.country_code AS driver_country_code,
-                r.mobile AS driver_mobile_no,
-
-                inv.invoice_id,
-
-                COALESCE(
-                    b.payment_status,
-                    inv.payment_status
-                ) AS payment_status,
-
-                COALESCE(
-                    b.transaction_id,
-                    inv.transaction_id
-                ) AS transaction_id,
-                rv.pod_name
-
-            FROM ${RSA_OFFLINE_BOOKING_TABLE} AS b
-
-            LEFT JOIN ${RSA_OFFLINE_INVOICE_TABLE} AS inv
-                ON inv.request_id COLLATE utf8mb4_unicode_ci =
-                   b.request_id COLLATE utf8mb4_unicode_ci
-
-            LEFT JOIN rsa AS r
-                ON r.rsa_id COLLATE utf8mb4_unicode_ci =
-                   b.rsa_id COLLATE utf8mb4_unicode_ci
-
-            LEFT JOIN roadside_vans AS rv
-                ON rv.pod_id COLLATE utf8mb4_unicode_ci =
-                   b.van_id COLLATE utf8mb4_unicode_ci
-
-            WHERE
-                b.request_id COLLATE utf8mb4_unicode_ci =
-                ? COLLATE utf8mb4_unicode_ci
-
-            LIMIT 1
-        `, [request_id]);
-
-        if (!booking) {
+        if (!offline) {
             return resp.json({
                 status: 0,
                 code: 404,
                 message: ['Booking not found.']
             });
-        }
-
-        // Fetch booking history
-        const [history] = await db.execute(`
-            SELECT
-                order_status,
-                driver_name,
-                remarks,
-                ${formatDateTimeInQuery(['created_at'])}
-            FROM ${RSA_OFFLINE_HISTORY_TABLE}
-            WHERE order_id COLLATE utf8mb4_unicode_ci =
-                ? COLLATE utf8mb4_unicode_ci
-            ORDER BY id ASC
-        `, [request_id]);
-
-        // Split vehicle_data into make and model
-        // Stored format: "Make, Model"
-        const [vehicleMake = null, ...vehicleModelParts] = String(
-            booking.vehicle_data || ''
-        )
-            .split(',')
-            .map((part) => part.trim())
-            .filter(Boolean);
-
-        // Format booking values
-        booking.price = Number(booking.price || 0).toFixed(2);
-
-        booking.vehicle_make = vehicleMake;
-        booking.vehicle_model = vehicleModelParts.join(', ') || null;
-
-        booking.mobile_no = booking.contact_no;
-
-        // Proof of transaction URL
-        booking.proof_of_transaction_url = booking.proof_of_transaction
-            ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${booking.proof_of_transaction}`
-            : null;
-
-        // Service terms and conditions URL
-        booking.service_terms_condition_url = booking.service_terms_condition
-            ? `${process.env.DIR_UPLOADS}${RSA_OFFLINE_PROOF_FOLDER}/${booking.service_terms_condition}`
-            : null;
-
-        booking.booking_completed_by = booking.driver_name;
-
-        if (booking.is_booking_completed === 'No') {
-            booking.lead_status = booking.order_status;
         }
 
         return resp.json({
@@ -862,11 +1146,12 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
                 'Offline booking details fetched successfully!'
             ],
             data: {
-                booking,
-                history,
+                booking: offline.booking,
+                history: offline.history,
                 feedBack: null,
-                non_conversion_reason_options: RSA_OFFLINE_NON_CONVERSION_REASONS,
-            },
+                non_conversion_reason_options:
+                    RSA_OFFLINE_NON_CONVERSION_REASONS
+            }
         });
 
     } catch (error) {
@@ -880,11 +1165,10 @@ export const offlineRSABookingData = asyncHandler(async (req, resp) => {
             code: 500,
             message: [
                 'Error fetching offline booking details'
-            ],
+            ]
         });
     }
 });
-
 
 
 export const offlineRSABookingList = asyncHandler(async (req, resp) => {
