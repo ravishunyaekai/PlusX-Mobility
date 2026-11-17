@@ -18,6 +18,85 @@ import Stripe from "stripe";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+ 
+const isUnknownColumnError = (error, columnName) => {
+    const msg = String(error?.message || error);
+    return msg.includes('Unknown column') && msg.includes(columnName);
+};
+
+const updateRoadAssistanceVanFields = async (requestId, fields) => {
+    try {
+        await updateRecord('road_assistance', fields, ['request_id'], [requestId]);
+    } catch (error) {
+        if (isUnknownColumnError(error, 'van_data')) {
+            const { van_data: _omit, ...rest } = fields;
+            await updateRecord('road_assistance', rest, ['request_id'], [requestId]);
+            return;
+        }
+        if (isUnknownColumnError(error, 'van_id')) {
+            const { van_id: _v, van_data: _d, ...rest } = fields;
+            await updateRecord('road_assistance', rest, ['request_id'], [requestId]);
+            return;
+        }
+        throw error;
+    }
+};
+ 
+/* Van / POD battery (roadside vans mirror pod device schema). */
+const getVanBatteryData = async (pod_id) => {
+    try {
+        const [chargerDetails] = await db.execute(`
+            SELECT
+                battery_id, capacity, rssi, cells, temp1, temp2, temp3, current, voltage, percentage, charge_cycle, latitude, longitude
+            FROM roadside_vans_battery
+            WHERE pod_id = ?`, [pod_id]
+        );
+        const sum = chargerDetails.map((obj) => (obj.percentage || 0).toFixed(2));
+        return { sum: sum.join(','), data: chargerDetails };
+    } catch {
+        return { sum: '', data: [] };
+    }
+};
+
+const buildVanPodDataSnapshot = async (vanPodId) => {
+    const van = await queryDB(
+        `SELECT pod_id, pod_name, design_model, device_id, charger, inverter, latitude, longitude, status
+         FROM roadside_vans
+         WHERE pod_id = ?
+         LIMIT 1`,
+        [vanPodId]
+    );
+    const batteries = await getVanBatteryData(vanPodId);
+    const podData = JSON.stringify({
+        van: van || { pod_id: vanPodId },
+        batteries: batteries.data,
+    });
+    return { podData, sumOfLevel: batteries.sum || '' };
+};
+
+const resolveVanPodIdFromRequest = (req) => {
+    const { pod_id, van_id, vanId, podId } = mergeParam(req);
+    for (const value of [pod_id, van_id, vanId, podId]) {
+        const trimmed = String(value ?? '').trim();
+        if (trimmed) return trimmed;
+    }
+    return null;
+};
+
+/** Same shape as offline rsa_offline_booking.van_data (van row + van_id / van_name). */
+const buildRoadAssistanceVanDataJson = async (vanPodId) => {
+    if (!vanPodId) return null;
+    const van = await queryDB(
+        `SELECT * FROM roadside_vans WHERE pod_id = ? LIMIT 1`,
+        [vanPodId]
+    );
+    if (!van) return null;
+    return JSON.stringify({
+        van_id: van.pod_id,
+        van_name: van.pod_name,
+        ...van,
+    });
+};
 
 /* RSA - Booking Action */
 export const getRsaOrderStage = asyncHandler(async (req, resp) => {
@@ -258,8 +337,20 @@ const reachedLocation = async (req, resp) => {
 
 const chargingStart = async (req, resp) => { //pod_id = '', 
     const { booking_id, rsa_id, latitude, longitude, pod_id = '', remark = '', jump_Start = 1 } = mergeParam(req);
+    const vanPodId = resolveVanPodIdFromRequest(req);
 
     if (!req.files || !req.files['image']) return resp.status(405).json({ message: ["Vehicle Image is required"], status: 0, code: 405, error: true });
+    if (!vanPodId) {
+        return resp.json({ message: ['Van (pod_id / van_id) is required to start charging.'], status: 0, code: 422 });
+    }
+
+    const vanExists = await queryDB(
+        `SELECT pod_id FROM roadside_vans WHERE pod_id = ? AND status = 1 LIMIT 1`,
+        [vanPodId]
+    );
+    if (!vanExists) {
+        return resp.json({ message: ['Invalid or inactive van selected.'], status: 0, code: 422 });
+    }
 
     const checkOrder = await queryDB(`
         SELECT rider_id, 
@@ -281,9 +372,11 @@ const chargingStart = async (req, resp) => { //pod_id = '',
 
     if (ordHistoryCount.count === 0) {
 
-        // const podBatteryData = await getPodBatteryData(pod_id);
-        const podData = null; //podBatteryData.data.length > 0 ? JSON.stringify(podBatteryData.data) : 
-        const sumOfLevel = ""; //podBatteryData.sum ?  podBatteryData.sum : '';
+        // // const podBatteryData = await getPodBatteryData(pod_id);
+        // const podData = null; //podBatteryData.data.length > 0 ? JSON.stringify(podBatteryData.data) : 
+        // const sumOfLevel = ""; //podBatteryData.sum ?  podBatteryData.sum : '';
+        const { podData, sumOfLevel } = await buildVanPodDataSnapshot(vanPodId);
+        const vanDataJson = await buildRoadAssistanceVanDataJson(vanPodId);
 
         const insert = await db.execute(
             'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data, image, remarks) VALUES (?, ?, "CS", ?, ?, ?, ?, ?, ?)',
@@ -291,7 +384,9 @@ const chargingStart = async (req, resp) => { //pod_id = '',
         );
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
         //pod_id, 
-        await updateRecord('road_assistance', { order_status: 'CS', rsa_id, start_charging_level: sumOfLevel, current_percent: jump_Start }, ['request_id'], [booking_id]);
+        await updateRecord('road_assistance', {
+            order_status: 'CS', rsa_id, van_id: vanPodId, van_data: vanDataJson, start_charging_level: sumOfLevel, current_percent: jump_Start
+        }, ['request_id'], [booking_id]);
         // await updateRecord('pod_devices', { charging_status : 1, latitude, longitude}, ['pod_id'], [pod_id] );
 
         const href = `road_assistance/${booking_id}`;
@@ -331,10 +426,22 @@ const chargingComplete = async (req, resp) => {
         'SELECT COUNT(*) as count FROM order_history WHERE rsa_id = ? AND order_status = "CC" AND order_id = ?', [rsa_id, booking_id]
     );
     if (ordHistoryCount.count === 0) {
+        const bookingVan = await queryDB(
+            `SELECT van_id FROM road_assistance WHERE request_id = ? LIMIT 1`,
+            [booking_id]
+        );
+        const vanPodId = bookingVan?.van_id || resolveVanPodIdFromRequest(req);
+        let podData = null;
+        let sumOfLevel = 0;
+        if (vanPodId) {
+            const snapshot = await buildVanPodDataSnapshot(vanPodId);
+            podData = snapshot.podData;
+            sumOfLevel = snapshot.sumOfLevel;
+        }
 
         const podBatteryData = await getPodBatteryData(checkOrder.pod_id);  //POD ID nikalana hoga 
-        const podData = podBatteryData.data ? JSON.stringify(podBatteryData.data) : [];
-        const sumOfLevel = podBatteryData.sum ? podBatteryData.sum : 0;
+        // const podData = podBatteryData.data ? JSON.stringify(podBatteryData.data) : [];
+        // const sumOfLevel = podBatteryData.sum ? podBatteryData.sum : 0;
 
         const insert = await db.execute(
             'INSERT INTO order_history (order_id, rider_id, order_status, rsa_id, latitude, longitude, pod_data, image, remarks) VALUES (?, ?, "CC", ?, ?, ?, ?, ?, ?)',
@@ -342,7 +449,9 @@ const chargingComplete = async (req, resp) => {
         );
         if (insert.affectedRows == 0) return resp.json({ message: ['Oops! Something went wrong! Please Try Again'], status: 0, code: 200 });
 
-        await updateRecord('road_assistance', { order_status: 'CC', rsa_id, end_charging_level: sumOfLevel }, ['request_id'], [booking_id]);
+        const vanDataJson = vanPodId ? await buildRoadAssistanceVanDataJson(vanPodId) : null;
+
+        await updateRecord('road_assistance', { order_status: 'CC', rsa_id, end_charging_level: sumOfLevel, ...(vanDataJson ? { van_data: vanDataJson } : {}) }, ['request_id'], [booking_id]);
         // await updateRecord('pod_devices', { charging_status : 0 }, ['pod_id'], [checkOrder.pod_id] );
         await db.execute(`UPDATE pod_devices SET charging_status = 0, temp1 = temp1 + 9, temp2 = temp2 + 7 WHERE pod_id = ?`, [checkOrder.pod_id]);
 
@@ -729,20 +838,57 @@ export const getActiveVanList = asyncHandler(async (req, resp) => {
     const { booking_id } = mergeParam(req);
     const { isValid, errors } = validateFields(mergeParam(req), { booking_id: ["required"] });
     if (!isValid) return resp.json({ status: 0, code: 422, message: errors });
-
-    let query = `SELECT pickup_latitude AS lat, pickup_longitude AS lon FROM road_assistance WHERE request_id = ?`;
-    const [[{ van_id }]] = await db.execute(`SELECT van_id FROM road_assistance where request_id = ?`, [booking_id]);
-    let active_pod_id = van_id;
-
-    const data = await queryDB(query, [booking_id]);
-    if (!data) return resp.json({ status: 0, code: 422, message: ["Invalid booking id."] });
-
-    const [result] = await db.execute(`SELECT 
-        pod_id, pod_name, design_model,
-        (6367 * ACOS(COS(RADIANS(?)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(latitude)))) AS distance 
-        FROM roadside_vans
-        ORDER BY CAST(SUBSTRING(pod_name, LOCATE(' ', pod_name) + 1) AS UNSIGNED)
-    `, [data.lat, data.lon, data.lat]);
-
-    return resp.json({ status: 1, code: 200, message: ["RSA Van List fetch successfully!"], active_pod_id, data: result });
+ 
+    let booking;
+    try {
+        booking = await queryDB(
+            `SELECT pickup_latitude AS lat, pickup_longitude AS lon, pod_id, van_id
+             FROM road_assistance
+             WHERE request_id = ?
+             LIMIT 1`,
+            [booking_id]
+        );
+    } catch (error) {
+        if (/Unknown column 'van_id'/.test(error.message || '')) {
+            booking = await queryDB(
+                `SELECT pickup_latitude AS lat, pickup_longitude AS lon, pod_id
+                 FROM road_assistance
+                 WHERE request_id = ?
+                 LIMIT 1`,
+                [booking_id]
+            );
+        } else {
+            throw error;
+        }
+    }
+ 
+    if (!booking) {
+        return resp.json({ status: 0, code: 422, message: ['Invalid booking id.'] });
+    }
+ 
+    const active_pod_id = String(booking.van_id ?? booking.pod_id ?? '').trim() || null;
+ 
+    const lat = Number(booking.lat);
+    const lon = Number(booking.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return resp.json({ status: 0, code: 422, message: ['Pickup location is missing for this booking.'] });
+    }
+ 
+    const [result] = await db.execute(
+        `SELECT
+            pod_id, pod_name, design_model,
+            (6367 * ACOS(COS(RADIANS(?)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(latitude)))) AS distance
+         FROM roadside_vans
+         WHERE status = 1
+         ORDER BY CAST(SUBSTRING(pod_name, LOCATE(' ', pod_name) + 1) AS UNSIGNED)`,
+        [lat, lon, lat]
+    );
+ 
+    return resp.json({
+        status         : 1,
+        code           : 200,
+        message        : ['RSA Van List fetch successfully!'],
+        active_pod_id,
+        data           : result,
+    });
 });
