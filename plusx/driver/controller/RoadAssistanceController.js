@@ -842,7 +842,7 @@ export const getActiveVanList = asyncHandler(async (req, resp) => {
     let booking;
     try {
         booking = await queryDB(
-            `SELECT pickup_latitude AS lat, pickup_longitude AS lon, pod_id, van_id
+            `SELECT pickup_latitude AS lat, pickup_longitude AS lon, van_id
              FROM road_assistance
              WHERE request_id = ?
              LIMIT 1`,
@@ -851,7 +851,7 @@ export const getActiveVanList = asyncHandler(async (req, resp) => {
     } catch (error) {
         if (/Unknown column 'van_id'/.test(error.message || '')) {
             booking = await queryDB(
-                `SELECT pickup_latitude AS lat, pickup_longitude AS lon, pod_id
+                `SELECT pickup_latitude AS lat, pickup_longitude AS lon
                  FROM road_assistance
                  WHERE request_id = ?
                  LIMIT 1`,
@@ -866,29 +866,50 @@ export const getActiveVanList = asyncHandler(async (req, resp) => {
         return resp.json({ status: 0, code: 422, message: ['Invalid booking id.'] });
     }
  
-    const active_pod_id = String(booking.van_id ?? booking.pod_id ?? '').trim() || null;
+    const active_pod_id = String(booking.van_id ?? '').trim() || null;
+    if (!active_pod_id) {
+        return resp.json({
+            status  : 0,
+            code    : 422,
+            message : ['No van assigned to this booking. Please contact admin.'],
+        });
+    }
  
     const lat = Number(booking.lat);
     const lon = Number(booking.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-        return resp.json({ status: 0, code: 422, message: ['Pickup location is missing for this booking.'] });
+    const hasPickup = Number.isFinite(lat) && Number.isFinite(lon);
+ 
+    const van = hasPickup
+        ? await queryDB(
+            `SELECT
+                pod_id, pod_name, design_model,
+                (6367 * ACOS(COS(RADIANS(?)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(latitude)))) AS distance
+             FROM roadside_vans
+             WHERE pod_id = ? AND status = 1
+             LIMIT 1`,
+            [lat, lon, lat, active_pod_id]
+        )
+        : await queryDB(
+            `SELECT pod_id, pod_name, design_model
+             FROM roadside_vans
+             WHERE pod_id = ? AND status = 1
+             LIMIT 1`,
+            [active_pod_id]
+        );
+ 
+    if (!van) {
+        return resp.json({
+            status  : 0,
+            code    : 422,
+            message : ['Assigned van is invalid or inactive. Please contact admin.'],
+        });
     }
  
-    const [result] = await db.execute(
-        `SELECT
-            pod_id, pod_name, design_model,
-            (6367 * ACOS(COS(RADIANS(?)) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(latitude)))) AS distance
-         FROM roadside_vans
-         WHERE status = 1
-         ORDER BY CAST(SUBSTRING(pod_name, LOCATE(' ', pod_name) + 1) AS UNSIGNED)`,
-        [lat, lon, lat]
-    );
- 
     return resp.json({
-        status         : 1,
-        code           : 200,
-        message        : ['RSA Van List fetch successfully!'],
+        status        : 1,
+        code          : 200,
+        message       : ['RSA Van List fetch successfully!'],
         active_pod_id,
-        data           : result,
+        data          : [van],
     });
 });

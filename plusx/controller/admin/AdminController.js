@@ -19,7 +19,8 @@ export const getDashboardData = async (req, resp) => {
         if ( !adminCheck || adminCheck.access === '' || adminCheck.status === 0 ) {
             return resp.json({ code: 401, logout: 1, message: 'logout successfully', status: 0 });
         }
-        const currentDate = moment().startOf('day') .subtract(4, 'hours') .format('YYYY-MM-DD HH:mm:ss');
+        // const currentDate = moment().startOf('day') .subtract(4, 'hours') .format('YYYY-MM-DD HH:mm:ss');
+        const currentDate = moment().tz('Asia/Kolkata').startOf('day').subtract(5, 'hours').subtract(30, 'minutes').format('YYYY-MM-DD HH:mm:ss');
         console.log(currentDate);
         const countSql = ` SELECT
             (SELECT COUNT(*)

@@ -27,7 +27,7 @@ import { carsList, carDetail, carAdd, carEdit, carDelete, carGalleryDelete } fro
 import { bikeDetail, bikesList, bikeAdd, bikeEdit, bikeDelete, bikeGalleryDelete } from "../controller/admin/ElectricBikeRentalController.js";
 
 import {
-    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails, rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList, offlineRSARiderLookup,vehicleBrandList, bikeVehicleBrandList, rsaVanList, addRSAVan, rsaVanDetails, editRSAVan, deleteRSAVan, AllVanList
+    bookingData, bookingList as evRoadAssistanceBooking, invoiceList as evRoadAssistanceInvoice, invoiceData, evRoadAssistanceCancelBooking, rsaAssignBooking, failedRSABookingList, failedRSABookingDetails, rsaSlotList, rsaSlotDetails, rsaSlotAdd, rsaSlotEdit, rsaDeleteSlot, addOfflineRSABooking, editOfflineRSABooking, offlineRSABookingList, offlineRSABookingData, offlineRSAVehicleList, offlineRSARiderLookup, vehicleBrandList, bikeVehicleBrandList, rsaVanList, addRSAVan, rsaVanDetails, editRSAVan, deleteRSAVan, AllVanList, evRoadAssistanceAssignVan, evRoadAssistanceVanList
 } from '../controller/admin/EvRoadAssistanceController.js'
 
 import { interestList } from "../controller/admin/RegisterInterestController.js";
@@ -122,6 +122,8 @@ const adminRoutes = [
     { method: 'post', path: '/failed-road-assistance-details', handler: failedRSABookingDetails },
     { method: 'post', path: '/vehicle-brand-list',      handler: vehicleBrandList },
     { method: 'post', path: '/vehicle-bike-brand-list', handler: bikeVehicleBrandList },
+    { method: 'post', path: '/ev-road-assistance-assign-van', handler: evRoadAssistanceAssignVan },
+    { method: 'post', path: '/ev-road-assistance-van-list', handler: evRoadAssistanceVanList },
 
     { method: 'post', path: '/road-assistance-slot-list', handler: rsaSlotList },
     { method: 'post', path: '/road-assistance-slot-details', handler: rsaSlotDetails },
