@@ -205,24 +205,37 @@ export const rsaStatusChange = asyncHandler(async (req, resp) => {
 export const rsaHome = asyncHandler(async (req, resp) => {
     const { rsa_id } = mergeParam(req);
 
+    const COLLATION = "utf8mb4_unicode_ci";
+
     const rsaData = await queryDB(`
-        SELECT status, booking_type 
-        FROM rsa 
-        WHERE rsa_id = ? 
-        LIMIT 1`, [rsa_id]
-    );
-    if (!rsaData) return resp.json({ message: "RSA data not found", status: 0 });
+        SELECT status, booking_type
+        FROM rsa
+        WHERE rsa_id COLLATE ${COLLATION} = ?
+        LIMIT 1
+    `, [rsa_id]);
+
+    if (!rsaData) {
+        return resp.json({
+            message: "RSA data not found",
+            status: 0
+        });
+    }
 
     const bookingType = rsaData.booking_type;
 
-    if (rsaData.length === 0) return resp.json({ message: "RSA data not found", status: 0 });
-
     let result = {
-        rsa_status: (rsaData.status === 1) ? 'Login' : (rsaData.status === 2) ? 'Available' : 'Logout',
+        rsa_status: (rsaData.status === 1)
+            ? "Login"
+            : (rsaData.status === 2)
+                ? "Available"
+                : "Logout",
         service_type: bookingType,
     };
 
-    if (bookingType === "Portable Charger" || bookingType === "Mobile EV Charging") {
+    if (
+        bookingType === "Portable Charger" ||
+        bookingType === "Mobile EV Charging"
+    ) {
         const data = await queryDB(`
             SELECT
                 COALESCE(pa.running, 0) AS running_order_count,
@@ -231,100 +244,125 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                 COALESCE(pb.completed, 0) AS pod_completed,
                 COALESCE(pb.cancelled, 0) AS pod_cancelled
             FROM rsa r
- 
             LEFT JOIN (
-                SELECT 
+                SELECT
                     pba.rsa_id,
-
                     COUNT(
-                        CASE 
-                            WHEN pba.status = 1 
+                        CASE
+                            WHEN pba.status = 1
                             AND pcb.status NOT IN ('PU', 'CC', 'RO', 'C')
-                            THEN 1 
+                            THEN 1
                         END
                     ) AS running,
-
                     COUNT(
-                        CASE 
+                        CASE
                             WHEN pba.status = 0
                             AND pcb.status NOT IN ('PU', 'CC', 'RO', 'C')
-                            THEN 1 
+                            THEN 1
                         END
                     ) AS pending
-
                 FROM portable_charger_booking_assign pba
-
                 INNER JOIN portable_charger_booking pcb
-                    ON pcb.booking_id = pba.order_id
-
-                WHERE pba.rsa_id = ?
-
+                    ON pcb.booking_id COLLATE ${COLLATION}
+                    = pba.order_id COLLATE ${COLLATION}
+                WHERE pba.rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY pba.rsa_id
-            ) pa ON pa.rsa_id = r.rsa_id
- 
+            ) pa
+                ON pa.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
             LEFT JOIN (
-                SELECT rsa_id, COUNT(*) AS rejected
+                SELECT
+                    rsa_id,
+                    COUNT(*) AS rejected
                 FROM portable_charger_booking_rejected
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) pr ON pr.rsa_id = r.rsa_id
- 
+            ) pr
+                ON pr.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
             LEFT JOIN (
-                SELECT rsa_id,
-                    COUNT(CASE WHEN status IN ('PU','CC','RO') THEN 1 END) AS completed,
-                    COUNT(CASE WHEN status = 'C' THEN 1 END) AS cancelled
+                SELECT
+                    rsa_id,
+                    COUNT(
+                        CASE
+                            WHEN status IN ('PU', 'CC', 'RO')
+                            THEN 1
+                        END
+                    ) AS completed,
+                    COUNT(
+                        CASE
+                            WHEN status = 'C'
+                            THEN 1
+                        END
+                    ) AS cancelled
                 FROM portable_charger_booking
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) pb ON pb.rsa_id = r.rsa_id
- 
-            WHERE r.rsa_id = ? `, [rsa_id, rsa_id, rsa_id, rsa_id]
-        );
+            ) pb
+                ON pb.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
+            WHERE r.rsa_id COLLATE ${COLLATION} = ?
+        `, [rsa_id, rsa_id, rsa_id, rsa_id]);
+
         const [podAssign] = await db.execute(`
-            SELECT 
-                portable_charger_booking_assign.status AS assign_status, 
-                pb.booking_id as request_id, 
-                pb.address as pickup_address, 
-                pb.latitude as pickup_latitude, 
-                pb.longitude pickup_longitude, 
-                pb.status as order_status,
+            SELECT
+                portable_charger_booking_assign.status AS assign_status,
+                pb.booking_id AS request_id,
+                pb.address AS pickup_address,
+                pb.latitude AS pickup_latitude,
+                pb.longitude AS pickup_longitude,
+                pb.status AS order_status,
                 CONCAT(pb.user_name, ",", pb.country_code, "-", pb.contact_no) AS riderDetails,
-                ${formatDateTimeInQuery(['pb.created_at'])}, 
+                ${formatDateTimeInQuery(['pb.created_at'])},
                 (
-                    SELECT CONCAT(vehicle_make, "-", vehicle_model) 
-                    FROM riders_vehicles 
-                    WHERE vehicle_id = pb.vehicle_id
+                    SELECT CONCAT(vehicle_make, "-", vehicle_model)
+                    FROM riders_vehicles
+                    WHERE vehicle_id COLLATE ${COLLATION}
+                    = pb.vehicle_id COLLATE ${COLLATION}
+                    LIMIT 1
                 ) AS vehicle_data,
                 COALESCE(
                     (
-                        SELECT guideline 
-                        FROM portable_charger_history pch 
-                        WHERE pch.rider_id = pb.rider_id 
-                        AND pch.order_status = 'CS' 
+                        SELECT guideline
+                        FROM portable_charger_history pch
+                        WHERE pch.rider_id COLLATE ${COLLATION}
+                            = pb.rider_id COLLATE ${COLLATION}
+                        AND pch.order_status = 'CS'
                         LIMIT 1
-                    ),''
+                    ),
+                    ''
                 ) AS guideline,
                 COALESCE(
-                    (SELECT pch.remarks FROM portable_charger_history pch 
-                    WHERE pch.rider_id = pb.rider_id
-                        AND pch.remarks IS NOT NULL AND pch.remarks != '' 
-                    ORDER BY pch.created_at DESC LIMIT 1),''
+                    (
+                        SELECT pch.remarks
+                        FROM portable_charger_history pch
+                        WHERE pch.rider_id COLLATE ${COLLATION}
+                            = pb.rider_id COLLATE ${COLLATION}
+                        AND pch.remarks IS NOT NULL
+                        AND pch.remarks != ''
+                        ORDER BY pch.created_at DESC
+                        LIMIT 1
+                    ),
+                    ''
                 ) AS remarks,
-                DATE_FORMAT(portable_charger_booking_assign.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time
+                DATE_FORMAT(
+                    portable_charger_booking_assign.slot_date_time,
+                    '%Y-%m-%d %H:%i:%s'
+                ) AS slot_date_time
             FROM portable_charger_booking_assign
-            LEFT JOIN portable_charger_booking AS pb 
-            ON pb.booking_id = portable_charger_booking_assign.order_id
-            WHERE portable_charger_booking_assign.rsa_id = ?
-            ORDER BY portable_charger_booking_assign.slot_date_time ASC `, [rsa_id]
-        );
-        result.running_order_count = data.running_order_count || 0;
-        result.booking_count = data.pod_count || 0;
-        result.rejected_count = data.pod_rejected || 0;
-        result.completed_count = data.pod_completed || 0;
-        result.cancelled_count = data.pod_cancelled || 0;
-        // result.assigned_booking = podAssign.filter(item => item.assign_status === 0);
-        // result.ongoing_booking = podAssign.filter(item => item.assign_status === 1)
-        const COMPLETED_STATUSES = ['PU', 'CC', 'RO'];
+            LEFT JOIN portable_charger_booking AS pb
+                ON pb.booking_id COLLATE ${COLLATION}
+                = portable_charger_booking_assign.order_id COLLATE ${COLLATION}
+            WHERE portable_charger_booking_assign.rsa_id COLLATE ${COLLATION} = ?
+            ORDER BY portable_charger_booking_assign.slot_date_time ASC
+        `, [rsa_id]);
+
+        result.running_order_count = data?.running_order_count || 0;
+        result.booking_count = data?.pod_count || 0;
+        result.rejected_count = data?.pod_rejected || 0;
+        result.completed_count = data?.pod_completed || 0;
+        result.cancelled_count = data?.pod_cancelled || 0;
+
         const CLOSED_STATUSES = ['PU', 'CC', 'RO', 'C'];
 
         result.assigned_booking = podAssign.filter(
@@ -338,7 +376,6 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                 item.assign_status === 1 &&
                 !CLOSED_STATUSES.includes(item.order_status)
         );
-
     }
     else if (bookingType === "Valet Charging") {
         const data = await queryDB(`
@@ -349,123 +386,194 @@ export const rsaHome = asyncHandler(async (req, resp) => {
                 COALESCE(cs.completed, 0) AS valet_completed,
                 COALESCE(cs.cancelled, 0) AS valet_cancelled
             FROM rsa r
- 
             LEFT JOIN (
-                SELECT rsa_id,
+                SELECT
+                    rsa_id,
                     COUNT(CASE WHEN status = 1 THEN 1 END) AS running,
                     COUNT(CASE WHEN status = 0 THEN 1 END) AS pending
                 FROM charging_service_assign
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) ca ON ca.rsa_id = r.rsa_id
- 
+            ) ca
+                ON ca.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
             LEFT JOIN (
-                SELECT rsa_id, COUNT(*) AS rejected
+                SELECT
+                    rsa_id,
+                    COUNT(*) AS rejected
                 FROM charging_service_rejected
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) cr ON cr.rsa_id = r.rsa_id
- 
+            ) cr
+                ON cr.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
             LEFT JOIN (
-                SELECT rsa_id,
-                    COUNT(CASE WHEN order_status IN ('WC','DO') THEN 1 END) AS completed,
+                SELECT
+                    rsa_id,
+                    COUNT(CASE WHEN order_status IN ('WC', 'DO') THEN 1 END) AS completed,
                     COUNT(CASE WHEN order_status = 'C' THEN 1 END) AS cancelled
                 FROM charging_service
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) cs ON cs.rsa_id = r.rsa_id
- 
-            WHERE r.rsa_id = ? `, [rsa_id, rsa_id, rsa_id, rsa_id]
-        );
+            ) cs
+                ON cs.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
+            WHERE r.rsa_id COLLATE ${COLLATION} = ?
+        `, [rsa_id, rsa_id, rsa_id, rsa_id]);
+
         const [assignValet] = await db.execute(`
-            SELECT 
+            SELECT
                 charging_service_assign.status AS assign_status,
-                cs.request_id, cs.pickup_address, cs.pickup_latitude, cs.pickup_longitude,
-                cs.order_status, CONCAT(cs.name, ",", cs.country_code, "-", cs.contact_no) AS riderDetails,
-                DATE_FORMAT(charging_service_assign.slot_date_time, '%Y-%m-%d %H:%i:%s') AS slot_date_time,
+                cs.request_id,
+                cs.pickup_address,
+                cs.pickup_latitude,
+                cs.pickup_longitude,
+                cs.order_status,
+                CONCAT(cs.name, ",", cs.country_code, "-", cs.contact_no) AS riderDetails,
+                DATE_FORMAT(
+                    charging_service_assign.slot_date_time,
+                    '%Y-%m-%d %H:%i:%s'
+                ) AS slot_date_time,
                 ${formatDateTimeInQuery(['cs.created_at'])},
                 COALESCE(
-                    (SELECT csh.remarks FROM charging_service_history csh 
-                    WHERE csh.rider_id = cs.rider_id
-                        AND csh.remarks IS NOT NULL AND csh.remarks != '' 
-                    ORDER BY csh.created_at DESC LIMIT 1),''
+                    (
+                        SELECT csh.remarks
+                        FROM charging_service_history csh
+                        WHERE csh.rider_id COLLATE ${COLLATION}
+                            = cs.rider_id COLLATE ${COLLATION}
+                        AND csh.remarks IS NOT NULL
+                        AND csh.remarks != ''
+                        ORDER BY csh.created_at DESC
+                        LIMIT 1
+                    ),
+                    ''
                 ) AS remarks
             FROM charging_service_assign
-            LEFT JOIN charging_service AS cs ON cs.request_id = charging_service_assign.order_id
-            WHERE charging_service_assign.rsa_id = ? AND cs.request_id IS NOT NULL
-            ORDER BY charging_service_assign.slot_date_time ASC `, [rsa_id]
+            LEFT JOIN charging_service AS cs
+                ON cs.request_id COLLATE ${COLLATION}
+                = charging_service_assign.order_id COLLATE ${COLLATION}
+            WHERE charging_service_assign.rsa_id COLLATE ${COLLATION} = ?
+                AND cs.request_id IS NOT NULL
+            ORDER BY charging_service_assign.slot_date_time ASC
+        `, [rsa_id]);
+
+        result.running_order_count = data?.running_order_count || 0;
+        result.booking_count = data?.valet_count || 0;
+        result.rejected_count = data?.valet_rejected || 0;
+        result.completed_count = data?.valet_completed || 0;
+        result.cancelled_count = data?.valet_cancelled || 0;
+
+        result.assigned_booking = assignValet.filter(
+            item => item.assign_status === 0
         );
-        result.running_order_count = data.running_order_count || 0;
-        result.booking_count = data.valet_count || 0;
-        result.rejected_count = data.valet_rejected || 0;
-        result.completed_count = data.valet_completed || 0;
-        result.cancelled_count = data.valet_cancelled || 0;
-        result.assigned_booking = assignValet.filter(item => item.assign_status === 0);
-        result.ongoing_booking = assignValet.filter(item => item.assign_status === 1);
+
+        result.ongoing_booking = assignValet.filter(
+            item => item.assign_status === 1
+        );
     }
-    else if (bookingType === "Roadside Assistance" || bookingType === "EV Roadside Assistance") {
+    else if (
+        bookingType === "Roadside Assistance" ||
+        bookingType === "EV Roadside Assistance"
+    ) {
         const data = await queryDB(`
             SELECT
                 COALESCE(oa.running, 0) AS running_order_count,
                 COALESCE(oa.pending, 0) AS rsa_count,
                 COALESCE(ob.completed, 0) AS rsa_completed,
                 COALESCE(ob.cancelled, 0) AS rsa_cancelled,
-                COALESCE((
-                    SELECT COUNT(*)
-                    FROM rsa_offline_booking AS rob
-                    WHERE rob.rsa_id = r.rsa_id AND rob.order_status = 'PU'
-                ), 0) AS offline_completed
+                COALESCE(
+                    (
+                        SELECT COUNT(*)
+                        FROM rsa_offline_booking AS rob
+                        WHERE rob.rsa_id COLLATE ${COLLATION}
+                            = r.rsa_id COLLATE ${COLLATION}
+                        AND rob.order_status = 'PU'
+                    ),
+                    0
+                ) AS offline_completed
             FROM rsa r
- 
             LEFT JOIN (
-                SELECT rsa_id,
+                SELECT
+                    rsa_id,
                     COUNT(CASE WHEN status = 1 THEN 1 END) AS running,
                     COUNT(CASE WHEN status = 0 THEN 1 END) AS pending
                 FROM order_assign
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) oa ON oa.rsa_id = r.rsa_id
- 
+            ) oa
+                ON oa.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
             LEFT JOIN (
-                SELECT rsa_id,
-                    COUNT(CASE WHEN order_status IN ('PU','RO') THEN 1 END) AS completed,
+                SELECT
+                    rsa_id,
+                    COUNT(CASE WHEN order_status IN ('PU', 'RO') THEN 1 END) AS completed,
                     COUNT(CASE WHEN order_status = 'C' THEN 1 END) AS cancelled
                 FROM road_assistance
-                WHERE rsa_id = ?
+                WHERE rsa_id COLLATE ${COLLATION} = ?
                 GROUP BY rsa_id
-            ) ob ON ob.rsa_id = r.rsa_id
-            WHERE r.rsa_id = ? `, [rsa_id, rsa_id, rsa_id]
-        );
+            ) ob
+                ON ob.rsa_id COLLATE ${COLLATION}
+                = r.rsa_id COLLATE ${COLLATION}
+            WHERE r.rsa_id COLLATE ${COLLATION} = ?
+        `, [rsa_id, rsa_id, rsa_id]);
+
         const [rsaAssign] = await db.execute(`
             SELECT
                 order_assign.status AS assign_status,
-                pb.request_id, pb.pickup_address, pb.pickup_latitude, pb.pickup_longitude, pb.order_status,
+                pb.request_id,
+                pb.pickup_address,
+                pb.pickup_latitude,
+                pb.pickup_longitude,
+                pb.order_status,
                 CONCAT(pb.name, ",", pb.country_code, "-", pb.contact_no) AS riderDetails,
-                ${formatDateTimeInQuery(['pb.created_at'])}, 
-                (SELECT CONCAT(vehicle_make, "-", vehicle_model) FROM riders_vehicles WHERE vehicle_id = pb.vehicle_id) AS vehicle_data,
+                ${formatDateTimeInQuery(['pb.created_at'])},
+                (
+                    SELECT CONCAT(vehicle_make, "-", vehicle_model)
+                    FROM riders_vehicles
+                    WHERE vehicle_id COLLATE ${COLLATION}
+                        = pb.vehicle_id COLLATE ${COLLATION}
+                    LIMIT 1
+                ) AS vehicle_data,
                 COALESCE(
-                    (SELECT oh.remarks FROM order_history oh 
-                    WHERE oh.rider_id = pb.rider_id
-                        AND oh.remarks IS NOT NULL AND oh.remarks != '' 
-                    ORDER BY oh.created_at DESC LIMIT 1),''
+                    (
+                        SELECT oh.remarks
+                        FROM order_history oh
+                        WHERE oh.rider_id COLLATE ${COLLATION}
+                            = pb.rider_id COLLATE ${COLLATION}
+                        AND oh.remarks IS NOT NULL
+                        AND oh.remarks != ''
+                        ORDER BY oh.created_at DESC
+                        LIMIT 1
+                    ),
+                    ''
                 ) AS remarks
             FROM order_assign
-            LEFT JOIN 
-                road_assistance AS pb ON pb.request_id = order_assign.order_id
-            WHERE 
-                order_assign.rsa_id = ?
-            ORDER BY order_assign.id ASC `, [rsa_id]
-        );
+            LEFT JOIN road_assistance AS pb
+                ON pb.request_id COLLATE ${COLLATION}
+                = order_assign.order_id COLLATE ${COLLATION}
+            WHERE order_assign.rsa_id COLLATE ${COLLATION} = ?
+            ORDER BY order_assign.id ASC
+        `, [rsa_id]);
+
         const offlineCompleted = Number(data?.offline_completed ?? 0);
+
         result.running_order_count = data?.running_order_count || 0;
         result.booking_count = Number(data?.rsa_count ?? 0);
         result.offline_completed_count = offlineCompleted;
         result.rejected_count = 0;
-        result.completed_count = Number(data?.rsa_completed ?? 0) + offlineCompleted;
+        result.completed_count =
+            Number(data?.rsa_completed ?? 0) + offlineCompleted;
         result.cancelled_count = data?.rsa_cancelled || 0;
-        result.assigned_booking = rsaAssign.filter(item => item.assign_status === 0);
-        result.ongoing_booking = rsaAssign.filter(item => item.assign_status === 1);
+
+        result.assigned_booking = rsaAssign.filter(
+            item => item.assign_status === 0
+        );
+
+        result.ongoing_booking = rsaAssign.filter(
+            item => item.assign_status === 1
+        );
     }
+
     return resp.json({
         message: ["RSA Home Page Data"],
         data: result,

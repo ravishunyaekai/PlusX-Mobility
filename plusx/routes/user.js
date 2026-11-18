@@ -232,5 +232,6 @@ authzAndAuthRoutes.forEach(({ method, path, handler }) => {
 });
 // router.post('/payment-intent', createIntent);
 router.post('/charger-booking-payment-confirm-test', portableChargerBookingConfirm);
+router.post( '/vehicle-brand-list', vehicleBrandList);
 
 export default router;
